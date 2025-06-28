@@ -4,7 +4,7 @@ import React, { useState, useRef, useCallback, useEffect, createContext, useCont
 import { Player, PlayerRef } from "@remotion/player";
 import { TimelineComposition } from "../remotion/TimelineComposition";
 import { Timeline } from './timeline/Timeline';
-import { MediaLibrary } from './timeline/MediaLibrary';
+import { MediaLibrary, ProjectProvider } from './timeline/MediaLibrary';
 import { PropertyPanel } from './timeline/PropertyPanel';
 import { CanvasSizeSelector, aspectRatios, type AspectRatio } from './CanvasSizeSelector';
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext';
@@ -390,10 +390,16 @@ function VideoEditorContent() {
   );
 }
 
-export function VideoEditor() {
+interface VideoEditorProps {
+  projectId?: string | null;
+}
+
+export function VideoEditor({ projectId = null }: VideoEditorProps) {
   return (
-    <TimelineProvider>
-      <VideoEditorContent />
-    </TimelineProvider>
+    <ProjectProvider projectId={projectId}>
+      <TimelineProvider>
+        <VideoEditorContent />
+      </TimelineProvider>
+    </ProjectProvider>
   );
 }

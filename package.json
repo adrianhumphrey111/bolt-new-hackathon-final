@@ -8,6 +8,8 @@
     "url": "https://mohitya.dev"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.839.0",
+    "@aws-sdk/lib-storage": "^3.839.0",
     "@remotion/bundler": "4.0.320",
     "@remotion/cli": "4.0.320",
     "@remotion/google-fonts": "4.0.320",
@@ -16,6 +18,7 @@
     "@remotion/player": "^4.0.320",
     "@remotion/shapes": "4.0.320",
     "@remotion/tailwind-v4": "4.0.320",
+    "@remotion/webcodecs": "4.0.320",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.2",

@@ -3,7 +3,10 @@
 import React, { useState, useRef, useCallback, useEffect, useContext, createContext } from 'react';
 import { MediaType } from '../../../types/timeline';
 import { useTimeline } from './TimelineContext';
+import { uploadToS3, deleteFromS3 } from '../../../lib/s3Upload';
+import { convertMedia } from '@remotion/webcodecs';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { v4 as uuidv4 } from 'uuid';
 
 interface MediaItem {
   id: string;
@@ -15,6 +18,7 @@ interface MediaItem {
   file_path?: string;
   file_name?: string; // The filename in storage
   original_name?: string;
+  isAnalyzing?: boolean; // New property for AI analysis status
 }
 
 // Create context for project information
@@ -142,40 +146,41 @@ export function MediaLibrary() {
     try {
       const { data: videos, error } = await supabase
         .from('videos')
-        .select('*')
+        .select('*, video_analysis(id)') // Select video_analysis to check for existence
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       const mediaItems: MediaItem[] = videos.map(video => {
-        // Use processed file if available, otherwise use original file
         let videoUrl = video.file_path;
         
-        if (video.processed_file_path && video.processed_bucket) {
-          // Construct Supabase storage URL for processed file
-          const { data: { publicUrl } } = supabase.storage
-            .from(video.processed_bucket)
-            .getPublicUrl(video.processed_file_path);
-          videoUrl = publicUrl;
-        } else if (video.file_path && !video.file_path.startsWith('http')) {
-          // If file_path is just a filename, construct storage URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('videos')
-            .getPublicUrl(video.file_path);
-          videoUrl = publicUrl;
+        if (video.file_path && video.file_path.startsWith('http')) {
+          videoUrl = video.file_path;
+        } else if (video.file_name) {
+          const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET;
+          if (bucketName) {
+            videoUrl = `https://${bucketName}.s3.amazonaws.com/${video.file_path}`;
+          } else {
+            console.warn('NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET is not set. Cannot construct S3 URL.');
+            videoUrl = undefined;
+          }
         }
         
+        // Determine if video is still analyzing based on video_analysis existence
+        const isAnalyzing = !video.video_analysis || video.video_analysis.length === 0;
+
         return {
           id: video.id,
           name: video.original_name,
           type: MediaType.VIDEO,
           src: videoUrl,
-          duration: video.duration ? Math.round(video.duration * state.fps) : 150, // Convert seconds to frames
+          duration: video.duration ? Math.round(video.duration * state.fps) : 150,
           thumbnail: video.thumbnail_url,
           file_path: video.file_path,
-          file_name: video.file_name, // Store the actual filename for deletion
+          file_name: video.file_name,
           original_name: video.original_name,
+          isAnalyzing: isAnalyzing,
         };
       });
 
@@ -315,43 +320,38 @@ export function MediaLibrary() {
     });
   };
 
-  const convertMovToMp4 = async (file: File, itemId: string): Promise<string> => {
+  const convertMovToMp4 = async (file: File, itemId: string): Promise<File> => {
     console.log('🔄 Converting .mov to .mp4:', file.name);
     
-    // Simulate conversion with progress updates
     setIsConverting(prev => ({ ...prev, [itemId]: true }));
     setConversionProgress(prev => ({ ...prev, [itemId]: 0 }));
-    
-    // Simulate conversion progress
-    const progressInterval = setInterval(() => {
-      setConversionProgress(prev => {
-        const currentProgress = prev[itemId] || 0;
-        const newProgress = Math.min(currentProgress + Math.random() * 15, 95);
-        return { ...prev, [itemId]: newProgress };
+
+    try {
+      const mp4Blob = await convertMedia({
+        src: file,
+        container: 'mp4',
+        onProgress: ({ progress }) => {
+          setConversionProgress(prev => ({ ...prev, [itemId]: progress * 100 }));
+        },
       });
-    }, 200);
-    
-    // Simulate conversion time (2-3 seconds)
-    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
-    
-    // Complete conversion
-    clearInterval(progressInterval);
-    setConversionProgress(prev => ({ ...prev, [itemId]: 100 }));
-    
-    // In a real implementation, this would use FFmpeg.js or a server-side conversion service
-    // For now, we'll just use the original file but indicate it's been "converted"
-    const convertedUrl = URL.createObjectURL(file);
-    
-    setTimeout(() => {
+
+      const mp4File = new File([mp4Blob], file.name.replace(/\.mov$/i, '.mp4'), {
+        type: 'video/mp4',
+      });
+      
+      console.log('✅ Conversion completed for:', file.name);
+      return mp4File;
+    } catch (error) {
+      console.error('❌ Error during MOV to MP4 conversion:', error);
+      throw error;
+    } finally {
       setIsConverting(prev => ({ ...prev, [itemId]: false }));
       setConversionProgress(prev => {
-        const { [itemId]: _removed, ...rest } = prev;
-        return rest;
+        const newProgress = { ...prev };
+        delete newProgress[itemId];
+        return newProgress;
       });
-    }, 1000);
-    
-    console.log('✅ Conversion completed for:', file.name);
-    return convertedUrl;
+    }
   };
 
   const isValidVideoFile = (file: File): boolean => {
@@ -385,34 +385,26 @@ export function MediaLibrary() {
         return null;
       }
 
-      // Create a unique filename
+      const videoId = uuidv4(); // Generate a unique ID for the video
+      const userId = session.user.id;
       const timestamp = Date.now();
-      const extension = file.name.toLowerCase().split('.').pop();
-      const fileName = `video_${timestamp}.${extension}`;
       const originalName = file.name;
-
-      // Upload file to Supabase storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      // Get the public URL for the uploaded file
-      const { data: { publicUrl } } = supabase.storage
-        .from('videos')
-        .getPublicUrl(fileName);
+      const fileExtension = originalName.split('.').pop();
+      const fileName = `${userId}/${projectId}/videos/${videoId}_${timestamp}_${originalName}`;
+      const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET as string;
+      const s3Url = `https://${bucketName}.s3.amazonaws.com/${fileName}`;
 
       // Save video record to database
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
         .insert({
+          id: videoId, // Use the generated UUID as the video ID
           project_id: projectId,
           file_name: fileName,
           original_name: originalName,
-          file_path: fileName, // Store just the filename, not the full URL
+          file_path: fileName, // Store the S3 key directly
           duration: duration / state.fps, // Convert frames to seconds
-          status: 'uploaded'
+          status: 'processing'
         })
         .select()
         .single();
@@ -421,17 +413,15 @@ export function MediaLibrary() {
 
       console.log('✅ Video saved to project:', videoData);
       
-      // Refresh the project videos list
-      fetchProjectVideos();
-      
-      return videoData.id;
+      // Now upload to S3
+      await uploadToS3({ file, fileName, bucketName });
     } catch (error) {
       console.error('Error saving video to project:', error);
       return null;
     }
   }, [projectId, supabase, state.fps, fetchProjectVideos]);
 
-  const deleteVideoFromProject = useCallback(async (videoId: string, fileName: string): Promise<boolean> => {
+  const deleteVideoFromProject = useCallback(async (videoId: string, s3Key: string): Promise<boolean> => {
     setDeleting(prev => ({ ...prev, [videoId]: true }));
     
     try {
@@ -456,16 +446,15 @@ export function MediaLibrary() {
       if (dbError) throw dbError;
 
       // Finally, delete from storage
-      const { error: storageError } = await supabase.storage
-        .from('videos')
-        .remove([fileName]);
-
-      if (storageError) {
-        console.warn('Failed to delete file from storage:', storageError);
+      const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET as string;
+      try {
+        await deleteFromS3(s3Key, bucketName);
+      } catch (storageError) {
+        console.warn('Failed to delete file from S3 storage:', storageError);
         // Don't throw here since database deletion succeeded
       }
 
-      console.log('✅ Video deleted successfully:', fileName);
+      console.log('✅ Video deleted successfully:');
       
       // Refresh the project videos list
       fetchProjectVideos();
@@ -484,20 +473,19 @@ export function MediaLibrary() {
     const newItems: MediaItem[] = [];
     
     try {
-      for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const file = files[0];
       
       // Filter for video files - only allow .mov and .mp4
       if (file.type.startsWith('video/')) {
         if (!isValidVideoFile(file)) {
           console.warn('❌ Invalid video file type:', file.name, 'Only .mov and .mp4 files are supported');
-          continue;
+          return; // Exit if invalid file type
         }
       }
       
       const mediaType = getMediaTypeFromFile(file);
       const duration = await estimateDurationFromFile(file);
-      const itemId = `upload-${Date.now()}-${i}`;
+      const itemId = `upload-${Date.now()}`;
       
       let objectUrl: string;
       let finalName = file.name;
@@ -510,11 +498,10 @@ export function MediaLibrary() {
         
         if (shouldTranscodeFile(file)) {
           console.log(`🔄 MOV file (${fileSize}) detected, transcoding to MP4:`, file.name);
-          objectUrl = await convertMovToMp4(file, itemId);
-          finalName = file.name.replace(/\.mov$/i, '.mp4');
-          // Note: For transcoding, we'll need to get the transcoded file blob for upload
-          // This is a limitation of our current setup - we're creating object URLs
-          // For now, we'll upload the original file and handle transcoding server-side later
+          const transcodedFile = await convertMovToMp4(file, itemId);
+          objectUrl = URL.createObjectURL(transcodedFile);
+          finalName = transcodedFile.name;
+          fileToUpload = transcodedFile;
         } else {
           console.log(`📁 Large MOV file (${fileSize}) detected, uploading directly without transcoding:`, file.name);
           objectUrl = URL.createObjectURL(file);
@@ -526,26 +513,23 @@ export function MediaLibrary() {
       
       // If we have a project, save to database; otherwise, add to temporary uploaded items
       if (projectId && mediaType === MediaType.VIDEO) {
-        const videoId = await saveVideoToProject(fileToUpload, duration, finalName);
+        const videoId = await saveVideoToProject(fileToUpload, duration);
         if (videoId) {
           console.log('✅ Video uploaded and saved to project');
-          continue; // Skip adding to uploadedItems as it will be in projectVideos
+          // No need to add to newItems, as it's handled by setProjectVideos in saveVideoToProject
         }
       }
       
-      const newItem: MediaItem = {
-        id: itemId,
-        name: finalName,
-        type: mediaType,
-        src: objectUrl,
-        duration,
-      };
-      
-        newItems.push(newItem);
-      }
-      
-      if (newItems.length > 0) {
-        setUploadedItems(prev => [...prev, ...newItems]);
+      // If not saved to project (e.g., no projectId), add to temporary uploaded items
+      if (!projectId || mediaType !== MediaType.VIDEO) {
+        const newItem: MediaItem = {
+          id: itemId,
+          name: finalName,
+          type: mediaType,
+          src: objectUrl,
+          duration,
+        };
+        setUploadedItems(prev => [...prev, newItem]);
       }
     } catch (error) {
       console.error('Error during file upload:', error);
@@ -602,13 +586,13 @@ export function MediaLibrary() {
     });
   }, []);
 
-  const handleDeleteProjectVideo = useCallback((e: React.MouseEvent, videoId: string, fileName: string, videoName: string) => {
+  const handleDeleteProjectVideo = useCallback((e: React.MouseEvent, videoId: string, s3Key: string, videoName: string) => {
     e.stopPropagation();
     
     setDeleteModal({
       isOpen: true,
       videoId,
-      fileName,
+      fileName: s3Key,
       videoName,
     });
   }, []);
@@ -663,7 +647,7 @@ export function MediaLibrary() {
             <input
               ref={fileInputRef}
               type="file"
-              multiple
+              
               accept="video/mp4,video/quicktime,.mov,.mp4,audio/*,image/*"
               onChange={handleFileInputChange}
               className="hidden"
@@ -749,7 +733,7 @@ export function MediaLibrary() {
                       <div
                         key={item.id}
                         className={`group flex items-center p-2 rounded transition-colors ${
-                          isConverting[item.id] 
+                          isConverting[item.id]
                             ? 'bg-blue-700/50 cursor-wait' 
                             : 'bg-gray-700 hover:bg-gray-600 cursor-pointer'
                         }`}
@@ -762,6 +746,10 @@ export function MediaLibrary() {
                             <svg className="w-5 h-5 animate-spin text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                             </svg>
+                          ) : item.isAnalyzing ? (
+                            <svg className="w-5 h-5 animate-spin text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49zM10 18.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5z" clipRule="evenodd" />
+                            </svg>
                           ) : (
                             getMediaIcon(item.type)
                           )}
@@ -773,6 +761,11 @@ export function MediaLibrary() {
                             {isConverting[item.id] && (
                               <span className="ml-2 text-blue-400 text-xs">
                                 Converting...
+                              </span>
+                            )}
+                            {item.isAnalyzing && (
+                              <span className="ml-2 text-yellow-400 text-xs">
+                                Analyzing by AI...
                               </span>
                             )}
                           </div>
@@ -817,7 +810,7 @@ export function MediaLibrary() {
                           {/* Delete button for project videos */}
                           {projectVideos.some(video => video.id === item.id) && (
                             <button
-                              onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_name || '', item.name)}
+                              onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_path || '', item.name)}
                               disabled={deleting[item.id]}
                               className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
                                 deleting[item.id] 

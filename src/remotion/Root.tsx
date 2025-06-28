@@ -1,5 +1,6 @@
 import { Composition } from "remotion";
 import { Main } from "./MyComp/Main";
+import { TimelineComposition } from "./TimelineComposition";
 import {
   COMP_NAME,
   defaultMyCompProps,
@@ -31,6 +32,18 @@ export const RemotionRoot: React.FC = () => {
         height={140}
         defaultProps={{
           outProgress: 0,
+        }}
+      />
+      <Composition
+        id="Timeline"
+        component={TimelineComposition}
+        durationInFrames={DURATION_IN_FRAMES}
+        fps={VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
+        defaultProps={{
+          items: [],
+          fps: VIDEO_FPS,
         }}
       />
     </>

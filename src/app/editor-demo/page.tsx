@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { FaVideo, FaPlay, FaPause, FaArrowRight, FaMagic, FaRocket, FaBolt, FaStar, FaStars, FaRobot, FaEye, FaVolumeUp, FaClosedCaptioning, FaCut, FaImage, FaMusic, FaGlobe, FaShare, FaDownload, FaChevronRight, FaLightbulb, FaFire, FaZap, FaCheck } from 'react-icons/fa';
+import { FaVideo, FaPlay, FaPause, FaArrowRight, FaMagic, FaRocket, FaBolt, FaStar, FaRobot, FaEye, FaVolumeUp, FaClosedCaptioning, FaCut, FaImage, FaMusic, FaGlobe, FaShare, FaDownload, FaChevronRight, FaLightbulb, FaFire, FaCheck } from 'react-icons/fa';
 
 export default function EditorDemo() {
   const [currentPrompt, setCurrentPrompt] = useState('');
@@ -337,7 +337,7 @@ export default function EditorDemo() {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
                           <span className="text-sm font-medium text-blue-400">{demo.category}</span>
-                          {currentDemo === index && <FaZap className="w-3 h-3 text-yellow-400" />}
+                          {currentDemo === index && <FaBolt className="w-3 h-3 text-yellow-400" />}
                         </div>
                         <p className="font-medium text-white mb-1">"{demo.prompt}"</p>
                         <p className="text-sm text-gray-400">{demo.description}</p>
@@ -408,7 +408,7 @@ export default function EditorDemo() {
                 <div className="bg-gradient-to-r from-gray-800/50 to-gray-700/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-purple-500/50 transition-all duration-200 hover:scale-105">
                   <div className="flex items-start space-x-4">
                     <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <FaStars className="w-5 h-5" />
+                      <FaMagic className="w-5 h-5" />
                     </div>
                     <div>
                       <p className="text-white font-medium mb-2">"{prompt}"</p>

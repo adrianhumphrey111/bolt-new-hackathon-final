@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { FaCheck, FaTimes, FaVideo, FaArrowRight, FaQuestionCircle, FaStar, FaBolt, FaCrown, FaRocket } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaVideo, FaArrowRight, FaQuestionCircle, FaStar, FaBolt, FaCrown, FaRocket, FaPlay, FaUsers, FaShield } from 'react-icons/fa';
 
 export default function Pricing() {
   const [isAnnual, setIsAnnual] = useState(false);
@@ -11,17 +11,19 @@ export default function Pricing() {
   const plans = [
     {
       name: "Free",
-      icon: <FaVideo className="w-6 h-6" />,
+      icon: <FaPlay className="w-6 h-6" />,
       price: { monthly: 0, annual: 0 },
-      description: "Perfect for trying out AI video editing",
-      aiActions: 10,
+      description: "Perfect for trying AI video editing",
+      aiActions: "15 AI actions/month",
+      videoMinutes: "5 minutes of AI video/month",
       features: [
-        "10 AI prompt actions per month",
-        "Watermarked exports",
+        "15 AI prompt actions per month",
+        "5 minutes of AI-generated video",
+        "Watermarked exports (preview only)",
         "Basic timeline editing",
         "Community support",
         "720p export quality",
-        "5 minutes max video length"
+        "10 minutes max video length"
       ],
       limitations: [
         "Watermarked videos",
@@ -33,37 +35,41 @@ export default function Pricing() {
       color: "gray"
     },
     {
-      name: "Pro",
+      name: "Creator",
       icon: <FaBolt className="w-6 h-6" />,
-      price: { monthly: 20, annual: 16 },
-      description: "For creators and small teams",
-      aiActions: 100,
+      price: { monthly: 15, annual: 12 },
+      description: "For content creators and freelancers",
+      aiActions: "200 AI actions/month",
+      videoMinutes: "50 minutes of AI video/month",
       features: [
-        "100 AI prompt actions per month",
-        "No watermarks",
-        "Advanced editing tools",
-        "AI highlights & auto-cuts",
+        "200 AI prompt actions per month",
+        "50 minutes of AI-generated video",
+        "No watermarks - full exports",
+        "Advanced editing tools & AI features",
+        "Priority processing queue",
         "Email support",
         "1080p export quality",
-        "30 minutes max video length",
+        "60 minutes max video length",
         "Custom brand templates"
       ],
       limitations: [],
-      cta: "Start Pro Trial",
+      cta: "Start Creator Plan",
       popular: true,
       color: "blue"
     },
     {
-      name: "Power",
+      name: "Pro",
       icon: <FaRocket className="w-6 h-6" />,
-      price: { monthly: 50, annual: 40 },
-      description: "For power users and growing teams",
-      aiActions: 500,
+      price: { monthly: 35, annual: 28 },
+      description: "For professionals and small teams",
+      aiActions: "500 AI actions/month",
+      videoMinutes: "150 minutes of AI video/month",
       features: [
         "500 AI prompt actions per month",
-        "Team collaboration (5 seats)",
-        "Priority AI processing",
-        "Advanced motion graphics",
+        "150 minutes of AI-generated video",
+        "Team collaboration (3 seats)",
+        "Advanced motion graphics & effects",
+        "Bulk asset replacement",
         "Phone & email support",
         "4K export quality",
         "Unlimited video length",
@@ -71,7 +77,7 @@ export default function Pricing() {
         "Analytics dashboard"
       ],
       limitations: [],
-      cta: "Start Power Trial",
+      cta: "Start Pro Plan",
       popular: false,
       color: "purple"
     },
@@ -80,16 +86,19 @@ export default function Pricing() {
       icon: <FaCrown className="w-6 h-6" />,
       price: { monthly: "Custom", annual: "Custom" },
       description: "For large teams and organizations",
-      aiActions: "Unlimited",
+      aiActions: "Unlimited AI actions",
+      videoMinutes: "Unlimited AI video",
       features: [
         "Unlimited AI prompt actions",
+        "Unlimited AI-generated video",
         "Unlimited team seats",
         "SLA & dedicated support",
         "White-labeling options",
         "On-premise deployment",
-        "Custom integrations",
-        "Advanced security",
-        "Training & onboarding"
+        "Custom integrations & API",
+        "Advanced security & SSO",
+        "Training & onboarding",
+        "Custom usage analytics"
       ],
       limitations: [],
       cta: "Contact Sales",
@@ -98,61 +107,95 @@ export default function Pricing() {
     }
   ];
 
-  const tokenPacks = [
+  const addOnPacks = [
     {
-      tokens: 50,
-      price: 5,
-      savings: 0
+      type: "AI Actions",
+      packs: [
+        { amount: "100 actions", price: 5, description: "Perfect for occasional heavy use" },
+        { amount: "250 actions", price: 10, description: "Great for busy content months" },
+        { amount: "500 actions", price: 18, description: "Best value for power users" },
+        { amount: "1000 actions", price: 30, description: "For teams and agencies" }
+      ]
     },
     {
-      tokens: 100,
-      price: 10,
-      savings: 0
+      type: "AI Video Minutes",
+      packs: [
+        { amount: "25 minutes", price: 8, description: "Extra video generation time" },
+        { amount: "50 minutes", price: 15, description: "Double your video output" },
+        { amount: "100 minutes", price: 25, description: "For large projects" },
+        { amount: "200 minutes", price: 45, description: "Maximum flexibility" }
+      ]
+    }
+  ];
+
+  const comparisonFeatures = [
+    {
+      category: "AI Editing",
+      features: [
+        { name: "Natural language prompts", free: true, creator: true, pro: true, enterprise: true },
+        { name: "Auto-remove silences", free: "Limited", creator: true, pro: true, enterprise: true },
+        { name: "Auto-generate highlights", free: false, creator: true, pro: true, enterprise: true },
+        { name: "AI-generated B-roll", free: false, creator: "Basic", pro: true, enterprise: true },
+        { name: "Dynamic motion graphics", free: false, creator: false, pro: true, enterprise: true },
+        { name: "Brand style transfer", free: false, creator: false, pro: true, enterprise: true }
+      ]
     },
     {
-      tokens: 250,
-      price: 20,
-      savings: 15
+      category: "Export & Quality",
+      features: [
+        { name: "Export quality", free: "720p", creator: "1080p", pro: "4K", enterprise: "4K+" },
+        { name: "Watermark", free: "Yes", creator: "No", pro: "No", enterprise: "No" },
+        { name: "Export formats", free: "MP4 only", creator: "MP4, MOV", pro: "All formats", enterprise: "All formats" },
+        { name: "Max video length", free: "10 min", creator: "60 min", pro: "Unlimited", enterprise: "Unlimited" }
+      ]
     },
     {
-      tokens: 500,
-      price: 35,
-      savings: 25
+      category: "Collaboration",
+      features: [
+        { name: "Team seats", free: "1", creator: "1", pro: "3", enterprise: "Unlimited" },
+        { name: "Project sharing", free: false, creator: false, pro: true, enterprise: true },
+        { name: "Comment system", free: false, creator: false, pro: true, enterprise: true },
+        { name: "Role permissions", free: false, creator: false, pro: "Basic", enterprise: "Advanced" }
+      ]
     }
   ];
 
   const faqs = [
     {
-      question: "What counts as an AI prompt action?",
-      answer: "Every time you use AI to edit your video - like 'remove silences', 'add captions', 'create highlights', or 'apply brand style' - that's one AI action. Simple timeline edits like trimming don't count."
+      question: "How does the blended pricing model work?",
+      answer: "You pay a monthly subscription for platform access and included AI actions/video minutes, plus optional pay-as-you-go add-ons when you need more. This gives you predictable costs with flexibility to scale up during busy periods."
     },
     {
-      question: "What happens when I run out of AI actions?",
-      answer: "You can continue using basic editing features, but AI-powered actions will be paused. You can upgrade your plan or purchase additional token packs to continue using AI features immediately."
+      question: "What's the difference between AI actions and AI video minutes?",
+      answer: "AI actions are individual editing commands like 'remove silences' or 'add captions'. AI video minutes refer to the total length of video content our AI can generate or heavily process each month. Both are tracked separately."
     },
     {
-      question: "Why do you charge for AI actions instead of unlimited?",
-      answer: "AI processing is expensive - each prompt can cost us $0.10-$0.50 in compute. This model keeps our service sustainable while ensuring you only pay for what you use, just like Cursor and other AI tools."
+      question: "What happens when I exceed my monthly limits?",
+      answer: "You can continue basic editing, but AI features will pause until next month or you can purchase add-on packs instantly. We'll warn you at 80% and 95% usage so there are no surprises."
+    },
+    {
+      question: "Why not unlimited AI like some competitors?",
+      answer: "AI processing costs $0.10-$0.50 per action in compute resources. Like Cursor and Runway, we use usage-based pricing to keep the service sustainable while ensuring you only pay for what you actually use."
+    },
+    {
+      question: "Do unused actions and minutes roll over?",
+      answer: "Monthly plan allowances reset each billing cycle, but any add-on packs you purchase never expire and carry forward indefinitely."
     },
     {
       question: "Can I see my usage in real-time?",
-      answer: "Yes! Your dashboard shows exactly how many AI actions you've used this month, with warnings when you're approaching your limit. Full transparency, no surprises."
+      answer: "Yes! Your dashboard shows live usage for both AI actions and video minutes, with detailed breakdowns and warnings as you approach limits. Complete transparency, just like Descript and invideo AI."
     },
     {
-      question: "Do unused AI actions roll over?",
-      answer: "No, AI actions reset each month. However, any token packs you purchase never expire and can be used anytime."
+      question: "How do you compare to Descript and invideo AI?",
+      answer: "We offer more AI actions per dollar, faster processing, and unique features like dynamic motion graphics and brand style transfer. Plus our natural language interface is more intuitive than traditional timeline editing."
     },
     {
       question: "Is there a free trial for paid plans?",
-      answer: "Yes! All paid plans come with a 7-day free trial with full access to features and AI actions. No credit card required to start."
+      answer: "Yes! All paid plans include a 7-day free trial with full access to features and your plan's full AI allowance. No credit card required to start."
     },
     {
-      question: "What video formats do you support?",
-      answer: "We support all major formats: MP4, MOV, AVI, MKV, and more. Export in MP4, MOV, or WebM with various quality settings from 720p to 4K."
-    },
-    {
-      question: "How does team collaboration work?",
-      answer: "Team plans include shared workspaces, project sharing, comment systems, and role-based permissions. Each team member gets their own AI action allowance."
+      question: "What about team billing and enterprise features?",
+      answer: "Pro plans include team collaboration for 3 seats. Enterprise offers unlimited seats, SSO, custom integrations, dedicated support, and volume discounts. Contact sales for custom pricing."
     }
   ];
 
@@ -186,6 +229,16 @@ export default function Pricing() {
     return colors[color as keyof typeof colors][variant];
   };
 
+  const renderFeatureValue = (value: boolean | string) => {
+    if (value === true) {
+      return <FaCheck className="w-4 h-4 text-green-400 mx-auto" />;
+    } else if (value === false) {
+      return <FaTimes className="w-4 h-4 text-red-400 mx-auto" />;
+    } else {
+      return <span className="text-sm text-gray-300">{value}</span>;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Navigation */}
@@ -210,7 +263,7 @@ export default function Pricing() {
               href="/auth/signup"
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 transform hover:scale-105"
             >
-              Get Started Free
+              Start Free Trial
             </Link>
           </div>
         </div>
@@ -226,15 +279,15 @@ export default function Pricing() {
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 text-center">
           <h1 className="text-5xl md:text-6xl font-bold mb-6">
-            Simple, Transparent
+            Predictable Pricing,
             <span className="block bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              AI-Powered Pricing
+              Flexible Usage
             </span>
           </h1>
           
           <p className="text-xl text-gray-300 mb-8 max-w-3xl mx-auto">
-            Pay for what you use. Every AI action is tracked transparently. 
-            Start free, scale as you grow.
+            Monthly subscription + pay-as-you-go flexibility. Start free, scale as you grow. 
+            Used by 50,000+ creators worldwide.
           </p>
 
           {/* Billing Toggle */}
@@ -256,6 +309,33 @@ export default function Pricing() {
               Annual
               <span className="ml-1 text-green-400 text-sm">(Save 20%)</span>
             </span>
+          </div>
+
+          {/* Industry Comparison */}
+          <div className="bg-gray-800/30 backdrop-blur-sm rounded-xl p-6 max-w-4xl mx-auto mb-12">
+            <h3 className="text-lg font-semibold mb-4">How We Compare to Industry Leaders</h3>
+            <div className="grid md:grid-cols-4 gap-4 text-sm">
+              <div className="text-center">
+                <div className="font-semibold text-gray-400">invideo AI</div>
+                <div className="text-gray-500">$35/month</div>
+                <div className="text-gray-500">50 min AI video</div>
+              </div>
+              <div className="text-center">
+                <div className="font-semibold text-gray-400">Descript</div>
+                <div className="text-gray-500">$12/month</div>
+                <div className="text-gray-500">Limited AI features</div>
+              </div>
+              <div className="text-center">
+                <div className="font-semibold text-gray-400">Runway</div>
+                <div className="text-gray-500">$12/month</div>
+                <div className="text-gray-500">Credits system</div>
+              </div>
+              <div className="text-center border border-blue-500/30 rounded-lg p-2">
+                <div className="font-semibold text-blue-400">Our Creator Plan</div>
+                <div className="text-blue-300">$15/month</div>
+                <div className="text-blue-300">50 min + 200 actions</div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -307,12 +387,15 @@ export default function Pricing() {
                     )}
                   </div>
 
-                  <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getColorClasses(plan.color, 'bg')} bg-opacity-20 ${getColorClasses(plan.color, 'text')}`}>
-                    <FaBolt className="w-3 h-3 mr-1" />
-                    {typeof plan.aiActions === 'number' 
-                      ? `${plan.aiActions} AI actions/month`
-                      : `${plan.aiActions} AI actions`
-                    }
+                  <div className="space-y-2">
+                    <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getColorClasses(plan.color, 'bg')} bg-opacity-20 ${getColorClasses(plan.color, 'text')}`}>
+                      <FaBolt className="w-3 h-3 mr-1" />
+                      {plan.aiActions}
+                    </div>
+                    <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getColorClasses(plan.color, 'bg')} bg-opacity-20 ${getColorClasses(plan.color, 'text')} ml-2`}>
+                      <FaVideo className="w-3 h-3 mr-1" />
+                      {plan.videoMinutes}
+                    </div>
                   </div>
                 </div>
 
@@ -348,117 +431,169 @@ export default function Pricing() {
         </div>
       </section>
 
-      {/* Token Packs */}
+      {/* Add-On Packs */}
       <section className="py-20 bg-gray-800/50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-6">Need More AI Actions?</h2>
+            <h2 className="text-4xl font-bold mb-6">Need More? Buy Add-On Packs</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Purchase additional AI action tokens that never expire. Perfect for busy months or special projects.
+              Purchase additional AI actions or video minutes that never expire. Perfect for busy months or special projects.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-6 max-w-4xl mx-auto">
-            {tokenPacks.map((pack, index) => (
-              <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-blue-500/50 transition-all duration-200 text-center">
-                {pack.savings > 0 && (
-                  <div className="bg-green-600 text-white text-xs px-2 py-1 rounded-full mb-3 inline-block">
-                    Save {pack.savings}%
-                  </div>
-                )}
-                <div className="text-2xl font-bold mb-2">{pack.tokens} Tokens</div>
-                <div className="text-3xl font-bold text-blue-400 mb-4">${pack.price}</div>
-                <div className="text-sm text-gray-400 mb-4">
-                  ${(pack.price / pack.tokens).toFixed(2)} per action
+          <div className="grid lg:grid-cols-2 gap-12">
+            {addOnPacks.map((packType, typeIndex) => (
+              <div key={typeIndex} className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
+                <h3 className="text-2xl font-bold mb-6 text-center">{packType.type} Add-Ons</h3>
+                <div className="space-y-4">
+                  {packType.packs.map((pack, packIndex) => (
+                    <div key={packIndex} className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-colors">
+                      <div>
+                        <div className="font-semibold">{pack.amount}</div>
+                        <div className="text-sm text-gray-400">{pack.description}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-blue-400">${pack.price}</div>
+                        <button className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded mt-1 transition-colors">
+                          Purchase
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors">
-                  Purchase
-                </button>
               </div>
             ))}
           </div>
 
           <div className="text-center mt-8">
             <p className="text-gray-400 text-sm">
-              💡 Token packs never expire and can be used across any plan
+              💡 All add-on packs never expire and work with any plan
             </p>
           </div>
         </div>
       </section>
 
-      {/* Usage Transparency */}
+      {/* Feature Comparison */}
       <section className="py-20">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-6">Detailed Feature Comparison</h2>
+            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+              See exactly what's included in each plan
+            </p>
+          </div>
+
+          <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 overflow-hidden">
+            {comparisonFeatures.map((category, categoryIndex) => (
+              <div key={categoryIndex}>
+                <div className="bg-gray-700/50 px-6 py-4">
+                  <h3 className="text-lg font-semibold">{category.category}</h3>
+                </div>
+                <div className="divide-y divide-gray-700">
+                  {category.features.map((feature, featureIndex) => (
+                    <div key={featureIndex} className="grid grid-cols-5 gap-4 px-6 py-4 hover:bg-gray-700/20 transition-colors">
+                      <div className="text-sm font-medium text-gray-300">{feature.name}</div>
+                      <div className="text-center">{renderFeatureValue(feature.free)}</div>
+                      <div className="text-center">{renderFeatureValue(feature.creator)}</div>
+                      <div className="text-center">{renderFeatureValue(feature.pro)}</div>
+                      <div className="text-center">{renderFeatureValue(feature.enterprise)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            
+            {/* Header row */}
+            <div className="grid grid-cols-5 gap-4 px-6 py-4 bg-gray-700/30 border-t border-gray-700">
+              <div></div>
+              <div className="text-center font-semibold text-gray-400">Free</div>
+              <div className="text-center font-semibold text-blue-400">Creator</div>
+              <div className="text-center font-semibold text-purple-400">Pro</div>
+              <div className="text-center font-semibold text-yellow-400">Enterprise</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Usage Dashboard Preview */}
+      <section className="py-20 bg-gray-800/50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-6">Complete Usage Transparency</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              See exactly what counts as an AI action and track your usage in real-time
+              Track your AI actions and video minutes in real-time with our detailed dashboard
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <h3 className="text-2xl font-bold mb-6">What Counts as an AI Action?</h3>
+              <h3 className="text-2xl font-bold mb-6">What Counts Toward Your Limits?</h3>
               <div className="space-y-4">
                 <div className="flex items-start space-x-3">
                   <div className="w-2 h-2 bg-blue-400 rounded-full mt-2"></div>
                   <div>
-                    <div className="font-semibold">AI Editing Prompts</div>
-                    <div className="text-gray-400 text-sm">"Remove silences", "Add captions", "Create highlights"</div>
+                    <div className="font-semibold">AI Actions (Per Command)</div>
+                    <div className="text-gray-400 text-sm">"Remove silences", "Add captions", "Create highlights", "Apply brand style"</div>
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full mt-2"></div>
+                  <div className="w-2 h-2 bg-purple-400 rounded-full mt-2"></div>
                   <div>
-                    <div className="font-semibold">Auto-Generated Content</div>
-                    <div className="text-gray-400 text-sm">AI-generated B-roll, motion graphics, thumbnails</div>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full mt-2"></div>
-                  <div>
-                    <div className="font-semibold">Style Transfer</div>
-                    <div className="text-gray-400 text-sm">Applying brand styles, color grading, format conversion</div>
+                    <div className="font-semibold">AI Video Minutes (Processing Time)</div>
+                    <div className="text-gray-400 text-sm">Total minutes of video content processed by AI features</div>
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
                   <div className="w-2 h-2 bg-green-400 rounded-full mt-2"></div>
                   <div>
                     <div className="font-semibold text-green-400">Always Free</div>
-                    <div className="text-gray-400 text-sm">Manual timeline editing, trimming, basic effects</div>
+                    <div className="text-gray-400 text-sm">Manual timeline editing, trimming, basic effects, uploads</div>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
-              <h4 className="text-lg font-semibold mb-4">Live Usage Dashboard</h4>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
+              <h4 className="text-lg font-semibold mb-6">Live Usage Dashboard</h4>
+              
+              {/* AI Actions Usage */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
                   <span className="text-gray-300">AI Actions Used</span>
-                  <span className="font-semibold">47 / 100</span>
+                  <span className="font-semibold">147 / 200</span>
                 </div>
-                <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div className="bg-blue-500 h-2 rounded-full" style={{ width: '47%' }}></div>
+                <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
+                  <div className="bg-blue-500 h-2 rounded-full" style={{ width: '73.5%' }}></div>
                 </div>
-                <div className="text-sm text-gray-400">
-                  53 actions remaining this month
+                <div className="text-sm text-gray-400">53 actions remaining this month</div>
+              </div>
+
+              {/* AI Video Minutes Usage */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-gray-300">AI Video Minutes</span>
+                  <span className="font-semibold">32 / 50</span>
                 </div>
-                <div className="pt-4 border-t border-gray-700">
-                  <div className="text-sm text-gray-400 mb-2">Recent Actions:</div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span>"Remove background noise"</span>
-                      <span className="text-gray-500">2 min ago</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>"Add captions"</span>
-                      <span className="text-gray-500">1 hour ago</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>"Create highlight reel"</span>
-                      <span className="text-gray-500">3 hours ago</span>
-                    </div>
+                <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
+                  <div className="bg-purple-500 h-2 rounded-full" style={{ width: '64%' }}></div>
+                </div>
+                <div className="text-sm text-gray-400">18 minutes remaining this month</div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-700">
+                <div className="text-sm text-gray-400 mb-2">Recent Activity:</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span>"Remove background noise" (3 min)</span>
+                    <span className="text-gray-500">2 min ago</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>"Add captions" (8 min)</span>
+                    <span className="text-gray-500">1 hour ago</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>"Create highlight reel" (5 min)</span>
+                    <span className="text-gray-500">3 hours ago</span>
                   </div>
                 </div>
               </div>
@@ -468,7 +603,7 @@ export default function Pricing() {
       </section>
 
       {/* FAQ */}
-      <section className="py-20 bg-gray-800/50">
+      <section className="py-20">
         <div className="max-w-4xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-6">Frequently Asked Questions</h2>
@@ -503,13 +638,13 @@ export default function Pricing() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20">
+      <section className="py-20 bg-gray-800/50">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-4xl font-bold mb-6">
             Ready to Start Creating?
           </h2>
           <p className="text-xl text-gray-300 mb-8">
-            Join thousands of creators who've made the switch to AI-powered video editing
+            Join 50,000+ creators who've made the switch to AI-powered video editing
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
@@ -523,8 +658,13 @@ export default function Pricing() {
               href="/contact"
               className="bg-gray-800 hover:bg-gray-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors flex items-center justify-center space-x-2 border border-gray-600"
             >
+              <FaUsers className="w-4 h-4" />
               <span>Contact Sales</span>
             </Link>
+          </div>
+          
+          <div className="mt-8 text-sm text-gray-400">
+            <p>✨ 7-day free trial • No credit card required • Cancel anytime</p>
           </div>
         </div>
       </section>
@@ -584,7 +724,7 @@ export default function Pricing() {
               href="/auth/signup"
               className="mt-4 md:mt-0 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 transform hover:scale-105"
             >
-              Get Started Free
+              Start Free Trial
             </Link>
           </div>
         </div>

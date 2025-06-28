@@ -57,8 +57,8 @@
     "typescript": "5.8.2"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "TAILWIND_DISABLE_NATIVE=true next dev",
+    "build": "TAILWIND_DISABLE_NATIVE=true next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",

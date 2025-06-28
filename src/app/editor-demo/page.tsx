@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { FaVideo, FaPlay, FaPause, FaArrowRight, FaMagic, FaRocket, FaBolt, FaWandMagicSparkles, FaSparkles, FaRobot, FaEye, FaVolumeUp, FaClosedCaptioning, FaCut, FaImage, FaMusic, FaGlobe, FaShare, FaDownload, FaChevronRight, FaLightbulb, FaFire, FaZap, FaStars } from 'react-icons/fa';
+import { FaVideo, FaPlay, FaPause, FaArrowRight, FaMagic, FaRocket, FaBolt, FaStar, FaStars, FaRobot, FaEye, FaVolumeUp, FaClosedCaptioning, FaCut, FaImage, FaMusic, FaGlobe, FaShare, FaDownload, FaChevronRight, FaLightbulb, FaFire, FaZap, FaCheck } from 'react-icons/fa';
 
 export default function EditorDemo() {
   const [currentPrompt, setCurrentPrompt] = useState('');
@@ -27,7 +27,7 @@ export default function EditorDemo() {
       id: 2,
       prompt: "Create a 30-second highlight reel with upbeat music",
       category: "Smart Highlights",
-      icon: <FaSparkles className="w-5 h-5" />,
+      icon: <FaStar className="w-5 h-5" />,
       description: "AI analyzes your content and creates an engaging highlight compilation",
       result: "🎬 Generated highlight reel • Added royalty-free music • Optimized pacing",
       color: "from-purple-500 to-pink-500"
@@ -86,7 +86,7 @@ export default function EditorDemo() {
     {
       title: "Dynamic Asset Generation",
       description: "Creates custom graphics, animations, and effects on demand",
-      icon: <FaWandMagicSparkles className="w-6 h-6" />,
+      icon: <FaMagic className="w-6 h-6" />,
       examples: ["Custom lower thirds", "Animated backgrounds", "Brand-matched graphics"]
     },
     {

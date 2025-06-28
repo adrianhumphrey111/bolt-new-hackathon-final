@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { FaPlay, FaUpload, FaWand, FaRocket, FaCheck, FaStar, FaArrowRight, FaVideo, FaEdit, FaShare, FaMagic, FaBolt, FaPalette, FaRobot, FaChevronDown } from 'react-icons/fa';
+import { FaPlay, FaUpload, FaEdit, FaRocket, FaCheck, FaStar, FaArrowRight, FaVideo, FaShare, FaMagic, FaBolt, FaPalette, FaRobot, FaChevronDown } from 'react-icons/fa';
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -75,7 +75,7 @@ export default function Home() {
       description: "Drag & drop your footage or record directly in the browser"
     },
     {
-      icon: <FaWand className="w-8 h-8" />,
+      icon: <FaEdit className="w-8 h-8" />,
       title: "Type Your Prompt",
       description: "Describe what you want: 'Remove silences and add my logo at the end'"
     },

@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #fff;
@@ -13,7 +15,7 @@
   --geist-quarter-pad: 6px;
   --geist-half-pad: 12px;
   --geist-pad: 24px;
-  --geist-font: "Inter";
+  --geist-font: "Inter", sans-serif;
 
   --geist-error: #e00;
 
@@ -32,31 +34,61 @@
   }
 }
 
-@theme {
-  --color-foreground: var(--foreground);
-  --color-background: var(--background);
-  --color-unfocused-border-color: var(--unfocused-border-color);
-  --color-focused-border-color: var(--focused-border-color);
-  --color-button-disabled-color: var(--button-disabled-color);
-  --color-disabled-text-color: var(--disabled-text-color);
-  --color-geist-error: var(--geist-error);
-  --color-subtitle: var(--subtitle);
-  --padding-geist-quarter: var(--geist-quarter-pad);
-  --padding-geist-half: var(--geist-half-pad);
-  --padding-geist: var(--geist-pad);
-  --spacing-geist: var(--geist-pad);
-  --spacing-geist-half: var(--geist-half-pad);
-  --spacing-geist-quarter: var(--geist-quarter-pad);
-  --radius-geist: var(--geist-border-radius);
-  --font-geist: var(--geist-font);
-  --animate-spinner: spinner 1.2s linear infinite;
+/* Scrollbar styles for webkit browsers */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
 
-  @keyframes spinner {
-    0% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0.15;
-    }
-  }
+.scrollbar-thumb-gray-600 {
+  scrollbar-color: #4b5563 transparent;
+}
+
+.scrollbar-track-gray-800 {
+  scrollbar-color: #4b5563 #1f2937;
+}
+
+/* Webkit scrollbar styles */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thumb-gray-600::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+  border-radius: 3px;
+}
+
+.scrollbar-track-gray-800::-webkit-scrollbar-track {
+  background-color: #1f2937;
+}
+
+/* Animation utilities */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes zoom-in {
+  from { transform: scale(0.95); }
+  to { transform: scale(1); }
+}
+
+.animate-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.fade-in-0 {
+  animation: fade-in 0.2s ease-out;
+}
+
+.zoom-in-95 {
+  animation: zoom-in 0.2s ease-out;
+}
+
+.duration-100 {
+  animation-duration: 0.1s;
+}
+
+.duration-200 {
+  animation-duration: 0.2s;
 }

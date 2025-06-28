@@ -34,6 +34,11 @@ export interface TimelineState {
   fps: number;
   selectedItems: string[];
   isPlaying: boolean;
+  history?: {
+    past: { tracks: Track[]; selectedItems: string[] }[];
+    present: { tracks: Track[]; selectedItems: string[] };
+    future: { tracks: Track[]; selectedItems: string[] }[];
+  };
 }
 
 export interface DragItem {
@@ -63,15 +68,19 @@ export interface TimelineContextType {
   actions: {
     addTrack: () => void;
     removeTrack: (trackId: string) => void;
+    reorderTracks: (fromIndex: number, toIndex: number) => void;
     addItem: (item: Omit<TimelineItem, 'id'>) => void;
     updateItem: (itemId: string, updates: Partial<TimelineItem>) => void;
     removeItem: (itemId: string) => void;
     moveItem: (itemId: string, trackId: string, startTime: number) => void;
     setPlayheadPosition: (position: number) => void;
     setZoom: (zoom: number) => void;
+    updateDuration: () => void;
     selectItems: (itemIds: string[]) => void;
     setPlaying: (playing: boolean) => void;
     splitItem: (itemId: string, position: number) => void;
     trimItem: (itemId: string, start: number, end: number) => void;
+    undo: () => void;
+    redo: () => void;
   };
 }

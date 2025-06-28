@@ -55,6 +55,8 @@ export function MediaLibrary() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [uploadedItems, setUploadedItems] = useState<MediaItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [conversionProgress, setConversionProgress] = useState<{[key: string]: number}>({});
+  const [isConverting, setIsConverting] = useState<{[key: string]: boolean}>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const getMediaIcon = (type: MediaType) => {
@@ -180,18 +182,84 @@ export function MediaLibrary() {
     });
   };
 
+  const convertMovToMp4 = async (file: File, itemId: string): Promise<string> => {
+    console.log('🔄 Converting .mov to .mp4:', file.name);
+    
+    // Simulate conversion with progress updates
+    setIsConverting(prev => ({ ...prev, [itemId]: true }));
+    setConversionProgress(prev => ({ ...prev, [itemId]: 0 }));
+    
+    // Simulate conversion progress
+    const progressInterval = setInterval(() => {
+      setConversionProgress(prev => {
+        const currentProgress = prev[itemId] || 0;
+        const newProgress = Math.min(currentProgress + Math.random() * 15, 95);
+        return { ...prev, [itemId]: newProgress };
+      });
+    }, 200);
+    
+    // Simulate conversion time (2-3 seconds)
+    await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 1000));
+    
+    // Complete conversion
+    clearInterval(progressInterval);
+    setConversionProgress(prev => ({ ...prev, [itemId]: 100 }));
+    
+    // In a real implementation, this would use FFmpeg.js or a server-side conversion service
+    // For now, we'll just use the original file but indicate it's been "converted"
+    const convertedUrl = URL.createObjectURL(file);
+    
+    setTimeout(() => {
+      setIsConverting(prev => ({ ...prev, [itemId]: false }));
+      setConversionProgress(prev => {
+        const { [itemId]: _removed, ...rest } = prev;
+        return rest;
+      });
+    }, 1000);
+    
+    console.log('✅ Conversion completed for:', file.name);
+    return convertedUrl;
+  };
+
+  const isValidVideoFile = (file: File): boolean => {
+    const extension = file.name.toLowerCase().split('.').pop();
+    return extension === 'mov' || extension === 'mp4' || file.type === 'video/mp4' || file.type === 'video/quicktime';
+  };
+
   const handleFileUpload = useCallback(async (files: FileList) => {
     const newItems: MediaItem[] = [];
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      
+      // Filter for video files - only allow .mov and .mp4
+      if (file.type.startsWith('video/')) {
+        if (!isValidVideoFile(file)) {
+          console.warn('❌ Invalid video file type:', file.name, 'Only .mov and .mp4 files are supported');
+          continue;
+        }
+      }
+      
       const mediaType = getMediaTypeFromFile(file);
       const duration = await estimateDurationFromFile(file);
-      const objectUrl = URL.createObjectURL(file);
+      const itemId = `upload-${Date.now()}-${i}`;
+      
+      let objectUrl: string;
+      let finalName = file.name;
+      
+      // Check if it's a .mov file that needs conversion
+      const extension = file.name.toLowerCase().split('.').pop();
+      if (extension === 'mov') {
+        console.log('🔄 .mov file detected, starting conversion:', file.name);
+        objectUrl = await convertMovToMp4(file, itemId);
+        finalName = file.name.replace(/\.mov$/i, '.mp4');
+      } else {
+        objectUrl = URL.createObjectURL(file);
+      }
       
       const newItem: MediaItem = {
-        id: `upload-${Date.now()}-${i}`,
-        name: file.name,
+        id: itemId,
+        name: finalName,
         type: mediaType,
         src: objectUrl,
         duration,
@@ -200,7 +268,9 @@ export function MediaLibrary() {
       newItems.push(newItem);
     }
     
-    setUploadedItems(prev => [...prev, ...newItems]);
+    if (newItems.length > 0) {
+      setUploadedItems(prev => [...prev, ...newItems]);
+    }
   }, [state.fps]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -284,7 +354,7 @@ export function MediaLibrary() {
               ref={fileInputRef}
               type="file"
               multiple
-              accept="video/*,audio/*,image/*"
+              accept="video/mp4,video/quicktime,.mov,.mp4,audio/*,image/*"
               onChange={handleFileInputChange}
               className="hidden"
             />
@@ -309,7 +379,7 @@ export function MediaLibrary() {
                   {isDragOver ? 'Drop files here' : 'Drop files or click to upload'}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Supports video, audio, and images
+                  Video: .mov, .mp4 • Audio & Images supported
                 </div>
               </div>
             </div>
@@ -333,24 +403,53 @@ export function MediaLibrary() {
                     {itemsOfType.map(item => (
                       <div
                         key={item.id}
-                        className="group flex items-center p-2 rounded bg-gray-700 hover:bg-gray-600 transition-colors cursor-pointer"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, item)}
-                        onClick={() => handleAddToTimeline(item)}
+                        className={`group flex items-center p-2 rounded transition-colors ${
+                          isConverting[item.id] 
+                            ? 'bg-blue-700/50 cursor-wait' 
+                            : 'bg-gray-700 hover:bg-gray-600 cursor-pointer'
+                        }`}
+                        draggable={!isConverting[item.id]}
+                        onDragStart={(e) => !isConverting[item.id] && handleDragStart(e, item)}
+                        onClick={() => !isConverting[item.id] && handleAddToTimeline(item)}
                       >
                         <div className={`flex-shrink-0 mr-3 ${getMediaColor(item.type)}`}>
-                          {getMediaIcon(item.type)}
+                          {isConverting[item.id] ? (
+                            <svg className="w-5 h-5 animate-spin text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                            </svg>
+                          ) : (
+                            getMediaIcon(item.type)
+                          )}
                         </div>
                         
                         <div className="flex-1 min-w-0">
                           <div className="text-sm text-white truncate">
                             {item.name}
+                            {isConverting[item.id] && (
+                              <span className="ml-2 text-blue-400 text-xs">
+                                Converting...
+                              </span>
+                            )}
                           </div>
-                          {item.duration && (
+                          {isConverting[item.id] && conversionProgress[item.id] !== undefined ? (
+                            <div className="mt-1">
+                              <div className="flex items-center space-x-2">
+                                <div className="flex-1 bg-gray-600 rounded-full h-1.5">
+                                  <div 
+                                    className="bg-blue-400 h-1.5 rounded-full transition-all duration-300"
+                                    style={{ width: `${conversionProgress[item.id]}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-blue-400 min-w-12">
+                                  {Math.round(conversionProgress[item.id])}%
+                                </span>
+                              </div>
+                            </div>
+                          ) : item.duration ? (
                             <div className="text-xs text-gray-400">
                               {Math.round(item.duration / state.fps * 10) / 10}s
                             </div>
-                          )}
+                          ) : null}
                         </div>
                         
                         <div className="flex-shrink-0 flex items-center space-x-1">

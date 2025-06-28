@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Track as TrackType } from '../../../types/timeline';
 import { useTimeline } from './TimelineContext';
 import { TimelineItemComponent } from './TimelineItemComponent';
@@ -14,13 +14,17 @@ export function Track({ track, index }: TrackProps) {
   const { state, config, actions } = useTimeline();
   const { zoom, totalDuration } = state;
   const { trackHeight } = config;
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOver, setDragOver] = useState<'above' | 'below' | null>(null);
   
   const pixelsPerFrame = zoom;
   const totalWidth = totalDuration * pixelsPerFrame;
 
   const handleTrackClick = (e: React.MouseEvent) => {
     // Deselect items when clicking empty track area
+    // Don't interfere with ruler clicks for playhead movement
     if (e.target === e.currentTarget) {
+      console.log('🎵 Track clicked - deselecting items');
       actions.selectItems([]);
     }
   };
@@ -68,12 +72,83 @@ export function Track({ track, index }: TrackProps) {
     e.stopPropagation();
   };
 
+  // Track header drag handlers
+  const handleTrackHeaderDragStart = (e: React.DragEvent) => {
+    setIsDragging(true);
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      type: 'track-reorder',
+      trackId: track.id,
+      fromIndex: index,
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleTrackHeaderDragEnd = () => {
+    setIsDragging(false);
+    setDragOver(null);
+  };
+
+  const handleTrackHeaderDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const data = e.dataTransfer.getData('text/plain');
+    if (data) {
+      try {
+        const dragData = JSON.parse(data);
+        if (dragData.type === 'track-reorder') {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const y = e.clientY - rect.top;
+          const midpoint = rect.height / 2;
+          
+          setDragOver(y < midpoint ? 'above' : 'below');
+        }
+      } catch (error) {
+        // Not a track drag
+      }
+    }
+  };
+
+  const handleTrackHeaderDragLeave = () => {
+    setDragOver(null);
+  };
+
+  const handleTrackHeaderDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const data = e.dataTransfer.getData('text/plain');
+    if (data) {
+      try {
+        const dragData = JSON.parse(data);
+        if (dragData.type === 'track-reorder') {
+          const fromIndex = dragData.fromIndex;
+          let toIndex = index;
+          
+          if (dragOver === 'below') {
+            toIndex = index + 1;
+          }
+          
+          // Don't reorder if dropping in the same position
+          if (fromIndex !== toIndex && !(fromIndex === toIndex - 1 && dragOver === 'below')) {
+            actions.reorderTracks(fromIndex, toIndex);
+          }
+        }
+      } catch (error) {
+        // Not a track drag
+      }
+    }
+    
+    setDragOver(null);
+  };
+
   return (
     <div
       className={`
         relative border-b border-gray-600 transition-all duration-200
         ${index % 2 === 0 ? 'bg-gray-900' : 'bg-gray-800'}
         hover:bg-gray-700
+        ${isDragging ? 'opacity-50' : ''}
       `}
       style={{ 
         height: trackHeight,
@@ -86,8 +161,33 @@ export function Track({ track, index }: TrackProps) {
       onDrop={handleTrackDrop}
       onDragOver={handleTrackDragOver}
     >
-      {/* Track header (could be moved to separate component) */}
-      <div className="absolute left-0 top-0 bottom-0 w-32 bg-gray-700 border-r border-gray-600 flex items-center px-3 z-10">
+      {/* Drag indicators */}
+      {dragOver === 'above' && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-30" />
+      )}
+      {dragOver === 'below' && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 z-30" />
+      )}
+
+      {/* Track header */}
+      <div 
+        className="absolute left-0 top-0 bottom-0 w-32 bg-gray-700 border-r border-gray-600 flex items-center px-3 z-10 cursor-move"
+        draggable
+        onDragStart={handleTrackHeaderDragStart}
+        onDragEnd={handleTrackHeaderDragEnd}
+        onDragOver={handleTrackHeaderDragOver}
+        onDragLeave={handleTrackHeaderDragLeave}
+        onDrop={handleTrackHeaderDrop}
+      >
+        {/* Drag handle */}
+        <div className="flex items-center space-x-2 mr-2">
+          <div className="flex flex-col space-y-0.5 text-gray-400">
+            <div className="w-1 h-1 bg-current rounded-full" />
+            <div className="w-1 h-1 bg-current rounded-full" />
+            <div className="w-1 h-1 bg-current rounded-full" />
+          </div>
+        </div>
+
         <div className="flex-1">
           <div className="text-sm text-white font-medium truncate">
             {track.name}
@@ -101,7 +201,10 @@ export function Track({ track, index }: TrackProps) {
         <div className="flex items-center space-x-1">
           <button
             className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-600 text-gray-400 hover:text-white"
-            onClick={() => actions.removeTrack(track.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.removeTrack(track.id);
+            }}
             title="Delete track"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

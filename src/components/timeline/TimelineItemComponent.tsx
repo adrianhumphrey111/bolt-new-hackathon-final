@@ -17,6 +17,7 @@ export function TimelineItemComponent({ item, trackHeight }: TimelineItemProps) 
   
   const itemRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState<'left' | 'right' | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; isOpen: boolean }>({
     x: 0,
     y: 0,
@@ -228,6 +229,52 @@ export function TimelineItemComponent({ item, trackHeight }: TimelineItemProps) 
     setContextMenu(prev => ({ ...prev, isOpen: false }));
   }, []);
 
+  // Handle resize functionality
+  const handleResizeStart = useCallback((e: React.MouseEvent, side: 'left' | 'right') => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (e.button !== 0) return; // Only left mouse button
+    
+    setIsResizing(side);
+    const startX = e.clientX;
+    const originalStartTime = item.startTime;
+    const originalDuration = item.duration;
+    
+    const handleResizeMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const frameDelta = Math.round(deltaX / pixelsPerFrame);
+      
+      if (side === 'left') {
+        // Resize from the left (trim start)
+        const newStartTime = Math.max(0, originalStartTime + frameDelta);
+        const maxTrim = originalDuration - 30; // Minimum 1 second (30 frames)
+        const actualStartTime = Math.min(newStartTime, originalStartTime + maxTrim);
+        const newDuration = originalDuration - (actualStartTime - originalStartTime);
+        
+        actions.updateItem(item.id, {
+          startTime: actualStartTime,
+          duration: Math.max(30, newDuration), // Minimum duration
+        });
+      } else {
+        // Resize from the right (trim end)
+        const newDuration = Math.max(30, originalDuration + frameDelta); // Minimum 1 second
+        actions.updateItem(item.id, { duration: newDuration });
+      }
+    };
+    
+    const handleResizeEnd = () => {
+      setIsResizing(null);
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+      document.body.style.userSelect = '';
+    };
+    
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+  }, [item, pixelsPerFrame, actions]);
+
   const contextMenuItems = [
     {
       label: 'Delete',
@@ -330,8 +377,20 @@ export function TimelineItemComponent({ item, trackHeight }: TimelineItemProps) 
       {/* Resize handles */}
       {isSelected && (
         <>
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-white cursor-w-resize" />
-          <div className="absolute right-0 top-0 bottom-0 w-1 bg-white cursor-e-resize" />
+          <div 
+            className={`absolute left-0 top-0 bottom-0 w-2 cursor-w-resize transition-colors ${
+              isResizing === 'left' ? 'bg-blue-400' : 'bg-white hover:bg-blue-300'
+            }`}
+            onMouseDown={(e) => handleResizeStart(e, 'left')}
+            title="Trim start"
+          />
+          <div 
+            className={`absolute right-0 top-0 bottom-0 w-2 cursor-e-resize transition-colors ${
+              isResizing === 'right' ? 'bg-blue-400' : 'bg-white hover:bg-blue-300'
+            }`}
+            onMouseDown={(e) => handleResizeStart(e, 'right')}
+            title="Trim end"
+          />
         </>
       )}
       

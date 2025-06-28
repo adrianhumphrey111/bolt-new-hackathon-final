@@ -8,6 +8,9 @@ import { MediaLibrary } from './timeline/MediaLibrary';
 import { PropertyPanel } from './timeline/PropertyPanel';
 import { CanvasSizeSelector, aspectRatios, type AspectRatio } from './CanvasSizeSelector';
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext';
+import { TimeDisplay } from './timeline/TimeDisplay';
+import { SeekBar } from './timeline/SeekBar';
+import { TimelineItem } from '../../types/timeline';
 import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
@@ -35,33 +38,143 @@ function VideoEditorContent() {
   const [showPropertyPanel, setShowPropertyPanel] = useState(true);
   const [currentAspectRatio, setCurrentAspectRatio] = useState<AspectRatio>(aspectRatios[1]); // Default to 16:9
   const [playerDimensions, setPlayerDimensions] = useState({ width: 800, height: 450 });
+  const [selectedItemId, setSelectedItemId] = useState<string | undefined>();
+  const [editingTextId, setEditingTextId] = useState<string | undefined>();
   const playerRef = useRef<PlayerRef>(null);
 
   // Get all timeline items from all tracks
   const allTimelineItems = state.tracks.flatMap(track => track.items);
 
+  // Interactive handlers
+  const handleItemSelect = useCallback((itemId: string) => {
+    setSelectedItemId(itemId);
+    setEditingTextId(undefined); // Stop editing when selecting
+  }, []);
+
+  const handleItemUpdate = useCallback((itemId: string, updates: Partial<TimelineItem>) => {
+    actions.updateItem(itemId, updates);
+  }, [actions]);
+
+  const handleTextEdit = useCallback((itemId: string) => {
+    setEditingTextId(editingTextId === itemId ? undefined : itemId);
+  }, [editingTextId]);
+
+  const handleCanvasClick = useCallback(() => {
+    setSelectedItemId(undefined);
+    setEditingTextId(undefined);
+  }, []);
+
+  // Keyboard shortcuts for canvas interactions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return; // Don't handle shortcuts in input fields
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedItemId) {
+          e.preventDefault();
+          actions.removeItem(selectedItemId);
+          setSelectedItemId(undefined);
+          setEditingTextId(undefined);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedItemId(undefined);
+        setEditingTextId(undefined);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItemId, actions]);
+
   // Convert timeline state to Remotion player props
   const inputProps = {
     items: allTimelineItems,
     fps: state.fps,
+    selectedItemId,
+    editingTextId,
+    onItemSelect: handleItemSelect,
+    onItemUpdate: handleItemUpdate,
+    onTextEdit: handleTextEdit,
+    onCanvasClick: handleCanvasClick,
   };
 
-  // Sync player with timeline playhead
+  // Track if we're manually seeking to avoid sync conflicts
+  const isManualSeek = useRef(false);
+
+  // Sync player with timeline playhead (when user moves playhead manually)
   useEffect(() => {
-    if (playerRef.current) {
+    if (playerRef.current && !isManualSeek.current) {
       const currentFrame = playerRef.current.getCurrentFrame();
-      if (currentFrame !== state.playheadPosition) {
+      if (Math.abs(currentFrame - state.playheadPosition) > 1) {
+        console.log('🎬 Seeking player to frame:', state.playheadPosition, 'from', currentFrame);
+        isManualSeek.current = true;
         playerRef.current.seekTo(state.playheadPosition);
+        // Reset flag after a brief delay
+        setTimeout(() => {
+          isManualSeek.current = false;
+        }, 100);
       }
     }
   }, [state.playheadPosition]);
 
-  // Sync timeline with player frame changes
+  // Sync timeline with player frame changes during playback
   const handlePlayerFrame = useCallback((frame: number) => {
-    if (frame !== state.playheadPosition) {
-      actions.setPlayheadPosition(frame);
-    }
-  }, [state.playheadPosition, actions]);
+    console.log('🎬 Player frame update via onFrameUpdate:', frame);
+    // Always update timeline position from player
+    actions.setPlayheadPosition(frame);
+  }, [actions]);
+
+  // Direct player frame sync using event listeners with throttling
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    let lastUpdateTime = 0;
+    const throttleMs = 16; // ~60fps max updates
+
+    const onFrameUpdate = () => {
+      const now = Date.now();
+      if (now - lastUpdateTime < throttleMs) return;
+      
+      const currentFrame = player.getCurrentFrame();
+      console.log('🎬 Player frame update via listener:', currentFrame);
+      actions.setPlayheadPosition(currentFrame);
+      lastUpdateTime = now;
+    };
+
+    player.addEventListener('frameupdate', onFrameUpdate);
+
+    return () => {
+      player.removeEventListener('frameupdate', onFrameUpdate);
+    };
+  }, [actions]);
+
+  // Handle player play/pause events
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    const handlePlay = () => {
+      console.log('▶️ Player started playing');
+      actions.setPlaying(true);
+    };
+
+    const handlePause = () => {
+      console.log('⏸️ Player paused');
+      actions.setPlaying(false);
+    };
+
+    player.addEventListener('play', handlePlay);
+    player.addEventListener('pause', handlePause);
+
+    return () => {
+      player.removeEventListener('play', handlePlay);
+      player.removeEventListener('pause', handlePause);
+    };
+  }, [actions]);
 
   // Handle play/pause from custom controls
   const handlePlayPause = useCallback(() => {
@@ -230,41 +343,11 @@ function VideoEditorContent() {
                   controls={false}
                   autoPlay={false}
                   loop={false}
+                  overflowVisible={true}
                   onFrameUpdate={handlePlayerFrame}
                 />
               </div>
 
-              {/* Custom Player Controls Overlay */}
-              <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-75 rounded p-3 flex items-center space-x-4">
-                <button
-                  onClick={handlePlayPause}
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-black hover:bg-gray-200 transition-colors"
-                >
-                  {state.isPlaying ? (
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </button>
-
-                <div className="flex-1 text-white text-sm font-mono">
-                  {Math.floor(state.playheadPosition / state.fps / 60)}:
-                  {Math.floor((state.playheadPosition / state.fps) % 60).toString().padStart(2, '0')}:
-                  {Math.floor(state.playheadPosition % state.fps).toString().padStart(2, '0')}
-                  {' / '}
-                  {Math.floor(state.totalDuration / state.fps / 60)}:
-                  {Math.floor((state.totalDuration / state.fps) % 60).toString().padStart(2, '0')}:
-                  {Math.floor(state.totalDuration % state.fps).toString().padStart(2, '0')}
-                </div>
-
-                <div className="text-white text-sm">
-                  {Math.round(state.zoom * 100)}%
-                </div>
-              </div>
             </div>
           </div>
 
@@ -287,6 +370,8 @@ function VideoEditorContent() {
             <span className="hidden sm:inline">{state.fps} FPS</span>
             <span className="hidden md:inline">•</span>
             <span className="hidden md:inline">{VIDEO_WIDTH}x{VIDEO_HEIGHT}</span>
+            <span className="hidden lg:inline">•</span>
+            <span className="hidden lg:inline">Timeline: {Math.round(state.totalDuration / state.fps)}s</span>
           </div>
           
           <div className="flex items-center space-x-2 min-w-0">

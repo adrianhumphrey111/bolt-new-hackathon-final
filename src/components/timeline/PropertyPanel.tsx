@@ -6,7 +6,7 @@ import { MediaType } from '../../../types/timeline';
 
 export function PropertyPanel() {
   const { state, actions } = useTimeline();
-  const { selectedItems, tracks, fps } = state;
+  const { selectedItems, tracks, fps, playheadPosition } = state;
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Get the selected item
@@ -56,9 +56,77 @@ export function PropertyPanel() {
     actions.splitItem(selectedItem.id, splitPoint);
   };
 
+  const handleSplitAtPlayhead = () => {
+    if (selectedItems.length === 0) {
+      console.log('✂️ No items selected to split');
+      return;
+    }
+    
+    // Find selected items that intersect with the playhead
+    const allItems = tracks.flatMap(track => track.items);
+    const selectedItemsToSplit = allItems.filter(item => 
+      selectedItems.includes(item.id) &&
+      playheadPosition > item.startTime && 
+      playheadPosition < item.startTime + item.duration
+    );
+    
+    if (selectedItemsToSplit.length === 0) {
+      console.log('✂️ No selected items intersect with current playhead position');
+      return;
+    }
+    
+    console.log(`✂️ Splitting ${selectedItemsToSplit.length} selected item(s) at playhead`);
+    
+    // Split each selected item
+    selectedItemsToSplit.forEach(item => {
+      actions.splitItem(item.id, playheadPosition);
+    });
+  };
+
   const handleDelete = () => {
-    if (!selectedItem) return;
-    actions.removeItem(selectedItem.id);
+    if (selectedItems.length === 0) return;
+    
+    console.log(`🗑️ Deleting ${selectedItems.length} selected item(s)`);
+    
+    // Delete all selected items
+    selectedItems.forEach(itemId => {
+      actions.removeItem(itemId);
+    });
+    
+    // Clear selection after deletion
+    actions.selectItems([]);
+  };
+
+  const handleDuplicate = () => {
+    if (selectedItems.length === 0) {
+      console.log('📋 No items selected to duplicate');
+      return;
+    }
+    
+    console.log(`📋 Duplicating ${selectedItems.length} selected item(s)`);
+    
+    // Find all selected items
+    const allItems = tracks.flatMap(track => track.items);
+    const itemsToDuplicate = allItems.filter(item => selectedItems.includes(item.id));
+    
+    // Calculate offset for duplicates (place them after the original items)
+    const maxEndTime = Math.max(...itemsToDuplicate.map(item => item.startTime + item.duration));
+    const duplicateOffset = 30; // 1 second gap at 30fps
+    
+    // Create duplicates
+    itemsToDuplicate.forEach(item => {
+      const duplicateItem = {
+        ...item,
+        name: `${item.name} Copy`,
+        startTime: maxEndTime + duplicateOffset,
+      };
+      
+      // Remove id from the object before adding
+      const { id: _, ...itemWithoutId } = duplicateItem;
+      actions.addItem(itemWithoutId);
+    });
+    
+    console.log(`📋 Successfully duplicated ${itemsToDuplicate.length} items`);
   };
 
   const formatTime = (frames: number) => {
@@ -80,6 +148,32 @@ export function PropertyPanel() {
     
     return (minutes * 60 + seconds) * fps + frames;
   };
+
+  // Keyboard shortcuts for PropertyPanel actions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return; // Don't handle shortcuts in input fields
+      }
+
+      switch (e.code) {
+        case 'Delete':
+        case 'Backspace':
+          e.preventDefault();
+          handleDelete();
+          break;
+        case 'KeyD':
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            handleDuplicate();
+          }
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleDelete, handleDuplicate]);
 
   return (
     <div className={`bg-gray-800 border-l border-gray-600 transition-all duration-300 ${isCollapsed ? 'w-12' : 'w-80'}`}>
@@ -117,14 +211,42 @@ export function PropertyPanel() {
 
           {selectedItems.length > 1 && (
             <div className="text-center text-gray-500 py-8">
-              <p className="mb-4">Multiple items selected</p>
+              <p className="mb-4">Multiple items selected ({selectedItems.length})</p>
               <div className="space-y-2">
                 <button
-                  onClick={() => selectedItems.forEach(id => actions.removeItem(id))}
-                  className="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                  onClick={handleDuplicate}
+                  className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors flex items-center justify-center space-x-2"
+                  title="Duplicate selected items (Ctrl/Cmd + D)"
                 >
-                  Delete Selected ({selectedItems.length})
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V4a2 2 0 00-2-2H9z" />
+                    <path d="M3 8a2 2 0 012-2v10c0 .55.45 1 1 1h8a2 2 0 01-2 2H5a3 3 0 01-3-3V8z" />
+                  </svg>
+                  <span>Duplicate Selected</span>
                 </button>
+                
+                <button
+                  onClick={handleSplitAtPlayhead}
+                  className="w-full px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded transition-colors flex items-center justify-center space-x-2"
+                  title="Split selected items at playhead"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span>Split at Playhead</span>
+                </button>
+                
+                <button
+                  onClick={handleDelete}
+                  className="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors flex items-center justify-center space-x-2"
+                  title="Delete selected items (Delete key)"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span>Delete Selected</span>
+                </button>
+                
                 <button
                   onClick={() => actions.selectItems([])}
                   className="w-full px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
@@ -235,18 +357,53 @@ export function PropertyPanel() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={handleSplit}
-                    className="px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded transition-colors text-sm"
+                    onClick={handleDuplicate}
+                    className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors text-sm flex items-center justify-center space-x-1"
+                    title="Duplicate item (Ctrl/Cmd + D)"
                   >
-                    Split
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V4a2 2 0 00-2-2H9z" />
+                      <path d="M3 8a2 2 0 012-2v10c0 .55.45 1 1 1h8a2 2 0 01-2 2H5a3 3 0 01-3-3V8z" />
+                    </svg>
+                    <span>Duplicate</span>
                   </button>
                   
                   <button
                     type="button"
                     onClick={handleDelete}
-                    className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors text-sm"
+                    className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors text-sm flex items-center justify-center space-x-1"
+                    title="Delete item (Delete key)"
                   >
-                    Delete
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span>Delete</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSplit}
+                    className="px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded transition-colors text-sm flex items-center justify-center space-x-1"
+                    title="Split item at center"
+                  >
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span>Split</span>
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={handleSplitAtPlayhead}
+                    className="px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded transition-colors text-sm flex items-center justify-center space-x-1"
+                    title="Split item at playhead"
+                  >
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span>@ Playhead</span>
                   </button>
                 </div>
               </div>

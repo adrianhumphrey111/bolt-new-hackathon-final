@@ -6,6 +6,7 @@ import { TimelineComposition } from "../remotion/TimelineComposition";
 import { Timeline } from './timeline/Timeline';
 import { MediaLibrary, ProjectProvider } from './timeline/MediaLibrary';
 import { PropertyPanel } from './timeline/PropertyPanel';
+import { SaveStatusIndicator } from './timeline/SaveStatusIndicator';
 import { CanvasSizeSelector, aspectRatios, type AspectRatio } from './CanvasSizeSelector';
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext';
 import { TimeDisplay } from './timeline/TimeDisplay';
@@ -270,11 +271,16 @@ function VideoEditorContent() {
       <div className="h-screen w-screen flex flex-col bg-gray-900 overflow-hidden">
         {/* Top Bar */}
         <header className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-600 flex-shrink-0">
-        <div className="flex items-center space-x-2 min-w-0">
-          <h1 className="text-lg font-bold text-white truncate">Remotion Video Editor</h1>
-          <div className="text-sm text-gray-400 hidden sm:block">
-            {state.tracks.length} track{state.tracks.length !== 1 ? 's' : ''} • {Math.round(state.totalDuration / state.fps)}s
+        <div className="flex items-center space-x-4 min-w-0">
+          <div className="flex items-center space-x-2">
+            <h1 className="text-lg font-bold text-white truncate">Remotion Video Editor</h1>
+            <div className="text-sm text-gray-400 hidden sm:block">
+              {state.tracks.length} track{state.tracks.length !== 1 ? 's' : ''} • {Math.round(state.totalDuration / state.fps)}s
+            </div>
           </div>
+          
+          {/* Save Status Indicator */}
+          <SaveStatusIndicator />
         </div>
         
         <div className="flex items-center space-x-2 flex-shrink-0">
@@ -397,7 +403,7 @@ interface VideoEditorProps {
 export function VideoEditor({ projectId = null }: VideoEditorProps) {
   return (
     <ProjectProvider projectId={projectId}>
-      <TimelineProvider>
+      <TimelineProvider projectId={projectId}>
         <VideoEditorContent />
       </TimelineProvider>
     </ProjectProvider>

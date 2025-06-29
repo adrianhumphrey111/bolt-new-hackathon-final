@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type { PlayerRef } from '@remotion/player';
 
 export const formatTime = (frame: number, fps: number): string => {
@@ -23,17 +23,21 @@ export const TimeDisplay: React.FC<{
 }> = ({ durationInFrames, fps, playerRef }) => {
   const [currentFrame, setCurrentFrame] = useState(0);
 
+  // Memoize the frame update callback to prevent unnecessary re-renders
+  const onFrameUpdate = useCallback(() => {
+    const player = playerRef.current;
+    if (player) {
+      const newFrame = player.getCurrentFrame();
+      setCurrentFrame(newFrame);
+    }
+  }, []);
+
   useEffect(() => {
     const player = playerRef.current;
     if (!player) {
       console.log('⚠️ TimeDisplay: No player ref available');
       return;
     }
-
-    const onFrameUpdate = () => {
-      const newFrame = player.getCurrentFrame();
-      setCurrentFrame(newFrame);
-    };
 
     // Set initial frame
     const initialFrame = player.getCurrentFrame();
@@ -44,7 +48,7 @@ export const TimeDisplay: React.FC<{
     return () => {
       player.removeEventListener('frameupdate', onFrameUpdate);
     };
-  }, [playerRef]);
+  }, []); // Empty dependency array - only run once when component mounts
 
   return (
     <div className="text-white text-sm font-mono">

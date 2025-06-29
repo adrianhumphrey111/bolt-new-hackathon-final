@@ -7,6 +7,7 @@ import { uploadToS3, deleteFromS3 } from '../../../lib/s3Upload';
 import { convertMedia } from '@remotion/webcodecs';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { v4 as uuidv4 } from 'uuid';
+import { useVideoProcessing } from '../../hooks/useVideoProcessing';
 
 interface MediaItem {
   id: string;
@@ -19,6 +20,7 @@ interface MediaItem {
   file_name?: string; // The filename in storage
   original_name?: string;
   isAnalyzing?: boolean; // New property for AI analysis status
+  processingInfo?: any; // Processing information from useVideoProcessing hook
 }
 
 // Create context for project information
@@ -137,6 +139,17 @@ export function MediaLibrary() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClientComponentClient();
+  
+  // Use video processing hook for real-time status tracking
+  const {
+    isProcessing,
+    processingVideos,
+    currentProcessingVideo,
+    error: processingError,
+    formatElapsedTime,
+    isVideoProcessing,
+    getVideoProcessingInfo
+  } = useVideoProcessing(projectId);
 
   // Fetch project videos from Supabase
   const fetchProjectVideos = useCallback(async () => {
@@ -167,8 +180,9 @@ export function MediaLibrary() {
           }
         }
         
-        // Determine if video is still analyzing based on video_analysis existence
-        const isAnalyzing = !video.video_analysis || video.video_analysis.length === 0;
+        // Determine if video is still analyzing using the processing hook
+        const isAnalyzing = isVideoProcessing(video.id);
+        const processingInfo = getVideoProcessingInfo(video.id);
 
         return {
           id: video.id,
@@ -181,6 +195,7 @@ export function MediaLibrary() {
           file_name: video.file_name,
           original_name: video.original_name,
           isAnalyzing: isAnalyzing,
+          processingInfo: processingInfo,
         };
       });
 
@@ -516,7 +531,8 @@ export function MediaLibrary() {
         const videoId = await saveVideoToProject(fileToUpload, duration);
         if (videoId) {
           console.log('✅ Video uploaded and saved to project');
-          // No need to add to newItems, as it's handled by setProjectVideos in saveVideoToProject
+          // Refresh project videos to show the new upload with processing status
+          await fetchProjectVideos();
         }
       }
       
@@ -698,6 +714,41 @@ export function MediaLibrary() {
 
           {/* Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto px-3 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+            {/* Processing Status Banner */}
+            {isProcessing && (
+              <div className="mb-4 p-3 bg-purple-900/30 border border-purple-600/50 rounded">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 animate-spin text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-purple-300 text-sm font-medium">
+                    {processingVideos.length === 1 ? 
+                      `1 video processing` : 
+                      `${processingVideos.length} videos processing`
+                    }
+                  </span>
+                </div>
+                {currentProcessingVideo && (
+                  <div className="mt-2 text-xs text-purple-400">
+                    Latest: {currentProcessingVideo.video.original_name} • {formatElapsedTime(currentProcessingVideo.elapsedSeconds)}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Processing Error */}
+            {processingError && (
+              <div className="mb-4 p-3 bg-red-900/30 border border-red-600/50 rounded">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-red-300 text-sm">Processing Error</span>
+                </div>
+                <div className="mt-1 text-xs text-red-400">{processingError}</div>
+              </div>
+            )}
+            
             {/* Loading State */}
             {loading && (
               <div className="flex items-center justify-center py-8">
@@ -765,7 +816,10 @@ export function MediaLibrary() {
                             )}
                             {item.isAnalyzing && (
                               <span className="ml-2 text-yellow-400 text-xs">
-                                Analyzing by AI...
+                                {item.processingInfo ? 
+                                  `Analyzing... ${formatElapsedTime(item.processingInfo.elapsedSeconds)}` :
+                                  'Analyzing by AI...'
+                                }
                               </span>
                             )}
                           </div>

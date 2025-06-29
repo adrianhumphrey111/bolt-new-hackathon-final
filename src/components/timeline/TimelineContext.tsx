@@ -1,8 +1,18 @@
 "use client";
 
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState, useCallback, useRef } from 'react';
 import { TimelineState, TimelineContextType, TimelineConfig, Track, TimelineItem, MediaType } from '../../../types/timeline';
 import { v4 as uuidv4 } from 'uuid';
+import { 
+  timelinePersistence, 
+  timelineStateToSaveRequest, 
+  savedTimelineToState, 
+  debounce, 
+  getTimelineStateHash,
+  PersistenceState,
+  initialPersistenceState,
+  SaveStatus
+} from '../../lib/timelinePersistence';
 
 const defaultConfig: TimelineConfig = {
   pixelsPerFrame: 2,
@@ -58,7 +68,8 @@ type TimelineAction =
   | { type: 'SPLIT_ITEM'; itemId: string; position: number }
   | { type: 'TRIM_ITEM'; itemId: string; start: number; end: number }
   | { type: 'UNDO' }
-  | { type: 'REDO' };
+  | { type: 'REDO' }
+  | { type: 'LOAD_TIMELINE'; timeline: Partial<TimelineState> };
 
 // Helper function to calculate optimal timeline duration
 function calculateOptimalDuration(tracks: Track[], zoom: number, fps: number): number {
@@ -404,6 +415,38 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
       };
     }
 
+    case 'LOAD_TIMELINE': {
+      // Ensure we have valid data structure
+      const tracks = (action.timeline.tracks || []).map(track => ({
+        ...track,
+        items: Array.isArray(track.items) ? track.items : [],
+        height: typeof track.height === 'number' ? track.height : 60,
+        id: track.id || uuidv4(),
+        name: track.name || `Track ${(action.timeline.tracks || []).indexOf(track) + 1}`,
+      }));
+
+      const newHistory = createHistoryState(tracks, action.timeline.selectedItems || []);
+      
+      return {
+        ...state,
+        ...action.timeline,
+        // Ensure essential fields have defaults and are valid
+        tracks,
+        selectedItems: action.timeline.selectedItems || [],
+        playheadPosition: typeof action.timeline.playheadPosition === 'number' ? action.timeline.playheadPosition : 0,
+        totalDuration: typeof action.timeline.totalDuration === 'number' ? action.timeline.totalDuration : 900,
+        zoom: typeof action.timeline.zoom === 'number' ? action.timeline.zoom : 2,
+        fps: typeof action.timeline.fps === 'number' ? action.timeline.fps : 30,
+        isPlaying: false, // Always reset playing state when loading
+        // Reset history when loading a timeline
+        history: {
+          past: [],
+          present: newHistory,
+          future: [],
+        },
+      };
+    }
+
     default:
       return state;
   }
@@ -455,10 +498,201 @@ function findItemById(tracks: Track[], itemId: string): TimelineItem | null {
   return null;
 }
 
-const TimelineContext = createContext<TimelineContextType | null>(null);
+// Enhanced context type with persistence
+interface EnhancedTimelineContextType extends TimelineContextType {
+  persistence: PersistenceState;
+  persistenceActions: {
+    saveTimeline: (status?: 'draft' | 'manually_saved') => Promise<void>;
+    loadTimeline: (projectId: string) => Promise<void>;
+    enableAutoSave: (enabled: boolean) => void;
+    markUnsaved: () => void;
+  };
+}
 
-export function TimelineProvider({ children }: { children: ReactNode }) {
+const TimelineContext = createContext<EnhancedTimelineContextType | null>(null);
+
+interface TimelineProviderProps {
+  children: ReactNode;
+  projectId?: string | null;
+}
+
+export function TimelineProvider({ children, projectId }: TimelineProviderProps) {
   const [state, dispatch] = useReducer(timelineReducer, initialState);
+  const [persistence, setPersistence] = useState<PersistenceState>(initialPersistenceState);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  
+  // Track last saved state hash to detect changes
+  const lastSavedHash = useRef<string>('');
+  const isInitialized = useRef(false);
+
+  // Save timeline function
+  const saveTimeline = useCallback(async (status: 'draft' | 'manually_saved' = 'auto_saved') => {
+    if (!projectId) {
+      console.warn('Cannot save timeline: no project ID provided');
+      return;
+    }
+
+    setPersistence(prev => ({ ...prev, isSaving: true, error: null }));
+
+    try {
+      const saveRequest = timelineStateToSaveRequest(state, status);
+      const savedTimeline = await timelinePersistence.saveTimeline(projectId, saveRequest);
+      
+      const currentHash = getTimelineStateHash(state);
+      lastSavedHash.current = currentHash;
+      
+      setPersistence(prev => ({
+        ...prev,
+        isSaving: false,
+        lastSaved: new Date(),
+        hasUnsavedChanges: false,
+        saveStatus: 'saved',
+        version: savedTimeline.version,
+      }));
+      
+      console.log('Timeline saved successfully');
+    } catch (error) {
+      console.error('Failed to save timeline:', error);
+      setPersistence(prev => ({
+        ...prev,
+        isSaving: false,
+        saveStatus: 'error',
+        error: error instanceof Error ? error.message : 'Failed to save timeline',
+      }));
+    }
+  }, [projectId, state]);
+
+  // Load timeline function
+  const loadTimeline = useCallback(async (targetProjectId: string) => {
+    setPersistence(prev => ({ 
+      ...prev, 
+      isLoading: true, 
+      isSaving: false, 
+      error: null, 
+      saveStatus: 'loading' 
+    }));
+
+    try {
+      const savedTimeline = await timelinePersistence.loadTimeline(targetProjectId);
+      
+      if (savedTimeline) {
+        const timelineState = savedTimelineToState(savedTimeline);
+        dispatch({ type: 'LOAD_TIMELINE', timeline: timelineState });
+        
+        const currentHash = getTimelineStateHash({ ...state, ...timelineState } as TimelineState);
+        lastSavedHash.current = currentHash;
+        
+        setPersistence(prev => ({
+          ...prev,
+          isLoading: false,
+          isSaving: false,
+          lastSaved: new Date(savedTimeline.lastSavedAt),
+          hasUnsavedChanges: false,
+          saveStatus: 'saved',
+          version: savedTimeline.version,
+        }));
+        
+        console.log('Timeline loaded successfully');
+      } else {
+        // No saved timeline found, initialize with default empty state
+        console.log('No saved timeline found, initializing with default state');
+        
+        // Reset to clean initial state
+        dispatch({ type: 'LOAD_TIMELINE', timeline: {
+          tracks: [],
+          selectedItems: [],
+          playheadPosition: 0,
+          totalDuration: 900, // 30 seconds at 30fps
+          zoom: 2,
+          fps: 30,
+          isPlaying: false,
+        }});
+        
+        lastSavedHash.current = getTimelineStateHash({
+          tracks: [],
+          selectedItems: [],
+          playheadPosition: 0,
+          totalDuration: 900,
+          zoom: 2,
+          fps: 30,
+          isPlaying: false,
+        } as TimelineState);
+        
+        setPersistence(prev => ({
+          ...prev,
+          isLoading: false,
+          isSaving: false,
+          saveStatus: 'saved',
+          hasUnsavedChanges: false,
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to load timeline:', error);
+      setPersistence(prev => ({
+        ...prev,
+        isLoading: false,
+        isSaving: false,
+        saveStatus: 'error',
+        error: error instanceof Error ? error.message : 'Failed to load timeline',
+      }));
+    }
+  }, [state]);
+
+  // Auto-save with debouncing
+  const debouncedSave = useCallback(
+    debounce(() => {
+      if (autoSaveEnabled && projectId) {
+        saveTimeline('auto_saved');
+      }
+    }, 5000), // 5 second debounce
+    [saveTimeline, autoSaveEnabled, projectId]
+  );
+
+  // Mark timeline as having unsaved changes
+  const markUnsaved = useCallback(() => {
+    setPersistence(prev => ({
+      ...prev,
+      hasUnsavedChanges: true,
+      saveStatus: 'unsaved',
+    }));
+  }, []);
+
+  // Auto-save effect - watch for state changes
+  useEffect(() => {
+    if (!isInitialized.current) return;
+
+    const currentHash = getTimelineStateHash(state);
+    if (currentHash !== lastSavedHash.current) {
+      markUnsaved();
+      if (autoSaveEnabled) {
+        debouncedSave();
+      }
+    }
+  }, [state, debouncedSave, autoSaveEnabled, markUnsaved]);
+
+  // Initialize timeline when projectId changes
+  useEffect(() => {
+    if (projectId && !isInitialized.current) {
+      loadTimeline(projectId).finally(() => {
+        isInitialized.current = true;
+      });
+    }
+  }, [projectId, loadTimeline]);
+
+  // Keyboard shortcut for manual save (Ctrl/Cmd + S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (projectId) {
+          saveTimeline('manually_saved');
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [saveTimeline, projectId]);
 
   const actions = {
     addTrack: () => dispatch({ type: 'ADD_TRACK' }),
@@ -484,10 +718,19 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     redo: () => dispatch({ type: 'REDO' }),
   };
 
-  const contextValue: TimelineContextType = {
+  const persistenceActions = {
+    saveTimeline,
+    loadTimeline,
+    enableAutoSave: setAutoSaveEnabled,
+    markUnsaved,
+  };
+
+  const contextValue: EnhancedTimelineContextType = {
     state,
     config: defaultConfig,
     actions,
+    persistence,
+    persistenceActions,
   };
 
   return (
@@ -503,4 +746,16 @@ export function useTimeline() {
     throw new Error('useTimeline must be used within a TimelineProvider');
   }
   return context;
+}
+
+// Separate hook for persistence functionality
+export function useTimelinePersistence() {
+  const context = useContext(TimelineContext);
+  if (!context) {
+    throw new Error('useTimelinePersistence must be used within a TimelineProvider');
+  }
+  return {
+    persistence: context.persistence,
+    actions: context.persistenceActions,
+  };
 }

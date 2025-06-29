@@ -1,0 +1,258 @@
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  try {
+    const { projectId } = await params;
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    
+    // Check authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Verify user has access to this project
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', projectId)
+      .eq('user_id', session.user.id)
+      .single();
+
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // Get active timeline for this project
+    const { data: timeline, error: timelineError } = await supabase
+      .from('timeline_configurations')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('is_active', true)
+      .single();
+
+    if (timelineError && timelineError.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.error('Error fetching timeline:', timelineError);
+      return NextResponse.json({ error: 'Failed to fetch timeline' }, { status: 500 });
+    }
+
+    // If no timeline exists, return default structure
+    if (!timeline) {
+      return NextResponse.json({
+        timeline: null,
+        message: 'No timeline found for this project'
+      });
+    }
+
+    return NextResponse.json({
+      timeline: {
+        id: timeline.id,
+        projectId: timeline.project_id,
+        title: timeline.title,
+        description: timeline.description,
+        version: timeline.version,
+        totalDuration: timeline.total_duration,
+        frameRate: timeline.frame_rate,
+        zoom: timeline.zoom,
+        playheadPosition: timeline.playhead_position,
+        pixelsPerFrame: timeline.pixels_per_frame,
+        timelineData: timeline.timeline_data,
+        status: timeline.status,
+        createdAt: timeline.created_at,
+        updatedAt: timeline.updated_at,
+        lastSavedAt: timeline.last_saved_at,
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in timeline GET:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  try {
+    const { projectId } = await params;
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    
+    // Check authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Verify user has access to this project
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', projectId)
+      .eq('user_id', session.user.id)
+      .single();
+
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // Parse request body
+    const body = await request.json();
+    const {
+      timelineData,
+      totalDuration,
+      frameRate,
+      zoom,
+      playheadPosition,
+      pixelsPerFrame,
+      status = 'auto_saved',
+      title,
+      description
+    } = body;
+
+    // Validate required fields
+    if (!timelineData) {
+      return NextResponse.json(
+        { error: 'timelineData is required' },
+        { status: 400 }
+      );
+    }
+
+    // Use the upsert function to create or update timeline
+    const { data: timelineId, error: upsertError } = await supabase
+      .rpc('upsert_timeline_configuration', {
+        p_project_id: projectId,
+        p_user_id: session.user.id,
+        p_timeline_data: timelineData,
+        p_total_duration: totalDuration,
+        p_frame_rate: frameRate,
+        p_zoom: zoom,
+        p_playhead_position: playheadPosition,
+        p_status: status,
+        p_title: title
+      });
+
+    if (upsertError) {
+      console.error('Error upserting timeline:', upsertError);
+      return NextResponse.json(
+        { error: 'Failed to save timeline' },
+        { status: 500 }
+      );
+    }
+
+    // Fetch the updated timeline to return
+    const { data: updatedTimeline, error: fetchError } = await supabase
+      .from('timeline_configurations')
+      .select('*')
+      .eq('id', timelineId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching updated timeline:', fetchError);
+      return NextResponse.json(
+        { error: 'Failed to fetch updated timeline' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      timeline: {
+        id: updatedTimeline.id,
+        projectId: updatedTimeline.project_id,
+        title: updatedTimeline.title,
+        description: updatedTimeline.description,
+        version: updatedTimeline.version,
+        totalDuration: updatedTimeline.total_duration,
+        frameRate: updatedTimeline.frame_rate,
+        zoom: updatedTimeline.zoom,
+        playheadPosition: updatedTimeline.playhead_position,
+        pixelsPerFrame: updatedTimeline.pixels_per_frame,
+        timelineData: updatedTimeline.timeline_data,
+        status: updatedTimeline.status,
+        createdAt: updatedTimeline.created_at,
+        updatedAt: updatedTimeline.updated_at,
+        lastSavedAt: updatedTimeline.last_saved_at,
+      },
+      message: 'Timeline saved successfully'
+    });
+
+  } catch (error) {
+    console.error('Error in timeline POST:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  // PUT is the same as POST for timeline - we always upsert
+  return POST(request, { params });
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  try {
+    const { projectId } = await params;
+    const cookieStore = await cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    
+    // Check authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Verify user has access to this project
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', projectId)
+      .eq('user_id', session.user.id)
+      .single();
+
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // Delete all timeline configurations for this project
+    const { error: deleteError } = await supabase
+      .from('timeline_configurations')
+      .delete()
+      .eq('project_id', projectId);
+
+    if (deleteError) {
+      console.error('Error deleting timeline:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete timeline' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      message: 'Timeline deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error in timeline DELETE:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

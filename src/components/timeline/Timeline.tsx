@@ -10,7 +10,7 @@ import { TimeDisplay, formatTime } from './TimeDisplay';
 import { MediaType } from '../../../types/timeline';
 
 export function Timeline() {
-  const { state, config, actions } = useTimeline();
+  const { state, config, actions, persistence } = useTimeline();
   const { tracks, zoom, totalDuration, isPlaying, playheadPosition, fps } = state;
   const { rulerHeight, trackHeight } = config;
   const { handlePlayPause, playerRef } = usePlayerControls();
@@ -280,6 +280,36 @@ export function Timeline() {
       }
     }
   }, [zoom, actions, config, playheadPosition, trackHeaderWidth]);
+
+  // Show loading overlay when timeline is loading
+  if (persistence.isLoading) {
+    return (
+      <div className="flex flex-col h-full bg-gray-900 border-t border-gray-600">
+        {/* Timeline Controls - disabled state */}
+        <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-600 opacity-50">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center justify-center w-10 h-10 rounded bg-gray-700 text-gray-400">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="text-sm text-gray-400">Loading timeline...</div>
+          </div>
+        </div>
+        
+        {/* Loading Content */}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="text-lg font-medium text-white">Loading Timeline</div>
+            <div className="text-sm text-gray-400 text-center max-w-md">
+              Fetching your timeline data from the database...
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-gray-900 border-t border-gray-600">

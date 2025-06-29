@@ -10,7 +10,7 @@ interface EditorPageProps {
 }
 
 export default async function EditorPage({ params }: EditorPageProps) {
-  const cookieStore = await cookies()
+  const cookieStore = cookies()
   const projectId = params.project_id
   
   const supabase = createServerClient(

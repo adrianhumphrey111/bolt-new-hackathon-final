@@ -2,10 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['react-icons', '@remotion/transitions'],
-  env: {
-    TAILWIND_DISABLE_NATIVE: 'true',
-  },
   experimental: {
+    // Remove any experimental features that might not be compatible with Next.js 14
   },
   webpack: (config, { isServer }) => {
     // Disable native addons and optimize for WebContainer

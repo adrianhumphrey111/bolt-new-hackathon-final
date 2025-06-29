@@ -9,6 +9,13 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { v4 as uuidv4 } from 'uuid';
 import { useVideoProcessing } from '../../hooks/useVideoProcessing';
 import { AIAnalysisPanel } from './AIAnalysisPanel';
+import { fade } from '@remotion/transitions/fade';
+import { slide } from '@remotion/transitions/slide';
+import { wipe } from '@remotion/transitions/wipe';
+import { flip } from '@remotion/transitions/flip';
+import { clockWipe } from '@remotion/transitions/clock-wipe';
+import { iris } from '@remotion/transitions/iris';
+import { none } from '@remotion/transitions/none';
 
 interface MediaItem {
   id: string;
@@ -23,6 +30,18 @@ interface MediaItem {
   isAnalyzing?: boolean; // New property for AI analysis status
   processingInfo?: any; // Processing information from useVideoProcessing hook
 }
+
+interface TransitionItem {
+  id: string;
+  name: string;
+  description: string;
+  type: 'transition';
+  effect: any;
+  duration: number; // in frames
+  category: 'basic' | 'premium';
+}
+
+type TabType = 'media' | 'transitions';
 
 // Create context for project information
 interface ProjectContextType {
@@ -119,6 +138,7 @@ export function MediaLibrary() {
   const { state, actions } = useTimeline();
   const { projectId } = useProject();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('media');
   const [projectVideos, setProjectVideos] = useState<MediaItem[]>([]);
   const [uploadedItems, setUploadedItems] = useState<MediaItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -331,6 +351,58 @@ export function MediaLibrary() {
     }));
   };
 
+  const handleAddTransitionToTimeline = (transition: TransitionItem) => {
+    // Find an available track or create a new one for transitions
+    let targetTrackId = '';
+    
+    if (state.tracks.length > 0) {
+      // Try to find a track with space at the playhead position
+      const availableTrack = state.tracks.find(track => {
+        const hasOverlap = track.items.some(item => {
+          const itemEnd = item.startTime + item.duration;
+          const newItemEnd = state.playheadPosition + transition.duration;
+          return !(state.playheadPosition >= itemEnd || newItemEnd <= item.startTime);
+        });
+        return !hasOverlap;
+      });
+      
+      if (availableTrack) {
+        targetTrackId = availableTrack.id;
+      }
+    }
+    
+    // If no available track found, will create new one in reducer
+    if (!targetTrackId && state.tracks.length > 0) {
+      targetTrackId = state.tracks[0].id; // This will trigger auto-track creation
+    } else if (!targetTrackId) {
+      // Create first track
+      actions.addTrack();
+      targetTrackId = 'new-track';
+    }
+
+    // Add transition as a special timeline item
+    actions.addItem({
+      type: MediaType.TEXT, // Use TEXT type for transitions temporarily
+      name: transition.name,
+      startTime: state.playheadPosition,
+      duration: transition.duration,
+      trackId: targetTrackId,
+      content: `Transition: ${transition.name}`,
+      // Store transition data in a custom property for future use
+      transitionData: {
+        effect: transition.effect,
+        transitionId: transition.id
+      }
+    });
+  };
+
+  const handleTransitionDragStart = (e: React.DragEvent, transition: TransitionItem) => {
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'transition-item',
+      item: transition,
+    }));
+  };
+
   const getMediaTypeFromFile = (file: File): MediaType => {
     const type = file.type.toLowerCase();
     if (type.startsWith('video/')) return MediaType.VIDEO;
@@ -374,7 +446,11 @@ export function MediaLibrary() {
         src: file,
         container: 'mp4',
         onProgress: (progress) => {
-          setConversionProgress(prev => ({ ...prev, [itemId]: progress.progress * 100 }));
+          // Check if progress has a progress property, otherwise use the value directly
+          const progressValue = typeof progress === 'object' && 'progress' in progress 
+            ? (progress as any).progress 
+            : progress;
+          setConversionProgress(prev => ({ ...prev, [itemId]: progressValue * 100 }));
         },
       });
 
@@ -682,6 +758,73 @@ export function MediaLibrary() {
   // Combine project videos and uploaded items
   const allMediaItems = [...projectVideos, ...uploadedItems];
 
+  // Available transitions
+  const availableTransitions: TransitionItem[] = [
+    {
+      id: 'fade',
+      name: 'Fade',
+      description: 'Animate the opacity of the scenes',
+      type: 'transition',
+      effect: fade,
+      duration: 30, // 1 second at 30fps
+      category: 'basic'
+    },
+    {
+      id: 'slide',
+      name: 'Slide',
+      description: 'Slide in and push out the previous scene',
+      type: 'transition',
+      effect: slide,
+      duration: 30,
+      category: 'basic'
+    },
+    {
+      id: 'wipe',
+      name: 'Wipe',
+      description: 'Slide over the previous scene',
+      type: 'transition',
+      effect: wipe,
+      duration: 30,
+      category: 'basic'
+    },
+    {
+      id: 'flip',
+      name: 'Flip',
+      description: 'Rotate the previous scene',
+      type: 'transition',
+      effect: flip,
+      duration: 30,
+      category: 'basic'
+    },
+    {
+      id: 'clockWipe',
+      name: 'Clock Wipe',
+      description: 'Reveal the new scene in a circular movement',
+      type: 'transition',
+      effect: clockWipe,
+      duration: 30,
+      category: 'basic'
+    },
+    {
+      id: 'iris',
+      name: 'Iris',
+      description: 'Reveal the scene through a circular mask from center',
+      type: 'transition',
+      effect: iris,
+      duration: 30,
+      category: 'basic'
+    },
+    {
+      id: 'none',
+      name: 'None',
+      description: 'Have no visual effect',
+      type: 'transition',
+      effect: none,
+      duration: 0,
+      category: 'basic'
+    }
+  ];
+
   return (
     <div className={`bg-gray-800 border-r border-gray-600 transition-all duration-300 flex flex-col ${isCollapsed ? 'w-12' : 'w-80'}`}>
       {/* Header */}
@@ -703,12 +846,41 @@ export function MediaLibrary() {
         </button>
       </div>
 
+      {/* Tabs */}
+      {!isCollapsed && (
+        <div className="flex border-b border-gray-600">
+          <button
+            onClick={() => setActiveTab('media')}
+            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'media'
+                ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+            }`}
+          >
+            Media
+          </button>
+          <button
+            onClick={() => setActiveTab('transitions')}
+            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'transitions'
+                ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+            }`}
+          >
+            Transitions
+          </button>
+        </div>
+      )}
+
       {!isCollapsed && (
         <div className="h-full flex flex-col">
-          <div className="p-3 flex-shrink-0">
-          {/* Upload Section */}
-          <div className="mb-6">
-            <h4 className="text-sm font-medium text-gray-300 mb-3">Upload Media</h4>
+          {/* Media Tab Content */}
+          {activeTab === 'media' && (
+            <>
+              <div className="p-3 flex-shrink-0">
+                {/* Upload Section */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-300 mb-3">Upload Media</h4>
             <input
               ref={fileInputRef}
               type="file"
@@ -761,8 +933,8 @@ export function MediaLibrary() {
           </div>
           </div>
 
-          {/* Scrollable Content Area */}
-          <div className="flex-1 overflow-y-auto px-3 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+              {/* Scrollable Content Area */}
+              <div className="flex-1 overflow-y-auto px-3 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
             {/* Processing Status Banner */}
             {isProcessing && (
               <div className="mb-4 p-3 bg-purple-900/30 border border-purple-600/50 rounded">
@@ -814,9 +986,9 @@ export function MediaLibrary() {
               </div>
             )}
 
-            {/* Media Categories */}
-            <div className="space-y-4">
-            {Object.values(MediaType).map(type => {
+                {/* Media Categories */}
+                <div className="space-y-4">
+                {Object.values(MediaType).map(type => {
               const itemsOfType = allMediaItems.filter(item => item.type === type);
               
               if (itemsOfType.length === 0) return null;
@@ -987,9 +1159,76 @@ export function MediaLibrary() {
                   </div>
                 </div>
               );
-            })}
+                })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Transitions Tab Content */}
+          {activeTab === 'transitions' && (
+            <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-300 mb-3">Available Transitions</h4>
+                <p className="text-xs text-gray-500 mb-4">Drag transitions to the timeline to add them between scenes</p>
+              </div>
+
+              <div className="space-y-2">
+                {availableTransitions.map(transition => (
+                  <div
+                    key={transition.id}
+                    className="group flex items-center p-3 rounded bg-gray-700 hover:bg-gray-600 cursor-pointer transition-colors"
+                    draggable
+                    onDragStart={(e) => handleTransitionDragStart(e, transition)}
+                    onClick={() => handleAddTransitionToTimeline(transition)}
+                  >
+                    <div className="flex-shrink-0 mr-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+                        <span className="text-white text-lg font-bold">
+                          {transition.name.charAt(0)}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-white truncate">
+                        {transition.name}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate">
+                        {transition.description}
+                      </div>
+                      {transition.duration > 0 && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {Math.round(transition.duration / state.fps * 10) / 10}s
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex-shrink-0 flex items-center space-x-1">
+                      {transition.category === 'premium' && (
+                        <div className="bg-yellow-500 text-black text-xs px-2 py-1 rounded font-medium">
+                          Pro
+                        </div>
+                      )}
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddTransitionToTimeline(transition);
+                        }}
+                        className="w-6 h-6 text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Add to timeline"
+                      >
+                        <svg fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
       

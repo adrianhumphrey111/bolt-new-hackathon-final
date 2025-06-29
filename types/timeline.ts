@@ -15,6 +15,10 @@ export interface TimelineItem {
   src?: string; // for media files
   content?: string; // for text items
   properties?: Record<string, any>;
+  transitionData?: {
+    effect: any;
+    transitionId: string;
+  };
 }
 
 export interface Track {

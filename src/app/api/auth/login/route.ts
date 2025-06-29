@@ -1,5 +1,3 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -52,65 +50,86 @@ export async function POST(request: Request) {
       )
     }
 
-    // Initialize Supabase client with Next.js 15 compatible approach
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              )
-            } catch {
-              // The `setAll` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          },
-        },
-      }
-    )
+    // Use fetch to call Supabase directly instead of the SDK
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    // Attempt login
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (authError) {
-      // Handle specific Supabase error cases
-      switch (authError.message) {
-        case 'Invalid login credentials':
-          return NextResponse.json(
-            { error: 'Invalid email or password' },
-            { status: 401 }
-          )
-        case 'Email not confirmed':
-          return NextResponse.json(
-            { error: 'Please verify your email before logging in' },
-            { status: 403 }
-          )
-        default:
-          console.error('Supabase auth error:', authError)
-          return NextResponse.json(
-            { error: 'Authentication failed' },
-            { status: 401 }
-          )
-      }
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        { error: 'Supabase configuration missing' },
+        { status: 500 }
+      )
     }
 
-    // Successful login
-    return NextResponse.json({
-      success: true,
-      user: data.user,
-      session: data.session,
+    // Direct API call to Supabase
+    const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
     })
+
+    const authData = await authResponse.json()
+
+    if (!authResponse.ok) {
+      // Handle specific Supabase error cases
+      const errorMessage = authData.error_description || authData.message || 'Authentication failed'
+      
+      if (errorMessage.includes('Invalid login credentials')) {
+        return NextResponse.json(
+          { error: 'Invalid email or password' },
+          { status: 401 }
+        )
+      }
+      
+      if (errorMessage.includes('Email not confirmed')) {
+        return NextResponse.json(
+          { error: 'Please verify your email before logging in' },
+          { status: 403 }
+        )
+      }
+
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 401 }
+      )
+    }
+
+    // Create response with session cookies
+    const response = NextResponse.json({
+      success: true,
+      user: authData.user,
+      session: authData,
+    })
+
+    // Set auth cookies manually
+    if (authData.access_token) {
+      response.cookies.set('sb-access-token', authData.access_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: authData.expires_in || 3600,
+        path: '/',
+      })
+    }
+
+    if (authData.refresh_token) {
+      response.cookies.set('sb-refresh-token', authData.refresh_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+        path: '/',
+      })
+    }
+
+    return response
 
   } catch (error) {
     // Log the error for debugging but don't expose details to client

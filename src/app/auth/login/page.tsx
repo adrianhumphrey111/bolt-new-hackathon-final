@@ -30,32 +30,34 @@ export default function Login() {
         return;
       }
 
-      // Call our backend API
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password: password,
-        }),
-        credentials: 'include', // Important for cookie handling
+      // Use Supabase client directly instead of API route
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sign in');
+      if (authError) {
+        // Handle specific Supabase error cases
+        switch (authError.message) {
+          case 'Invalid login credentials':
+            setError('Invalid email or password');
+            break;
+          case 'Email not confirmed':
+            setError('Please verify your email before logging in');
+            break;
+          default:
+            console.error('Supabase auth error:', authError);
+            setError('Authentication failed');
+        }
+        return;
       }
 
-      if (data.success) {
+      if (data.user) {
         // Successful login
         router.push('/dashboard');
         router.refresh();
       } else {
-        throw new Error('Login failed');
+        setError('Login failed');
       }
     } catch (error) {
       console.error('Login error:', error);

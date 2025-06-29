@@ -52,10 +52,15 @@ export default function Login() {
         return;
       }
 
-      if (data.user) {
-        // Successful login
-        router.push('/dashboard');
-        router.refresh();
+      if (data.user && data.session) {
+        // Successful login - wait a moment for cookies to be set
+        console.log('✅ Login successful, redirecting...');
+        
+        // Small delay to ensure session is properly established
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Force a hard navigation to ensure middleware picks up the session
+        window.location.href = '/dashboard';
       } else {
         setError('Login failed');
       }

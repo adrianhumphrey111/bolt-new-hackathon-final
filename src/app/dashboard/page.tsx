@@ -1,30 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '../../../lib/supabase/client'
 import DashboardClient from './components/DashboardClient'
 
 export default function Dashboard() {
-  const [user, setUser] = useState(null)
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
-  const router = useRouter()
   const supabase = createSupabaseClient()
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const loadProjects = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (!session) {
-          router.push('/auth/login')
-          return
-        }
-
-        setUser(session.user)
-
-        // Fetch projects
+        // Just fetch projects without auth check
         const { data: projectsData, error } = await supabase
           .from('projects')
           .select(`*, videos (*)`)
@@ -37,14 +25,13 @@ export default function Dashboard() {
         }
       } catch (error) {
         console.error('Dashboard error:', error)
-        router.push('/auth/login')
       } finally {
         setLoading(false)
       }
     }
 
-    checkAuth()
-  }, [supabase, router])
+    loadProjects()
+  }, [supabase])
 
   if (loading) {
     return (
@@ -57,14 +44,16 @@ export default function Dashboard() {
     )
   }
 
-  if (!user) {
-    return null // Will redirect to login
+  // Mock user for now since we removed auth
+  const mockUser = {
+    email: 'demo@example.com',
+    id: 'demo-user'
   }
 
   return (
     <DashboardClient 
       initialProjects={projects} 
-      user={user}
+      user={mockUser}
     />
   )
 }

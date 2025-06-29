@@ -1,90 +1,66 @@
-'use client';
-
-import { VideoEditor } from '../../../../components/VideoEditor';
-import { useEffect, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { useRouter } from 'next/navigation';
+import { redirect } from 'next/navigation'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { VideoEditor } from '../../../../components/VideoEditor'
 
 interface EditorPageProps {
   params: {
-    project_id: string;
-  };
+    project_id: string
+  }
 }
 
-export default function EditorPage({ params }: EditorPageProps) {
-  const [loading, setLoading] = useState(true);
-  const [project, setProject] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
-  const router = useRouter();
-  const projectId = params.project_id;
+export default async function EditorPage({ params }: EditorPageProps) {
+  const cookieStore = await cookies()
+  const projectId = params.project_id
   
-  const supabase = createBrowserClient(
+  const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
+          }
+        },
+      },
+    }
+  )
 
-  useEffect(() => {
-    const initializeEditor = async () => {
-      try {
-        // Check authentication
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          router.push('/auth/login');
-          return;
-        }
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
-        setUser(session.user);
+  if (!session) {
+    redirect('/auth/login')
+  }
 
-        // Fetch project details and verify ownership
-        const { data: projectData, error: projectError } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('id', projectId)
-          .eq('user_id', session.user.id) // Ensure user owns the project
-          .single();
+  // Fetch project details and verify ownership
+  const { data: projectData, error: projectError } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', projectId)
+    .eq('user_id', session.user.id) // Ensure user owns the project
+    .single()
 
-        if (projectError) {
-          console.error('Error fetching project:', projectError);
-          // Project not found or user doesn't own it, redirect to dashboard
-          router.push('/dashboard');
-          return;
-        }
-
-        setProject(projectData);
-      } catch (error) {
-        console.error('Error initializing editor:', error);
-        router.push('/dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeEditor();
-  }, [projectId, supabase, router]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-400">Loading editor...</p>
-          <p className="text-gray-500 text-sm">Project: {projectId}</p>
-        </div>
-      </div>
-    );
+  if (projectError || !projectData) {
+    console.error('Error fetching project:', projectError)
+    // Project not found or user doesn't own it, redirect to dashboard
+    redirect('/dashboard')
   }
 
   return (
     <div className="h-screen w-screen">
-      {/* Pass project information to the VideoEditor */}
       <VideoEditor projectId={projectId} />
-      
-      {/* Screen reader only project info */}
-      {project && (
-        <div className="sr-only">
-          Currently editing project: {project.title}
-        </div>
-      )}
     </div>
-  );
+  )
 }

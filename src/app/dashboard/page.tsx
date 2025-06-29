@@ -89,6 +89,7 @@ export default function Dashboard() {
   }
 
   const openEditor = () => {
+    // Navigate to editor without a specific project (general editor)
     router.push('/editor')
   }
 

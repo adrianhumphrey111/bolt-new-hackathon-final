@@ -14,17 +14,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing email or password' }, { status: 400 })
     }
 
-    const response = NextResponse.next()
+    // 🟢 Instead of NextResponse.next(), use the actual response we'll return
+    const response = NextResponse.json({ success: true }) // temp, overwritten below
 
-    // ✅ Pass request and response to Supabase client
+    // 🛠️ Create Supabase client with custom cookies
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           getAll: () => request.cookies.getAll(),
-          setAll: (cookies) => {
-            cookies.forEach(({ name, value, options }) => {
+          setAll: (cookiesToSet) => {
+            cookiesToSet.forEach(({ name, value, options }) => {
               response.cookies.set(name, value, options)
             })
           },
@@ -41,14 +42,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: authError.message }, { status: 401 })
     }
 
-    return NextResponse.json(
+    // 🟢 Construct the final response and manually set auth cookies
+    const finalResponse = NextResponse.json(
       {
         success: true,
         user: data.user,
         session: data.session,
       },
-      { status: 200, headers: response.headers } // ✅ include updated cookies
+      { status: 200 }
     )
+
+    const { session } = data
+    if (session) {
+      finalResponse.cookies.set('sb-access-token', session.access_token, {
+        path: '/',
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+      })
+      finalResponse.cookies.set('sb-refresh-token', session.refresh_token, {
+        path: '/',
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+      })
+    }
+
+    return finalResponse
   } catch (err) {
     console.error('Login failed:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

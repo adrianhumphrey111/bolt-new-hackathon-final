@@ -88,11 +88,11 @@ export default function Home() {
               <span>Start Creating</span>
             </Link>
             <Link
-              href="/editor"
+              href="/dashboard"
               className="bg-gray-700 hover:bg-gray-600 text-white px-8 py-4 rounded-lg text-lg font-medium transition-colors flex items-center justify-center space-x-2"
             >
               <FaPlay />
-              <span>Try Demo</span>
+              <span>View Dashboard</span>
             </Link>
           </div>
         </div>

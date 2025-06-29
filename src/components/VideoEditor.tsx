@@ -4,8 +4,9 @@ import React, { useState, useRef, useCallback, useEffect, createContext, useCont
 import { Player, PlayerRef } from "@remotion/player";
 import { TimelineComposition } from "../remotion/TimelineComposition";
 import { Timeline } from './timeline/Timeline';
-import { MediaLibrary, ProjectProvider } from './timeline/MediaLibrary';
+import { MediaLibrary, ProjectProvider, useProject } from './timeline/MediaLibrary';
 import { PropertyPanel } from './timeline/PropertyPanel';
+import { GenerateAIModal } from './timeline/GenerateAIModal';
 import { SaveStatusIndicator } from './timeline/SaveStatusIndicator';
 import { CanvasSizeSelector, aspectRatios, type AspectRatio } from './CanvasSizeSelector';
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext';
@@ -35,8 +36,10 @@ export function usePlayerControls() {
 
 function VideoEditorContent() {
   const { state, actions } = useTimeline();
+  const { projectId } = useProject();
   const [showMediaLibrary, setShowMediaLibrary] = useState(true);
   const [showPropertyPanel, setShowPropertyPanel] = useState(true);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [currentAspectRatio, setCurrentAspectRatio] = useState<AspectRatio>(aspectRatios[1]); // Default to 16:9
   const [playerDimensions, setPlayerDimensions] = useState({ width: 800, height: 450 });
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>();
@@ -309,6 +312,20 @@ function VideoEditorContent() {
             </button>
           </div>
 
+          {/* Generate with AI button */}
+          <button 
+            onClick={() => setShowGenerateModal(true)}
+            disabled={!projectId}
+            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
+            title="Generate video timeline with AI"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49zM10 18.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5z" clipRule="evenodd" />
+            </svg>
+            <span className="hidden sm:inline">Generate with AI</span>
+            <span className="sm:hidden">Generate</span>
+          </button>
+
           {/* Export button */}
           <button className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors text-sm whitespace-nowrap">
             <span className="hidden sm:inline">Export Video</span>
@@ -391,6 +408,18 @@ function VideoEditorContent() {
           </div>
         </div>
       </footer>
+      
+      {/* Generate AI Modal */}
+      {projectId && (
+        <GenerateAIModal
+          projectId={projectId}
+          isOpen={showGenerateModal}
+          onClose={() => setShowGenerateModal(false)}
+          onComplete={(shotList) => {
+            console.log('AI Timeline generated with', shotList.length, 'clips');
+          }}
+        />
+      )}
       </div>
     </PlayerControlsContext.Provider>
   );

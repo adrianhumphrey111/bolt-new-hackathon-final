@@ -163,16 +163,37 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
-// Hash function to detect state changes (excluding UI state)
+// Hash function to detect meaningful state changes (excluding UI state and playhead)
 export function getTimelineStateHash(state: TimelineState): string {
   const relevantState = {
     tracks: state.tracks,
     totalDuration: state.totalDuration,
     zoom: state.zoom,
-    playheadPosition: Math.floor(state.playheadPosition / 30), // Round to seconds to avoid excessive saves
+    // Exclude playheadPosition from hash to prevent auto-save on playhead moves
   };
   
   return JSON.stringify(relevantState);
+}
+
+// Separate hash for major changes only (tracks, items, etc.)
+export function getMajorChangesHash(state: TimelineState): string {
+  const majorState = {
+    tracks: state.tracks.map(track => ({
+      id: track.id,
+      name: track.name,
+      items: track.items.map(item => ({
+        id: item.id,
+        type: item.type,
+        name: item.name,
+        startTime: item.startTime,
+        duration: item.duration,
+        src: item.src,
+        content: item.content
+      }))
+    }))
+  };
+  
+  return JSON.stringify(majorState);
 }
 
 // Storage status types

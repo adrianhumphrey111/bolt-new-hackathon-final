@@ -8,6 +8,7 @@ import { convertMedia } from '@remotion/webcodecs';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { v4 as uuidv4 } from 'uuid';
 import { useVideoProcessing } from '../../hooks/useVideoProcessing';
+import { AIAnalysisPanel } from './AIAnalysisPanel';
 
 interface MediaItem {
   id: string;
@@ -137,6 +138,17 @@ export function MediaLibrary() {
     fileName: '',
     videoName: '',
   });
+  const [analysisPanel, setAnalysisPanel] = useState<{
+    isOpen: boolean;
+    videoId: string;
+    videoName: string;
+    videoSrc?: string;
+  }>({
+    isOpen: false,
+    videoId: '',
+    videoName: '',
+    videoSrc: undefined,
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClientComponentClient();
   
@@ -148,7 +160,8 @@ export function MediaLibrary() {
     error: processingError,
     formatElapsedTime,
     isVideoProcessing,
-    getVideoProcessingInfo
+    getVideoProcessingInfo,
+    startMonitoring
   } = useVideoProcessing(projectId);
 
   // Fetch project videos from Supabase
@@ -254,6 +267,21 @@ export function MediaLibrary() {
     }
   };
 
+  const handleVideoClick = (mediaItem: MediaItem) => {
+    if (mediaItem.type === MediaType.VIDEO && projectVideos.some(video => video.id === mediaItem.id)) {
+      // Open AI Analysis panel for project videos
+      setAnalysisPanel({
+        isOpen: true,
+        videoId: mediaItem.id,
+        videoName: mediaItem.name,
+        videoSrc: mediaItem.src,
+      });
+    } else {
+      // Add non-video items or uploaded items to timeline
+      handleAddToTimeline(mediaItem);
+    }
+  };
+
   const handleAddToTimeline = (mediaItem: MediaItem) => {
     // Find an available track or create a new one
     let targetTrackId = '';
@@ -342,22 +370,28 @@ export function MediaLibrary() {
     setConversionProgress(prev => ({ ...prev, [itemId]: 0 }));
 
     try {
-      const mp4Blob = await convertMedia({
+      const mp4Result = await convertMedia({
         src: file,
         container: 'mp4',
-        onProgress: ({ progress }) => {
-          setConversionProgress(prev => ({ ...prev, [itemId]: progress * 100 }));
+        onProgress: (progress) => {
+          setConversionProgress(prev => ({ ...prev, [itemId]: progress.progress * 100 }));
         },
       });
 
+      const mp4Blob = await mp4Result.save()
+
+      console.log('DEBUG: convertMovToMp4 - mp4Blob size:', mp4Blob.size, 'bytes');
+      console.log('DEBUG: convertMovToMp4 - mp4Blob type:', mp4Blob.type);
       const mp4File = new File([mp4Blob], file.name.replace(/\.mov$/i, '.mp4'), {
         type: 'video/mp4',
       });
       
       console.log('✅ Conversion completed for:', file.name);
+      console.log('DEBUG: convertMovToMp4 - Transcoded file size:', mp4File.size, 'bytes');
       return mp4File;
     } catch (error) {
       console.error('❌ Error during MOV to MP4 conversion:', error);
+      console.log('DEBUG: convertMovToMp4 - Caught error object:', error);
       throw error;
     } finally {
       setIsConverting(prev => ({ ...prev, [itemId]: false }));
@@ -404,10 +438,8 @@ export function MediaLibrary() {
       const userId = session.user.id;
       const timestamp = Date.now();
       const originalName = file.name;
-      const fileExtension = originalName.split('.').pop();
       const fileName = `${userId}/${projectId}/videos/${videoId}_${timestamp}_${originalName}`;
       const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET as string;
-      const s3Url = `https://${bucketName}.s3.amazonaws.com/${fileName}`;
 
       // Save video record to database
       const { data: videoData, error: dbError } = await supabase
@@ -428,8 +460,12 @@ export function MediaLibrary() {
 
       console.log('✅ Video saved to project:', videoData);
       
+      console.log('DEBUG: saveVideoToProject - File to upload to S3:', file);
+      console.log('DEBUG: saveVideoToProject - File to upload to S3 size:', file.size, 'bytes');
+      console.log('DEBUG: saveVideoToProject - File to upload to S3 type:', file.type);
       // Now upload to S3
       await uploadToS3({ file, fileName, bucketName });
+      return fileName
     } catch (error) {
       console.error('Error saving video to project:', error);
       return null;
@@ -485,10 +521,12 @@ export function MediaLibrary() {
 
   const handleFileUpload = useCallback(async (files: FileList) => {
     setUploading(true);
-    const newItems: MediaItem[] = [];
     
     try {
       const file = files[0];
+      console.log('DEBUG: handleFileUpload - Initial file:', file);
+      console.log('DEBUG: handleFileUpload - Initial file size:', file.size, 'bytes');
+      console.log('DEBUG: handleFileUpload - Initial file type:', file.type);
       
       // Filter for video files - only allow .mov and .mp4
       if (file.type.startsWith('video/')) {
@@ -514,6 +552,8 @@ export function MediaLibrary() {
         if (shouldTranscodeFile(file)) {
           console.log(`🔄 MOV file (${fileSize}) detected, transcoding to MP4:`, file.name);
           const transcodedFile = await convertMovToMp4(file, itemId);
+          console.log('DEBUG: handleFileUpload - Transcoded file returned from convertMovToMp4:', transcodedFile);
+          console.log('DEBUG: handleFileUpload - Transcoded file size from convertMovToMp4:', transcodedFile.size, 'bytes');
           objectUrl = URL.createObjectURL(transcodedFile);
           finalName = transcodedFile.name;
           fileToUpload = transcodedFile;
@@ -528,11 +568,16 @@ export function MediaLibrary() {
       
       // If we have a project, save to database; otherwise, add to temporary uploaded items
       if (projectId && mediaType === MediaType.VIDEO) {
+        console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject:', fileToUpload);
+        console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject size:', fileToUpload.size, 'bytes');
+        console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject type:', fileToUpload.type);
         const videoId = await saveVideoToProject(fileToUpload, duration);
         if (videoId) {
           console.log('✅ Video uploaded and saved to project');
           // Refresh project videos to show the new upload with processing status
           await fetchProjectVideos();
+          // Start monitoring for processing status
+          startMonitoring();
         }
       }
       
@@ -552,7 +597,7 @@ export function MediaLibrary() {
     } finally {
       setUploading(false);
     }
-  }, [state.fps, projectId, saveVideoToProject]);
+  }, [state.fps, projectId, saveVideoToProject, startMonitoring]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -628,6 +673,10 @@ export function MediaLibrary() {
 
   const handleCloseDeleteModal = useCallback(() => {
     setDeleteModal({ isOpen: false, videoId: '', fileName: '', videoName: '' });
+  }, []);
+
+  const handleCloseAnalysisPanel = useCallback(() => {
+    setAnalysisPanel({ isOpen: false, videoId: '', videoName: '', videoSrc: undefined });
   }, []);
 
   // Combine project videos and uploaded items
@@ -790,7 +839,7 @@ export function MediaLibrary() {
                         }`}
                         draggable={!isConverting[item.id]}
                         onDragStart={(e) => !isConverting[item.id] && handleDragStart(e, item)}
-                        onClick={() => !isConverting[item.id] && handleAddToTimeline(item)}
+                        onClick={() => !isConverting[item.id] && handleVideoClick(item)}
                       >
                         <div className={`flex-shrink-0 mr-3 ${getMediaColor(item.type)}`}>
                           {isConverting[item.id] ? (
@@ -845,52 +894,93 @@ export function MediaLibrary() {
                         </div>
                         
                         <div className="flex-shrink-0 flex items-center space-x-1">
+                          
+                          {/* Action buttons for project videos */}
+                          {projectVideos.some(video => video.id === item.id) && (
+                            <>
+                              {/* AI Analysis button for project videos with analysis */}
+                              {!item.isAnalyzing && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAnalysisPanel({
+                                      isOpen: true,
+                                      videoId: item.id,
+                                      videoName: item.name,
+                                      videoSrc: item.src,
+                                    });
+                                  }}
+                                  className="w-4 h-4 text-purple-400 hover:text-purple-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="View AI analysis"
+                                >
+                                  <svg fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </button>
+                              )}
+                              
+                              {/* Add to timeline button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddToTimeline(item);
+                                }}
+                                className="w-4 h-4 text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Add to timeline"
+                              >
+                                <svg fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                              
+                              {/* Delete button */}
+                              <button
+                                onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_path || '', item.name)}
+                                disabled={deleting[item.id]}
+                                className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
+                                  deleting[item.id] 
+                                    ? 'text-gray-400 cursor-wait' 
+                                    : 'text-red-400 hover:text-red-300'
+                                }`}
+                                title={deleting[item.id] ? 'Deleting...' : 'Delete video from project'}
+                              >
+                                {deleting[item.id] ? (
+                                  <svg className="animate-spin" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                                  </svg>
+                                ) : (
+                                  <svg fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </button>
+                            </>
+                          )}
+                          
                           {/* Delete button for uploaded items */}
                           {uploadedItems.some(uploaded => uploaded.id === item.id) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeUploadedItem(item.id);
-                              }}
-                              className="w-4 h-4 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Remove uploaded file"
-                            >
-                              <svg fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                              </svg>
-                            </button>
-                          )}
-                          
-                          {/* Delete button for project videos */}
-                          {projectVideos.some(video => video.id === item.id) && (
-                            <button
-                              onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_path || '', item.name)}
-                              disabled={deleting[item.id]}
-                              className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                deleting[item.id] 
-                                  ? 'text-gray-400 cursor-wait' 
-                                  : 'text-red-400 hover:text-red-300'
-                              }`}
-                              title={deleting[item.id] ? 'Deleting...' : 'Delete video from project'}
-                            >
-                              {deleting[item.id] ? (
-                                <svg className="animate-spin" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                                </svg>
-                              ) : (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeUploadedItem(item.id);
+                                }}
+                                className="w-4 h-4 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Remove uploaded file"
+                              >
                                 <svg fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                                 </svg>
-                              )}
-                            </button>
+                              </button>
+                              
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            </>
                           )}
-                          
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                            <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                            </svg>
-                          </div>
                         </div>
                       </div>
                     ))}
@@ -910,6 +1000,15 @@ export function MediaLibrary() {
         onConfirm={handleConfirmDelete}
         videoName={deleteModal.videoName}
         isDeleting={deleting[deleteModal.videoId]}
+      />
+      
+      {/* AI Analysis Panel */}
+      <AIAnalysisPanel
+        videoId={analysisPanel.videoId}
+        videoName={analysisPanel.videoName}
+        videoSrc={analysisPanel.videoSrc}
+        isOpen={analysisPanel.isOpen}
+        onClose={handleCloseAnalysisPanel}
       />
     </div>
   );

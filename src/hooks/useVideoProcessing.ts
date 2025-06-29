@@ -122,23 +122,22 @@ export function useVideoProcessing(projectId: string | null) {
     }
   }, [projectId, supabase])
 
-  // Start polling when component mounts or projectId changes
+  // Start polling only when there are videos being processed
   useEffect(() => {
     if (!projectId) {
       setIsProcessing(false)
       setProcessingVideos([])
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
       return
     }
 
-    console.log('🚀 Starting video processing monitor for project:', projectId)
+    console.log('🚀 Starting initial video processing check for project:', projectId)
     
     // Initial check
     checkProcessingStatus()
-
-    // Start polling every 5 seconds
-    pollIntervalRef.current = setInterval(() => {
-      checkProcessingStatus()
-    }, 5000)
 
     return () => {
       if (pollIntervalRef.current) {
@@ -147,6 +146,33 @@ export function useVideoProcessing(projectId: string | null) {
       }
     }
   }, [projectId, checkProcessingStatus])
+
+  // Manage polling based on processing state
+  useEffect(() => {
+    // Clear any existing poll
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+
+    // Only start polling if we have videos being processed
+    if (isProcessing && processingVideos.length > 0) {
+      console.log(`🔄 Starting polling for ${processingVideos.length} processing videos`)
+      
+      pollIntervalRef.current = setInterval(() => {
+        checkProcessingStatus()
+      }, 5000) // Poll every 5 seconds while processing
+    } else {
+      console.log('⏹️ No videos processing - stopping poll')
+    }
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+    }
+  }, [isProcessing, processingVideos.length, checkProcessingStatus])
 
   // Subscribe to real-time changes on video_analysis table
   useEffect(() => {
@@ -168,11 +194,13 @@ export function useVideoProcessing(projectId: string | null) {
       }, (payload) => {
         console.log('🔔 Real-time video analysis change detected:', payload)
         
-        // Check if this change affects our project
-        // We'll recheck status for any video_analysis change to be safe
-        setTimeout(() => {
-          checkProcessingStatus()
-        }, 1000) // Small delay to ensure DB consistency
+        // Only recheck if we're currently processing or this could start processing
+        if (isProcessing || payload.eventType === 'INSERT' || 
+            (payload.new && ['processing', 'pending', 'queued'].includes((payload.new as any).status))) {
+          setTimeout(() => {
+            checkProcessingStatus()
+          }, 1000) // Small delay to ensure DB consistency
+        }
       })
       .subscribe()
 
@@ -184,7 +212,7 @@ export function useVideoProcessing(projectId: string | null) {
         channelRef.current = null
       }
     }
-  }, [projectId, supabase, checkProcessingStatus])
+  }, [projectId, supabase, checkProcessingStatus, isProcessing])
 
   // Update elapsed time for processing videos every second
   useEffect(() => {
@@ -227,6 +255,12 @@ export function useVideoProcessing(projectId: string | null) {
   // Get the most recently uploaded processing video (for single upload UX)
   const currentProcessingVideo = processingVideos.length > 0 ? processingVideos[0] : null
 
+  // Function to manually start monitoring after upload
+  const startMonitoring = useCallback(() => {
+    console.log('🎬 Starting video processing monitoring after upload')
+    checkProcessingStatus()
+  }, [checkProcessingStatus])
+
   return {
     isProcessing,
     processingVideos,
@@ -234,6 +268,7 @@ export function useVideoProcessing(projectId: string | null) {
     error,
     lastCheckTime,
     checkStatus: checkProcessingStatus,
+    startMonitoring, // Expose this for manual triggering after uploads
     formatElapsedTime,
     
     // Helper functions for UI

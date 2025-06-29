@@ -9,6 +9,7 @@ import {
   savedTimelineToState, 
   debounce, 
   getTimelineStateHash,
+  getMajorChangesHash,
   PersistenceState,
   initialPersistenceState,
   SaveStatus
@@ -134,6 +135,7 @@ function shouldTrackInHistory(action: TimelineAction): boolean {
     'MOVE_ITEM',
     'SPLIT_ITEM',
     'TRIM_ITEM',
+    'CLEAR_TIMELINE',
   ];
   return historyActions.includes(action.type);
 }
@@ -447,6 +449,16 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
       };
     }
 
+    case 'CLEAR_TIMELINE': {
+      return {
+        ...state,
+        tracks: [],
+        selectedItems: [],
+        playheadPosition: 0,
+        totalDuration: 900, // 30 seconds at 30fps
+      };
+    }
+
     default:
       return state;
   }
@@ -523,7 +535,9 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
   
   // Track last saved state hash to detect changes
   const lastSavedHash = useRef<string>('');
+  const lastMajorChangesHash = useRef<string>('');
   const isInitialized = useRef(false);
+  const lastAutoSaveTime = useRef<number>(0);
 
   // Save timeline function
   const saveTimeline = useCallback(async (status: 'draft' | 'manually_saved' = 'auto_saved') => {
@@ -539,7 +553,9 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
       const savedTimeline = await timelinePersistence.saveTimeline(projectId, saveRequest);
       
       const currentHash = getTimelineStateHash(state);
+      const currentMajorHash = getMajorChangesHash(state);
       lastSavedHash.current = currentHash;
+      lastMajorChangesHash.current = currentMajorHash;
       
       setPersistence(prev => ({
         ...prev,
@@ -580,7 +596,9 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
         dispatch({ type: 'LOAD_TIMELINE', timeline: timelineState });
         
         const currentHash = getTimelineStateHash({ ...state, ...timelineState } as TimelineState);
+        const currentMajorHash = getMajorChangesHash({ ...state, ...timelineState } as TimelineState);
         lastSavedHash.current = currentHash;
+        lastMajorChangesHash.current = currentMajorHash;
         
         setPersistence(prev => ({
           ...prev,
@@ -608,7 +626,7 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
           isPlaying: false,
         }});
         
-        lastSavedHash.current = getTimelineStateHash({
+        const emptyState = {
           tracks: [],
           selectedItems: [],
           playheadPosition: 0,
@@ -616,7 +634,10 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
           zoom: 2,
           fps: 30,
           isPlaying: false,
-        } as TimelineState);
+        } as TimelineState;
+        
+        lastSavedHash.current = getTimelineStateHash(emptyState);
+        lastMajorChangesHash.current = getMajorChangesHash(emptyState);
         
         setPersistence(prev => ({
           ...prev,
@@ -657,14 +678,26 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
     }));
   }, []);
 
-  // Auto-save effect - watch for state changes
+  // Smart auto-save effect - only save for major changes or time-based
   useEffect(() => {
     if (!isInitialized.current) return;
 
     const currentHash = getTimelineStateHash(state);
+    const currentMajorHash = getMajorChangesHash(state);
+    const now = Date.now();
+    
+    // Check if this is a major change (tracks, items, etc.)
+    const isMajorChange = currentMajorHash !== lastMajorChangesHash.current;
+    
+    // Check if enough time has passed for timed auto-save (5 seconds)
+    const shouldTimedSave = (now - lastAutoSaveTime.current) >= 5000 && currentHash !== lastSavedHash.current;
+    
     if (currentHash !== lastSavedHash.current) {
       markUnsaved();
-      if (autoSaveEnabled) {
+      
+      if (autoSaveEnabled && (isMajorChange || shouldTimedSave)) {
+        console.log(`Auto-saving: ${isMajorChange ? 'major change' : 'timed save'}`);
+        lastAutoSaveTime.current = now;
         debouncedSave();
       }
     }
@@ -714,6 +747,7 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
       dispatch({ type: 'SPLIT_ITEM', itemId, position }),
     trimItem: (itemId: string, start: number, end: number) =>
       dispatch({ type: 'TRIM_ITEM', itemId, start, end }),
+    clearTimeline: () => dispatch({ type: 'CLEAR_TIMELINE' }),
     undo: () => dispatch({ type: 'UNDO' }),
     redo: () => dispatch({ type: 'REDO' }),
   };

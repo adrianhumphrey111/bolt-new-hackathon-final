@@ -53,9 +53,26 @@ function TimelineItemRenderer({
   switch (item.type) {
     case MediaType.VIDEO:
       if (!item.src) return null;
+      
+      // Extract trim points from item properties (from AI analysis)
+      const originalStartTime = item.properties?.originalStartTime || item.properties?.trim_start || 0;
+      const originalEndTime = item.properties?.originalEndTime || item.properties?.trim_end || 0;
+      const fps = 30; // Should match timeline FPS
+      
+      // Convert seconds to frames for Remotion
+      const startFromFrame = Math.floor(originalStartTime * fps);
+      const endAtFrame = originalEndTime > 0 ? Math.floor(originalEndTime * fps) : undefined;
+      
+      // Log for debugging
+      if (originalStartTime > 0 || originalEndTime > 0) {
+        console.log(`🎬 Video trim: ${item.name} | Start: ${originalStartTime}s (${startFromFrame}f) | End: ${originalEndTime}s (${endAtFrame}f)`);
+      }
+      
       return (
         <Video
           src={item.src}
+          startFrom={startFromFrame}  // Start trim point in frames
+          endAt={endAtFrame}          // End trim point in frames
           style={style}
         />
       );

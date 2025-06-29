@@ -67,8 +67,8 @@ export default function ProjectCard({ project }: ProjectCardProps) {
   };
 
   const handleOpenProject = () => {
-    // For now, just open the editor - later we can add project-specific routing
-    router.push(`/editor?project=${project.id}`);
+    // Navigate to the SSR editor route
+    router.push(`/dashboard/${project.id}/editor`);
   };
 
   return (

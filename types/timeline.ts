@@ -80,6 +80,7 @@ export interface TimelineContextType {
     setPlaying: (playing: boolean) => void;
     splitItem: (itemId: string, position: number) => void;
     trimItem: (itemId: string, start: number, end: number) => void;
+    clearTimeline: () => void;
     undo: () => void;
     redo: () => void;
   };

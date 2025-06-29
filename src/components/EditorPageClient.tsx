@@ -1,7 +1,6 @@
 'use client';
 
 import { VideoEditor } from './VideoEditor';
-import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';

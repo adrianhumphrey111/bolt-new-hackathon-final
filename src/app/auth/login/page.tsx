@@ -1,8 +1,7 @@
 'use client';
 
-import { createBrowserClient } from '@supabase/ssr';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { FaGoogle } from 'react-icons/fa';
 import Link from 'next/link';
 
@@ -12,11 +11,6 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,39 +24,32 @@ export default function Login() {
         return;
       }
 
-      // Use Supabase client directly instead of API route
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
+      // Call our backend API
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password,
+        }),
+        credentials: 'include', // Important for cookie handling
       });
 
-      if (authError) {
-        // Handle specific Supabase error cases
-        switch (authError.message) {
-          case 'Invalid login credentials':
-            setError('Invalid email or password');
-            break;
-          case 'Email not confirmed':
-            setError('Please verify your email before logging in');
-            break;
-          default:
-            console.error('Supabase auth error:', authError);
-            setError('Authentication failed');
-        }
-        return;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sign in');
       }
 
-      if (data.user && data.session) {
-        // Successful login - wait a moment for cookies to be set
+      if (data.success) {
+        // Successful login - use window.location for hard navigation
         console.log('✅ Login successful, redirecting...');
-        
-        // Small delay to ensure session is properly established
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Force a hard navigation to ensure middleware picks up the session
         window.location.href = '/dashboard';
       } else {
-        setError('Login failed');
+        throw new Error('Login failed');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -74,14 +61,11 @@ export default function Login() {
 
   const handleSocialLogin = async (provider: 'google') => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) throw error;
+      // Direct redirect to Supabase OAuth
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const redirectUrl = `${window.location.origin}/auth/callback`;
+      
+      window.location.href = `${supabaseUrl}/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(redirectUrl)}`;
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
     }

@@ -1,6 +1,8 @@
-import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
-import { createSupabaseServerClient } from '../../../../../lib/supabase/server'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createSupabaseClient } from '../../../../../lib/supabase/client'
 import { VideoEditor } from '../../../../components/VideoEditor'
 
 interface EditorPageProps {
@@ -9,32 +11,62 @@ interface EditorPageProps {
   }
 }
 
-export default async function EditorPage({ params }: EditorPageProps) {
+export default function EditorPage({ params }: EditorPageProps) {
+  const [loading, setLoading] = useState(true)
+  const [authorized, setAuthorized] = useState(false)
+  const router = useRouter()
+  const supabase = createSupabaseClient()
   const projectId = params.project_id
-  
-  const cookieStore = await cookies()
-  const supabase = createSupabaseServerClient(cookieStore)
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
 
-  if (!session) {
-    redirect('/auth/login')
+        if (!session) {
+          router.push('/auth/login')
+          return
+        }
+
+        // Verify project ownership
+        const { data: projectData, error } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', projectId)
+          .eq('user_id', session.user.id)
+          .single()
+
+        if (error || !projectData) {
+          console.error('Project access denied:', error)
+          router.push('/dashboard')
+          return
+        }
+
+        setAuthorized(true)
+      } catch (error) {
+        console.error('Auth check failed:', error)
+        router.push('/auth/login')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    checkAuth()
+  }, [projectId, supabase, router])
+
+  if (loading) {
+    return (
+      <div className="h-screen w-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading editor...</p>
+        </div>
+      </div>
+    )
   }
 
-  // Fetch project details and verify ownership
-  const { data: projectData, error: projectError } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .eq('user_id', session.user.id) // Ensure user owns the project
-    .single()
-
-  if (projectError || !projectData) {
-    console.error('Error fetching project:', projectError)
-    // Project not found or user doesn't own it, redirect to dashboard
-    redirect('/dashboard')
+  if (!authorized) {
+    return null // Will redirect
   }
 
   return (

@@ -1,43 +1,70 @@
-import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
-import { createSupabaseServerClient } from '../../../lib/supabase/server'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createSupabaseClient } from '../../../lib/supabase/client'
 import DashboardClient from './components/DashboardClient'
 
-export default async function Dashboard() {
-  try {
-    const cookieStore = cookies()
-    const supabase = createSupabaseServerClient(cookieStore)
+export default function Dashboard() {
+  const [user, setUser] = useState(null)
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const supabase = createSupabaseClient()
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!session) {
+          router.push('/auth/login')
+          return
+        }
 
-    if (!session) {
-      redirect('/auth/login')
+        setUser(session.user)
+
+        // Fetch projects
+        const { data: projectsData, error } = await supabase
+          .from('projects')
+          .select(`*, videos (*)`)
+          .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('Error fetching projects:', error)
+        } else {
+          setProjects(projectsData || [])
+        }
+      } catch (error) {
+        console.error('Dashboard error:', error)
+        router.push('/auth/login')
+      } finally {
+        setLoading(false)
+      }
     }
 
-    // Fetch projects server-side
-    const { data: projectsData, error: projectsError } = await supabase
-      .from('projects')
-      .select(`
-        *,
-        videos (*)
-      `)
-      .order('created_at', { ascending: false })
+    checkAuth()
+  }, [supabase, router])
 
-    if (projectsError) {
-      console.error('Error fetching projects:', projectsError)
-    }
-
+  if (loading) {
     return (
-      <DashboardClient 
-        initialProjects={projectsData || []} 
-        user={session.user}
-      />
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
     )
-  } catch (error) {
-    console.error('Dashboard error:', error)
-    // If there's any error, redirect to login
-    redirect('/auth/login')
   }
+
+  if (!user) {
+    return null // Will redirect to login
+  }
+
+  return (
+    <DashboardClient 
+      initialProjects={projects} 
+      user={user}
+    />
+  )
 }

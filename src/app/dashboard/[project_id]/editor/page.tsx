@@ -2,7 +2,7 @@
 
 import { VideoEditor } from '../../../../components/VideoEditor';
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 
 interface EditorPageProps {
@@ -15,9 +15,13 @@ export default function EditorPage({ params }: EditorPageProps) {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
-  const supabase = createClientComponentClient();
   const router = useRouter();
   const projectId = params.project_id;
+  
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   useEffect(() => {
     const initializeEditor = async () => {

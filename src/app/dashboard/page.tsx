@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 import { FaPlus, FaVideo, FaSignOutAlt } from 'react-icons/fa'
 import NewProjectModal from './components/NewProjectModal'
@@ -30,8 +30,12 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [user, setUser] = useState<any>(null)
-  const supabase = createClientComponentClient()
   const router = useRouter()
+  
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   useEffect(() => {
     const fetchProjects = async () => {

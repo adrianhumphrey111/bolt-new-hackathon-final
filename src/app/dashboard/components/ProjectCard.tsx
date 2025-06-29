@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { FaVideo, FaTrash, FaEdit, FaPlay } from 'react-icons/fa';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 
 interface Video {
@@ -29,8 +29,12 @@ interface ProjectCardProps {
 
 export default function ProjectCard({ project }: ProjectCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
-  const supabase = createClientComponentClient();
   const router = useRouter();
+  
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {

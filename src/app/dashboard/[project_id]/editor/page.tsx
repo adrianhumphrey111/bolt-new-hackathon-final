@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { createSupabaseServerClient } from '../../../../../lib/supabase/server'
 import { VideoEditor } from '../../../../components/VideoEditor'
 
@@ -11,7 +12,8 @@ interface EditorPageProps {
 export default async function EditorPage({ params }: EditorPageProps) {
   const projectId = params.project_id
   
-  const supabase = createSupabaseServerClient()
+  const cookieStore = await cookies()
+  const supabase = createSupabaseServerClient(cookieStore)
 
   const {
     data: { session },

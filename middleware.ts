@@ -4,10 +4,10 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   try {
-    let supabaseResponse = NextResponse.next({
-      request,
-    })
+    // Create initial response object
+    let response = NextResponse.next()
 
+    // Create Supabase client using request + response
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -17,41 +17,34 @@ export async function middleware(request: NextRequest) {
             return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-            supabaseResponse = NextResponse.next({
-              request,
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options)
             })
-            cookiesToSet.forEach(({ name, value, options }) =>
-              supabaseResponse.cookies.set(name, value, options)
-            )
           },
         },
       }
     )
 
-    // Refresh session if expired - required for Server Components
     const {
       data: { session },
     } = await supabase.auth.getSession()
 
-    // Check auth condition
+    // Auth redirect logic
+    const { pathname } = request.nextUrl
+
     if (session?.user) {
-      // If the user is signed in and the current path is / or /auth/*,
-      // redirect the user to /dashboard.
-      if (request.nextUrl.pathname === '/' || request.nextUrl.pathname.startsWith('/auth/')) {
+      if (pathname === '/' || pathname.startsWith('/auth/')) {
         return NextResponse.redirect(new URL('/dashboard', request.url))
       }
     } else {
-      // Auth condition not met, redirect to login unless the path is / or /auth/*
-      if (!request.nextUrl.pathname.startsWith('/auth/') && request.nextUrl.pathname !== '/') {
+      if (!pathname.startsWith('/auth/') && pathname !== '/') {
         return NextResponse.redirect(new URL('/auth/login', request.url))
       }
     }
 
-    return supabaseResponse
+    return response
   } catch (error) {
-    console.error('Middleware error:', error)
-    // If middleware fails, allow the request to continue
+    console.error('⚠️ Middleware error:', error)
     return NextResponse.next()
   }
 }

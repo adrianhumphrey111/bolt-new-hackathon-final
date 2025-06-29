@@ -1,8 +1,6 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { NextResponse } from 'next/server'
-
 export async function POST(request: Request) {
+  // Comment out everything to test if the error persists
+  /*
   try {
     // Validate request content type
     const contentType = request.headers.get('content-type')
@@ -98,11 +96,23 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+  */
+
+  // Simple test response
+  return new Response(JSON.stringify({ 
+    success: true, 
+    message: 'Test response - everything commented out' 
+  }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
 }
 
 // Handle preflight requests
 export async function OPTIONS(request: Request) {
-  return new NextResponse(null, {
+  return new Response(null, {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',

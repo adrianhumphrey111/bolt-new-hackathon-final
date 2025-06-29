@@ -6,8 +6,6 @@ const nextConfig = {
     TAILWIND_DISABLE_NATIVE: 'true',
   },
   experimental: {
-    // Disable SWC minifier in favor of Terser for better WebContainer compatibility
-    swcMinify: false,
   },
   webpack: (config, { isServer }) => {
     // Disable native addons and optimize for WebContainer

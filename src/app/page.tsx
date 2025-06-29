@@ -5,46 +5,14 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaPlay, FaUpload, FaEdit, FaRocket, FaCheck, FaStar, FaArrowRight, FaVideo, FaShare, FaMagic, FaBolt, FaPalette, FaRobot, FaChevronDown, FaQuestionCircle, FaUsers, FaShield, FaLightbulb, FaFire, FaEye, FaVolumeUp, FaCut, FaImage, FaGlobe, FaClosedCaptioning, FaPause, FaDownload, FaChevronRight } from 'react-icons/fa';
+import { HeroTransitionDemo } from '../components/HeroTransitionDemo';
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [currentPrompt, setCurrentPrompt] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [showResult, setShowResult] = useState(false);
-  const [currentDemo, setCurrentDemo] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [showFaq, setShowFaq] = useState<number | null>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
-
-  const heroPrompts = [
-    {
-      prompt: "Remove all silences and add my logo at the end",
-      result: "✨ Removed 47 seconds of silence • Added logo overlay • Ready to export",
-      category: "Auto-Edit",
-      color: "from-blue-500 to-cyan-500"
-    },
-    {
-      prompt: "Create a 30-second highlight reel with upbeat music",
-      result: "🎬 Generated highlight reel • Added royalty-free music • Optimized pacing",
-      category: "Smart Highlights", 
-      color: "from-purple-500 to-pink-500"
-    },
-    {
-      prompt: "Add captions and crop for TikTok format",
-      result: "📱 Added animated captions • Cropped to 9:16 • TikTok-ready format",
-      category: "Platform Optimization",
-      color: "from-green-500 to-emerald-500"
-    },
-    {
-      prompt: "Replace background with virtual studio and add professional lighting",
-      result: "🎥 Applied virtual studio • Enhanced lighting • Professional quality",
-      category: "AI Enhancement",
-      color: "from-orange-500 to-red-500"
-    }
-  ];
 
   useEffect(() => {
     const checkUser = async () => {
@@ -58,59 +26,6 @@ export default function Home() {
 
     checkUser();
   }, [supabase, router]);
-
-  const typePrompt = (prompt: string, result: string) => {
-    setIsTyping(true);
-    setCurrentPrompt('');
-    setShowResult(false);
-    
-    let i = 0;
-    const typeWriter = () => {
-      if (i < prompt.length) {
-        setCurrentPrompt(prompt.slice(0, i + 1));
-        i++;
-        setTimeout(typeWriter, 30);
-      } else {
-        setIsTyping(false);
-        // Show processing animation then result
-        setTimeout(() => {
-          setShowResult(true);
-        }, 1500);
-      }
-    };
-    typeWriter();
-  };
-
-  // Auto-cycle through demo prompts
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!isTyping) {
-        const nextDemo = (currentDemo + 1) % heroPrompts.length;
-        setCurrentDemo(nextDemo);
-        typePrompt(heroPrompts[nextDemo].prompt, heroPrompts[nextDemo].result);
-      }
-    }, 6000);
-
-    return () => clearInterval(interval);
-  }, [currentDemo, isTyping]);
-
-  // Start first demo on mount
-  useEffect(() => {
-    setTimeout(() => {
-      typePrompt(heroPrompts[0].prompt, heroPrompts[0].result);
-    }, 1000);
-  }, []);
-
-  // Simulate video progress
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setProgress(prev => (prev >= 100 ? 0 : prev + 1));
-      }, 100);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
 
   const features = [
     {
@@ -237,7 +152,7 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Enhanced Hero Section with Interactive Demo */}
+      {/* Enhanced Hero Section with Real Remotion Demo */}
       <section className="relative overflow-hidden">
         {/* Background Effects */}
         <div className="absolute inset-0">
@@ -252,7 +167,7 @@ export default function Home() {
             <div className="text-center lg:text-left">
               <div className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-full border border-blue-500/30 mb-8">
                 <FaLightbulb className="w-4 h-4 text-yellow-400 mr-2" />
-                <span className="text-sm font-medium">Live AI Demo Below</span>
+                <span className="text-sm font-medium">Real Remotion Demo Below</span>
               </div>
 
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
@@ -301,149 +216,17 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Right Side - Interactive Demo */}
+            {/* Right Side - Real Remotion Demo */}
             <div className="relative">
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 overflow-hidden shadow-2xl">
-                {/* Mock Video Player */}
-                <div className="relative bg-black aspect-video">
-                  <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                        <FaPlay className="w-8 h-8 text-white ml-1" />
-                      </div>
-                      <p className="text-gray-300 font-medium">Sample Video: Product Demo</p>
-                      <p className="text-sm text-gray-500">Duration: 5:23 • 1080p</p>
-                    </div>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-4">
-                    <div className="flex items-center space-x-4">
-                      <button
-                        onClick={() => setIsPlaying(!isPlaying)}
-                        className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-colors"
-                      >
-                        {isPlaying ? <FaPause className="w-4 h-4" /> : <FaPlay className="w-4 h-4 ml-0.5" />}
-                      </button>
-                      <div className="flex-1 bg-gray-600 rounded-full h-1">
-                        <div 
-                          className="bg-blue-500 h-1 rounded-full transition-all duration-100"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <span className="text-sm text-gray-300">2:34 / 5:23</span>
-                    </div>
-                  </div>
-
-                  {/* Live Demo Badge */}
-                  <div className="absolute top-4 left-4">
-                    <div className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-medium flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                      <span>LIVE DEMO</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* AI Prompt Interface */}
-                <div className="p-6">
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-300">
-                        AI Video Editor
-                      </label>
-                      <div className="flex items-center space-x-1">
-                        {heroPrompts.map((_, index) => (
-                          <div
-                            key={index}
-                            className={`w-2 h-2 rounded-full transition-colors ${
-                              currentDemo === index ? 'bg-blue-500' : 'bg-gray-600'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={currentPrompt}
-                        readOnly
-                        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-                        placeholder="Type your editing request..."
-                      />
-                      {isTyping && (
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* AI Processing Animation */}
-                  {isTyping && (
-                    <div className="mb-4 p-4 bg-blue-600/10 border border-blue-500/30 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                        <div>
-                          <span className="text-blue-300 font-medium">AI is analyzing your request...</span>
-                          <div className="text-xs text-blue-400 mt-1">
-                            Detecting scenes • Understanding context • Preparing edits
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Result Display */}
-                  {showResult && !isTyping && (
-                    <div className="mb-4 p-4 bg-green-600/10 border border-green-500/30 rounded-lg animate-in fade-in-0 duration-500">
-                      <div className="flex items-start space-x-3">
-                        <FaCheck className="w-5 h-5 text-green-400 mt-0.5" />
-                        <div>
-                          <p className="text-green-300 font-medium">Processing Complete!</p>
-                          <p className="text-gray-300 text-sm mt-1">{heroPrompts[currentDemo].result}</p>
-                          <div className="flex items-center space-x-4 mt-3">
-                            <button className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded transition-colors">
-                              Preview Changes
-                            </button>
-                            <button className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded transition-colors flex items-center space-x-1">
-                              <FaDownload className="w-3 h-3" />
-                              <span>Export</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 px-4 rounded-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center space-x-2"
-                    onClick={() => typePrompt(heroPrompts[currentDemo].prompt, heroPrompts[currentDemo].result)}
-                  >
-                    <FaMagic className="w-4 h-4" />
-                    <span>Apply AI Magic</span>
-                  </button>
-
-                  {/* Quick Actions */}
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-2 rounded transition-colors flex items-center justify-center space-x-1">
-                      <FaCut className="w-3 h-3" />
-                      <span>Remove Silences</span>
-                    </button>
-                    <button className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-2 rounded transition-colors flex items-center justify-center space-x-1">
-                      <FaClosedCaptioning className="w-3 h-3" />
-                      <span>Add Captions</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <HeroTransitionDemo />
 
               {/* Floating Elements */}
               <div className="absolute -top-4 -right-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-black px-4 py-2 rounded-full text-sm font-bold animate-bounce">
-                🔥 Try it now!
+                🔥 Real Remotion!
               </div>
               
               <div className="absolute -bottom-4 -left-4 bg-gradient-to-r from-green-400 to-blue-500 text-white px-4 py-2 rounded-full text-sm font-medium">
-                ✨ 100% Free to try
+                ✨ Live Transitions
               </div>
             </div>
           </div>

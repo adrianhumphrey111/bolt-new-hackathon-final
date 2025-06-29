@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { Main } from "./MyComp/Main";
 import { TimelineComposition } from "./TimelineComposition";
+import { TransitionDemoComposition } from "./TransitionDemo/TransitionDemoComposition";
 import {
   COMP_NAME,
   defaultMyCompProps,
@@ -44,6 +45,18 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={{
           items: [],
           fps: VIDEO_FPS,
+        }}
+      />
+      <Composition
+        id="TransitionDemo"
+        component={TransitionDemoComposition}
+        durationInFrames={210} // 90 + 30 + 90 frames
+        fps={VIDEO_FPS}
+        width={VIDEO_WIDTH}
+        height={VIDEO_HEIGHT}
+        defaultProps={{
+          showTransition: false,
+          transitionType: 'fade' as const,
         }}
       />
     </>

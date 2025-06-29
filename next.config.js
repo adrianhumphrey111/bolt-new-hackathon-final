@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  transpilePackages: ['react-icons', '@remotion/transitions'],
   env: {
     TAILWIND_DISABLE_NATIVE: 'true',
   },

@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Player, PlayerRef } from "@remotion/player";
 import { TransitionDemoComposition } from "../remotion/TransitionDemo/TransitionDemoComposition";
-import { FaPlay, FaPause, FaMagic, FaCheck, FaArrowRight, FaSparkles } from 'react-icons/fa';
+import { FaPlay, FaPause, FaMagic, FaCheck, FaArrowRight } from 'react-icons/fa';
+import { FaWandMagicSparkles as FaSparkles } from 'react-icons/fa6';
 
 export function HeroTransitionDemo() {
   const [currentStep, setCurrentStep] = useState<'before' | 'typing' | 'processing' | 'after'>('before');

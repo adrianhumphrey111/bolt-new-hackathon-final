@@ -1,6 +1,8 @@
 import React from 'react';
 import { AbsoluteFill, Sequence } from 'remotion';
-import { TransitionSeries, linearTiming, fade, slide } from '@remotion/transitions';
+import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import { fade } from '@remotion/transitions/fade';
+import { slide } from '@remotion/transitions/slide';
 import { NextLogo } from '../MyComp/NextLogo';
 import { loadFont, fontFamily } from "@remotion/google-fonts/Inter";
 

@@ -1,10 +1,12 @@
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { createSupabaseServerClient } from '../../../lib/supabase/server'
 import DashboardClient from './components/DashboardClient'
 
 export default async function Dashboard() {
   try {
-    const supabase = createSupabaseServerClient()
+    const cookieStore = cookies()
+    const supabase = createSupabaseServerClient(cookieStore)
 
     const {
       data: { session },

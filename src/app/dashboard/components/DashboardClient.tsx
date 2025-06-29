@@ -46,8 +46,8 @@ export default function DashboardClient({ initialProjects, user }: DashboardClie
   }
 
   const openEditor = () => {
-    // Navigate to editor without a specific project (general editor)
-    router.push('/editor')
+    // Navigate to editor-demo page
+    router.push('/editor-demo')
   }
 
   const refreshProjects = () => {

@@ -15,14 +15,23 @@ export async function POST(request: Request) {
     // Parse and validate request body
     let email: string
     let password: string
+    let confirmPassword: string
     try {
       const body = await request.json()
       email = body.email?.trim()
       password = body.password
+      confirmPassword = body.confirmPassword
 
-      if (!email || !password) {
+      if (!email || !password || !confirmPassword) {
         return NextResponse.json(
-          { error: 'Email and password are required' },
+          { error: 'All fields are required' },
+          { status: 400 }
+        )
+      }
+
+      if (password !== confirmPassword) {
+        return NextResponse.json(
+          { error: 'Passwords do not match' },
           { status: 400 }
         )
       }
@@ -54,58 +63,36 @@ export async function POST(request: Request) {
     // Initialize Supabase client with server-side cookie handling
     const supabase = createServerSupabaseClient()
 
-    // Attempt login
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
+    // Attempt signup
+    const { data, error: authError } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      },
     })
 
     if (authError) {
-      // Handle specific Supabase error cases
-      switch (authError.message) {
-        case 'Invalid login credentials':
-          return NextResponse.json(
-            { error: 'Invalid email or password' },
-            { status: 401 }
-          )
-        case 'Email not confirmed':
-          return NextResponse.json(
-            { error: 'Please verify your email before logging in' },
-            { status: 403 }
-          )
-        default:
-          console.error('Supabase auth error:', authError)
-          return NextResponse.json(
-            { error: 'Authentication failed' },
-            { status: 401 }
-          )
-      }
+      console.error('Supabase signup error:', authError)
+      return NextResponse.json(
+        { error: authError.message },
+        { status: 400 }
+      )
     }
 
-    // Successful login - cookies are automatically set by Supabase
+    // Successful signup
     return NextResponse.json({
       success: true,
+      message: 'Check your email for the confirmation link!',
       user: data.user,
     })
 
   } catch (error) {
     // Log the error for debugging but don't expose details to client
-    console.error('Server error during login:', error)
+    console.error('Server error during signup:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
     )
   }
-}
-
-// Handle preflight requests
-export async function OPTIONS(request: Request) {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
-  })
 }

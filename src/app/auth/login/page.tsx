@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientSupabaseClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { FaGoogle, FaGithub } from 'react-icons/fa';
@@ -12,7 +12,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createClientSupabaseClient();
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +26,7 @@ export default function Login() {
         return;
       }
 
-      // Call our backend API
+      // Call our backend API for server-side authentication
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -47,7 +47,7 @@ export default function Login() {
       }
 
       if (data.success) {
-        // Successful login
+        // Successful login - redirect to dashboard
         router.push('/dashboard');
         router.refresh();
       } else {

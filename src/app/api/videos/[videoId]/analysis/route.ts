@@ -9,7 +9,7 @@ export async function GET(
     const { videoId } = await params;
 
     // Check authentication and get authenticated client
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

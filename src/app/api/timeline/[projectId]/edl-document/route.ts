@@ -6,7 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getUserFromRequest } from '../../../../lib/supabase/server';
-import { STRIPE_CONFIG } from '../../../../lib/stripe-config';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-12-18.acacia',
+  apiVersion: '2025-05-28.basil',
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

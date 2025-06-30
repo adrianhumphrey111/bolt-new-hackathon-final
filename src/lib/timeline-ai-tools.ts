@@ -254,7 +254,7 @@ export const AI_TOOLS = [
     }
   },
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "changeClipDuration", 
       description: "Change the duration of a specific clip",
@@ -269,7 +269,7 @@ export const AI_TOOLS = [
     }
   },
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "removeClip",
       description: "Remove a clip from the timeline",
@@ -283,7 +283,7 @@ export const AI_TOOLS = [
     }
   },
   {
-    type: "function",
+    type: "function" as const,
     function: {
       name: "addTrack",
       description: "Add a new track to the timeline", 

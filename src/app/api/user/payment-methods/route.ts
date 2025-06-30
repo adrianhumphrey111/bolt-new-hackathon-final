@@ -3,12 +3,12 @@ import Stripe from 'stripe';
 import { getUserFromRequest } from '../../../../lib/supabase/server';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-12-18.acacia',
+  apiVersion: '2025-05-28.basil',
 });
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

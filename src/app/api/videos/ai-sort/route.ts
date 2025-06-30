@@ -51,7 +51,7 @@ interface AIVideoAnalysis {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -297,7 +297,7 @@ Focus on creating sort options that would be most valuable for video editors wor
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient, getUserFromRequest } from '../../../../lib/supabase/server';
+import { getUserFromRequest } from '../../../../lib/supabase/server';
 
 export async function GET(
   request: NextRequest,
@@ -7,10 +7,9 @@ export async function GET(
 ) {
   try {
     const { projectId } = await params;
-    const supabase = createServerSupabaseClient();
     
-    // Check authentication
-    const { user, error: authError } = await getUserFromRequest(request);
+    // Check authentication and get authenticated client
+    const { user, error: authError, supabase } = await getUserFromRequest(request);
     console.log('🔍 Timeline GET - Auth check:', { 
       hasUser: !!user, 
       userId: user?.id, 
@@ -33,6 +32,20 @@ export async function GET(
       allProjects,
       allProjectsError: allProjectsError?.message || allProjectsError?.code,
       count: allProjects?.length || 0
+    });
+
+    // Let's also check what projects this user actually has
+    const { data: userProjects, error: userProjectsError } = await supabase
+      .from('projects')
+      .select('id, title, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    console.log('🔍 Timeline GET - User\'s recent projects:', { 
+      userId: user.id,
+      userProjects,
+      userProjectsError: userProjectsError?.message || userProjectsError?.code
     });
 
     // Verify user has access to this project
@@ -120,10 +133,9 @@ export async function POST(
 ) {
   try {
     const { projectId } = await params;
-    const supabase = createServerSupabaseClient();
     
-    // Check authentication
-    const { user, error: authError } = await getUserFromRequest(request);
+    // Check authentication and get authenticated client
+    const { user, error: authError, supabase } = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -243,10 +255,9 @@ export async function DELETE(
 ) {
   try {
     const { projectId } = await params;
-    const supabase = createServerSupabaseClient();
     
-    // Check authentication
-    const { user, error: authError } = await getUserFromRequest(request);
+    // Check authentication and get authenticated client
+    const { user, error: authError, supabase } = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

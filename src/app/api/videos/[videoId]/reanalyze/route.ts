@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { getUserFromRequest } from '../../../../../lib/supabase/server';
 
 export async function POST(
   request: NextRequest,
@@ -11,12 +10,9 @@ export async function POST(
     const body = await request.json();
     const { additional_context } = body;
 
-    // Get authentication
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    if (authError || !session) {
+    // Check authentication and get authenticated client
+    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -31,7 +27,7 @@ export async function POST(
         projects!inner(user_id)
       `)
       .eq('id', videoId)
-      .eq('projects.user_id', session.user.id)
+      .eq('projects.user_id', user.id)
       .single();
 
     if (videoError || !video) {
@@ -75,7 +71,7 @@ export async function POST(
       .upsert({
         video_id: videoId,
         project_id: video.project_id,
-        user_id: session.user.id,
+        user_id: user.id,
         status: 'processing',
         processing_started_at: new Date().toISOString(),
       }, {

@@ -18,6 +18,10 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "noUnusedLocals": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "plugins": [
       {
         "name": "next"

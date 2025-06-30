@@ -9,11 +9,10 @@ export async function GET(
     const { projectId } = await params;
     
     // Check authentication and get authenticated client
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     console.log('🔍 Timeline GET - Auth check:', { 
       hasUser: !!user, 
       userId: user?.id, 
-      authError,
       projectId 
     });
     
@@ -135,7 +134,7 @@ export async function POST(
     const { projectId } = await params;
     
     // Check authentication and get authenticated client
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -160,10 +159,8 @@ export async function POST(
       frameRate,
       zoom,
       playheadPosition,
-      pixelsPerFrame,
       status = 'auto_saved',
-      title,
-      description
+      title
     } = body;
 
     // Validate required fields
@@ -242,7 +239,7 @@ export async function POST(
 }
 
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   // PUT is the same as POST for timeline - we always upsert
@@ -257,7 +254,7 @@ export async function DELETE(
     const { projectId } = await params;
     
     // Check authentication and get authenticated client
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

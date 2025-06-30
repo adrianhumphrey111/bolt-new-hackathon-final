@@ -4,7 +4,7 @@ import { getUserFromRequest } from '../../../lib/supabase/server';
 // POST /api/exports - Track a new export
 export async function POST(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user, supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 // GET /api/exports - Get user's exports
 export async function GET(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user, supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

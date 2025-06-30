@@ -10,12 +10,14 @@ const openai = new OpenAI({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   return withCreditsCheck(request, 'ai_chat', async (userId, supabase) => {
-    // ProjectId is available in params.projectId if needed for validation
+    // Await params since they're now a Promise in Next.js 15
+    const resolvedParams = await params;
+    // ProjectId is available in resolvedParams.projectId if needed for validation
     // For now, we don't need to validate against projectId
-    console.log('Processing chat request for project:', params.projectId);
+    console.log('Processing chat request for project:', resolvedParams.projectId);
     try {
     const { message, timelineSummary } = await request.json();
 
@@ -55,7 +57,7 @@ Guidelines:
 
     // Use credits after successful AI call
     const creditsUsed = await useCredits(userId, 'ai_chat', {
-      projectId: params.projectId,
+      projectId: resolvedParams.projectId,
       message: message.substring(0, 100) // Log first 100 chars
     }, supabase);
 

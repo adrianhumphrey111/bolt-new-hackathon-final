@@ -4,7 +4,7 @@ import { getUserFromRequest } from '../../../lib/supabase/server';
 // POST /api/renders - Track a new render
 export async function POST(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 // PATCH /api/renders/:renderId - Update render status
 export async function PATCH(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -124,7 +124,7 @@ export async function PATCH(request: NextRequest) {
 // GET /api/renders - Get user's renders
 export async function GET(request: NextRequest) {
   try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
+    const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

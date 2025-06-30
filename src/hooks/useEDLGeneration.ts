@@ -42,15 +42,42 @@ interface EDLGenerationJob {
   steps: EDLGenerationStep[]
 }
 
-export function useEDLGeneration(projectId: string | null) {
+export function useEDLGeneration(projectId: string | null, session?: any, checkForExistingJobs: boolean = false) {
   const [currentJob, setCurrentJob] = useState<EDLGenerationJob | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastCheckTime, setLastCheckTime] = useState<Date | null>(null)
+  const [creditError, setCreditError] = useState<{
+    requiredCredits: number;
+    availableCredits: number;
+  } | null>(null)
   
   const supabase = createClientComponentClient()
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const channelRef = useRef<any>(null)
+
+  // Get auth headers for API calls
+  const getAuthHeaders = useCallback(async () => {
+    // First try to use the passed session, then fallback to getting it from supabase
+    let currentSession = session;
+    if (!currentSession) {
+      const { data: { session: fetchedSession }, error } = await supabase.auth.getSession();
+      currentSession = fetchedSession;
+      
+      if (error) {
+        console.error('Error getting session:', error);
+      }
+    }
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (currentSession?.access_token) {
+      headers['Authorization'] = `Bearer ${currentSession.access_token}`;
+    }
+    
+    return headers;
+  }, [supabase, session]);
 
   // Start EDL generation
   const startGeneration = useCallback(async (userIntent: string, scriptContent?: string) => {
@@ -61,13 +88,19 @@ export function useEDLGeneration(projectId: string | null) {
 
     setIsGenerating(true)
     setError(null)
+    setCreditError(null) // Clear any previous credit errors
 
     try {
+      const headers = await getAuthHeaders();
+      
+      // Validate that we have auth headers before proceeding
+      if (!headers['Authorization']) {
+        throw new Error('Authentication required. Please sign in and try again.');
+      }
+      
       const response = await fetch(`/api/timeline/${projectId}/generate-edl-async`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           userIntent,
           scriptContent: scriptContent || ''
@@ -77,6 +110,16 @@ export function useEDLGeneration(projectId: string | null) {
       const data = await response.json()
 
       if (!response.ok) {
+        // Handle 402 Payment Required specifically
+        if (response.status === 402) {
+          setCreditError({
+            requiredCredits: data.creditsRequired || 1,
+            availableCredits: data.creditsAvailable || 0
+          })
+          setError(null) // Don't show generic error for credit issues
+          setIsGenerating(false)
+          return null
+        }
         throw new Error(data.error || 'Failed to start EDL generation')
       }
 
@@ -90,16 +133,31 @@ export function useEDLGeneration(projectId: string | null) {
       console.error('❌ Error starting EDL generation:', err)
       setError(err instanceof Error ? err.message : 'Failed to start generation')
       setIsGenerating(false)
+      setCreditError(null) // Clear credit error on other errors
       return null
     }
-  }, [projectId])
+  }, [projectId, getAuthHeaders])
+
+  // Clear credit error function
+  const clearCreditError = useCallback(() => {
+    setCreditError(null)
+  }, [])
 
   // Check job status
   const checkJobStatus = useCallback(async (jobId: string) => {
     if (!projectId) return
 
     try {
-      const response = await fetch(`/api/timeline/${projectId}/generate-edl-async?jobId=${jobId}`)
+      const headers = await getAuthHeaders();
+      
+      // For status checks, we can be more lenient - just log if no auth instead of failing
+      if (!headers['Authorization']) {
+        console.warn('No auth headers available for status check');
+      }
+      
+      const response = await fetch(`/api/timeline/${projectId}/generate-edl-async?jobId=${jobId}`, {
+        headers
+      })
       const jobData = await response.json()
 
       if (!response.ok) {
@@ -108,14 +166,30 @@ export function useEDLGeneration(projectId: string | null) {
 
       console.log('📊 Job status:', jobData.status, `${jobData.progress.percentage}%`)
       
+      // Process and sort steps by step_number to ensure correct ordering
+      if (jobData.steps && Array.isArray(jobData.steps)) {
+        jobData.steps = jobData.steps.sort((a: any, b: any) => a.step_number - b.step_number)
+      }
+      
       setCurrentJob(jobData)
       setLastCheckTime(new Date())
       setError(null)
 
-      // Stop polling if job is complete or failed
-      if (jobData.status === 'completed' || jobData.status === 'failed') {
+      // Check if SHOT_LIST_GENERATOR step is complete
+      const shotListGeneratorStep = jobData.steps?.find(
+        (step: any) => step.agent_name === 'SHOT_LIST_GENERATOR' || step.step_name.includes('SHOT_LIST_GENERATOR')
+      )
+      
+      const isShotListReady = shotListGeneratorStep?.status === 'completed'
+
+      // Stop generating status and polling when shot list is ready OR job is complete/failed
+      if (jobData.status === 'completed' || jobData.status === 'failed' || isShotListReady) {
         setIsGenerating(false)
         stopPolling()
+        
+        if (isShotListReady && jobData.status === 'running') {
+          console.log('🎉 Shot list ready! Timeline can now be applied. Stopping polling.')
+        }
         
         if (jobData.status === 'failed' && jobData.error) {
           setError(`Generation failed: ${jobData.error.message}`)
@@ -128,7 +202,7 @@ export function useEDLGeneration(projectId: string | null) {
       // Don't set error for polling failures - only show errors when job status is 'failed'
       return null
     }
-  }, [projectId])
+  }, [projectId, getAuthHeaders])
 
   // Start polling for job status
   const startPolling = useCallback((jobId: string) => {
@@ -137,10 +211,10 @@ export function useEDLGeneration(projectId: string | null) {
     // Initial check
     checkJobStatus(jobId)
 
-    // Start polling every 3 seconds
+    // Start polling every 2 seconds for more responsive updates
     pollIntervalRef.current = setInterval(() => {
       checkJobStatus(jobId)
-    }, 3000)
+    }, 2000)
   }, [checkJobStatus])
 
   // Stop polling
@@ -192,6 +266,48 @@ export function useEDLGeneration(projectId: string | null) {
     }
   }, [projectId, supabase, currentJob, checkJobStatus])
 
+  // Check for existing active jobs when projectId changes (only if explicitly requested)
+  useEffect(() => {
+    if (!projectId || !checkForExistingJobs) return
+
+    const checkForExistingJob = async () => {
+      try {
+        const headers = await getAuthHeaders()
+        
+        // For initial checks, we can be more lenient with auth
+        if (!headers['Authorization']) {
+          console.log('No auth headers available for existing job check, skipping...')
+          return
+        }
+        
+        const response = await fetch(`/api/timeline/${projectId}/generate-edl-async`, {
+          headers
+        })
+        
+        if (response.ok) {
+          const jobData = await response.json()
+          
+          // If we find an active job, resume tracking it
+          if (jobData.status === 'running' || jobData.status === 'pending') {
+            console.log('🔄 Found existing active job, resuming tracking:', jobData.jobId)
+            setCurrentJob(jobData)
+            setIsGenerating(true)
+            startPolling(jobData.jobId)
+          } else if (jobData.status === 'completed' || jobData.status === 'failed') {
+            // Show completed/failed job but don't start polling
+            console.log('📋 Found existing completed/failed job:', jobData.jobId, jobData.status)
+            setCurrentJob(jobData)
+            setIsGenerating(false)
+          }
+        }
+      } catch (error) {
+        console.error('Error checking for existing job:', error)
+      }
+    }
+
+    checkForExistingJob()
+  }, [projectId, getAuthHeaders, startPolling, checkForExistingJobs])
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -220,11 +336,50 @@ export function useEDLGeneration(projectId: string | null) {
   const getCurrentStepStatus = (): string => {
     if (!currentJob) return 'Not started'
     
-    if (currentJob.status === 'completed') return 'Completed'
-    if (currentJob.status === 'failed') return 'Failed'
+    if (currentJob.status === 'completed') return 'All steps completed successfully'
+    if (currentJob.status === 'failed') return 'Generation failed'
     if (currentJob.status === 'pending') return 'Initializing...'
     
+    // Find the currently running step
+    if (currentJob.steps && Array.isArray(currentJob.steps)) {
+      const runningStep = currentJob.steps.find(step => step.status === 'running')
+      if (runningStep) {
+        return `Running: ${runningStep.step_name}`
+      }
+      
+      // If no running step, find the last completed step
+      const completedSteps = currentJob.steps.filter(step => step.status === 'completed')
+      if (completedSteps.length > 0) {
+        const nextStepNumber = completedSteps.length + 1
+        const nextStep = currentJob.steps.find(step => step.step_number === nextStepNumber)
+        if (nextStep) {
+          return `Starting: ${nextStep.step_name}`
+        }
+      }
+    }
+    
     return currentJob.currentStep || 'Processing...'
+  }
+
+  // Helper function to check if SHOT_LIST_GENERATOR step is complete
+  const isShotListGeneratorComplete = (): boolean => {
+    if (!currentJob?.steps) return false
+    
+    const shotListGeneratorStep = currentJob.steps.find(
+      step => step.agent_name === 'SHOT_LIST_GENERATOR' || step.step_name.includes('SHOT_LIST_GENERATOR')
+    )
+    
+    return shotListGeneratorStep?.status === 'completed'
+  }
+
+  // Helper function to check if timeline can be created (shot list is ready)
+  const canCreateTimelineFromShotList = (): boolean => {
+    return isShotListGeneratorComplete() && (currentJob?.results?.shotList?.length || 0) > 0
+  }
+
+  // Helper function to check if generation is effectively complete (shot list ready)
+  const isEffectivelyComplete = (): boolean => {
+    return currentJob?.status === 'completed' || isShotListGeneratorComplete()
   }
 
   return {
@@ -233,19 +388,21 @@ export function useEDLGeneration(projectId: string | null) {
     isGenerating,
     error,
     lastCheckTime,
+    creditError,
     
     // Actions
     startGeneration,
     checkJobStatus,
     stopPolling,
+    clearCreditError,
     
     // Helpers
     formatElapsedTime,
     getCurrentStepStatus,
     
     // Status checks
-    canCreateTimeline: currentJob?.results?.canCreateTimeline || false,
-    isComplete: currentJob?.status === 'completed',
+    canCreateTimeline: canCreateTimelineFromShotList(),
+    isComplete: isEffectivelyComplete(),
     isFailed: currentJob?.status === 'failed',
     progress: currentJob?.progress?.percentage || 0,
     

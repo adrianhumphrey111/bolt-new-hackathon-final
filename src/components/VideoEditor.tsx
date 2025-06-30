@@ -12,6 +12,7 @@ import { DragProvider } from './timeline/DragContext';
 import { SaveStatusIndicator } from './timeline/SaveStatusIndicator';
 import { AIChatPanel } from './timeline/AIChatPanel';
 import { RenderModal } from './timeline/RenderModal';
+import { EDLViewer } from './timeline/EDLViewer';
 import { CanvasSizeSelector, aspectRatios, type AspectRatio } from './CanvasSizeSelector';
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext';
 import { TimeDisplay } from './timeline/TimeDisplay';
@@ -19,6 +20,7 @@ import { SeekBar } from './timeline/SeekBar';
 import { TimelineItem, MediaType } from '../../types/timeline';
 import { useAuthContext } from './AuthProvider';
 import { useRouter } from 'next/navigation';
+import { useEDLGeneration } from '../hooks/useEDLGeneration';
 import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
@@ -43,7 +45,7 @@ export function usePlayerControls() {
 function VideoEditorContent() {
   const { state, actions } = useTimeline();
   const { projectId } = useProject();
-  const { isAuthenticated, loading: authLoading } = useAuthContext();
+  const { isAuthenticated, loading: authLoading, session } = useAuthContext();
   const router = useRouter();
   const [showMediaLibrary, setShowMediaLibrary] = useState(true);
   const [showPropertyPanel, setShowPropertyPanel] = useState(true);
@@ -51,6 +53,14 @@ function VideoEditorContent() {
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showRenderModal, setShowRenderModal] = useState(false);
+  const [showEDLViewer, setShowEDLViewer] = useState(false);
+  
+  // EDL Generation hook to track job state (only check for existing jobs when modal is opened)
+  const {
+    currentJob,
+    isGenerating,
+    isComplete
+  } = useEDLGeneration(projectId, session, showGenerateModal);
   const [currentAspectRatio, setCurrentAspectRatio] = useState<AspectRatio>(aspectRatios[1]); // Default to 16:9
   const [playerDimensions, setPlayerDimensions] = useState({ width: 800, height: 450 });
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>();
@@ -378,6 +388,14 @@ function VideoEditorContent() {
         <div className="flex items-center space-x-4 min-w-0">
           <div className="flex items-center space-x-2">
             <h1 className="text-lg font-bold text-white truncate">Remotion Video Editor</h1>
+            <div className="flex items-center space-x-1 bg-gray-700 rounded-full px-2 py-1">
+              <img 
+                src="/bolt/white_circle_360x360/white_circle_360x360.svg" 
+                alt="Built with Bolt" 
+                className="w-4 h-4"
+              />
+              <span className="text-xs text-gray-300 hidden sm:block">Built on Bolt</span>
+            </div>
             <div className="text-sm text-gray-400 hidden sm:block">
               {state.tracks.length} track{state.tracks.length !== 1 ? 's' : ''} • {Math.round(state.totalDuration / state.fps)}s
             </div>
@@ -431,14 +449,60 @@ function VideoEditorContent() {
           <button 
             onClick={() => setShowGenerateModal(true)}
             disabled={!projectId}
-            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
-            title="Generate video timeline with AI"
+            className={`px-3 py-2 ${
+              isComplete && currentJob
+                ? 'bg-green-600 hover:bg-green-700'
+                : isGenerating || currentJob
+                ? 'bg-orange-600 hover:bg-orange-700' 
+                : 'bg-purple-600 hover:bg-purple-700'
+            } disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2`}
+            title={
+              isComplete && currentJob
+                ? "Timeline ready! Click to apply to timeline"
+                : isGenerating || currentJob 
+                ? "AI generation in progress - click to view progress" 
+                : "Generate video timeline with AI"
+            }
+          >
+            {isComplete && currentJob ? (
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            ) : isGenerating || currentJob ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49zM10 18.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5z" clipRule="evenodd" />
+              </svg>
+            )}
+            <span className="hidden sm:inline">
+              {isComplete && currentJob 
+                ? 'Timeline Ready!' 
+                : isGenerating || currentJob 
+                ? 'Generating with AI' 
+                : 'Generate with AI'}
+            </span>
+            <span className="sm:hidden">
+              {isComplete && currentJob 
+                ? 'Ready!' 
+                : isGenerating || currentJob 
+                ? 'Generating' 
+                : 'Generate'}
+            </span>
+          </button>
+
+          {/* View EDL button */}
+          <button 
+            onClick={() => setShowEDLViewer(true)}
+            disabled={!projectId}
+            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
+            title="View AI-generated Edit Decision List"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49zM10 18.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5z" clipRule="evenodd" />
+              <path d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 3a1 1 0 000 2h8a1 1 0 100-2H6zm0 4a1 1 0 100 2h6a1 1 0 100-2H6z" />
             </svg>
-            <span className="hidden sm:inline">Generate with AI</span>
-            <span className="sm:hidden">Generate</span>
+            <span className="hidden sm:inline">View EDL</span>
+            <span className="sm:hidden">EDL</span>
           </button>
 
           {/* Export dropdown */}
@@ -598,6 +662,15 @@ function VideoEditorContent() {
           projectId={projectId}
           isOpen={showRenderModal}
           onClose={() => setShowRenderModal(false)}
+        />
+      )}
+
+      {/* EDL Viewer */}
+      {projectId && (
+        <EDLViewer
+          projectId={projectId}
+          isOpen={showEDLViewer}
+          onClose={() => setShowEDLViewer(false)}
         />
       )}
         </div>

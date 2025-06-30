@@ -1,16 +1,14 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getUserFromRequest } from '../../../../../lib/supabase/server'
+import { withCreditsCheck, useCredits } from '../../../../../lib/credits'
 
 // POST /api/timeline/[projectId]/generate-edl-async - Start async EDL generation
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
-  try {
-    const { user, error: authError, supabase } = await getUserFromRequest(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  return withCreditsCheck(request, 'ai_generate', async (userId, supabase) => {
+    try {
 
     const { projectId } = await params
     const { userIntent, scriptContent } = await request.json()
@@ -20,7 +18,7 @@ export async function POST(
       .from('projects')
       .select('id, user_id, title')
       .eq('id', projectId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single()
 
     if (projectError || !project) {
@@ -48,7 +46,7 @@ export async function POST(
       .from('edl_generation_jobs')
       .insert({
         project_id: projectId,
-        user_id: user.id,
+        user_id: userId,
         user_intent: userIntent,
         script_content: scriptContent || '',
         status: 'pending',
@@ -179,6 +177,18 @@ export async function POST(
     })
     }) // Close setImmediate callback
 
+    // Use credits after Lambda has been triggered
+    const creditsUsed = await useCredits(userId, 'ai_generate', {
+      projectId,
+      jobId: newJob.id,
+      projectTitle: project.title,
+      userIntent: userIntent?.substring(0, 100)
+    }, supabase);
+
+    if (!creditsUsed) {
+      console.error('Failed to deduct credits for AI generation');
+    }
+
     // Return immediately with job info (don't wait for Lambda)
     return NextResponse.json({
       success: true,
@@ -195,11 +205,12 @@ export async function POST(
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
+  });
 }
 
 // GET /api/timeline/[projectId]/generate-edl-async - Get EDL generation status
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
@@ -263,13 +274,16 @@ export async function GET(
     const isComplete = jobs.status === 'completed'
     const canCreateTimeline = isComplete && jobs.shot_list && Array.isArray(jobs.shot_list) && jobs.shot_list.length > 0
 
+    // Sort steps by step_number to ensure correct order
+    const sortedSteps = (jobs.edl_generation_steps || []).sort((a, b) => a.step_number - b.step_number)
+
     return NextResponse.json({
       jobId: jobs.id,
       status: jobs.status,
       currentStep: jobs.current_step,
       progress: {
-        completed: jobs.completed_steps,
-        total: jobs.total_steps,
+        completed: jobs.completed_steps || 0,
+        total: jobs.total_steps || 5,
         percentage: progressPercentage
       },
       timing: {
@@ -288,7 +302,7 @@ export async function GET(
         canCreateTimeline,
         shotList: jobs.shot_list
       } : null,
-      steps: jobs.edl_generation_steps || []
+      steps: sortedSteps
     })
 
   } catch (error) {

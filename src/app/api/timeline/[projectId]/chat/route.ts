@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { AI_TOOLS } from '../../../../../lib/timeline-ai-tools';
+import { withCreditsCheck, useCredits } from '../../../../../lib/credits';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -11,10 +12,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { projectId: string } }
 ) {
-  // ProjectId is available in params.projectId if needed for validation
-  // For now, we don't need to validate against projectId
-  console.log('Processing chat request for project:', params.projectId);
-  try {
+  return withCreditsCheck(request, 'ai_chat', async (userId, supabase) => {
+    // ProjectId is available in params.projectId if needed for validation
+    // For now, we don't need to validate against projectId
+    console.log('Processing chat request for project:', params.projectId);
+    try {
     const { message, timelineSummary } = await request.json();
 
     if (!message) {
@@ -50,6 +52,16 @@ Guidelines:
     });
 
     const responseMessage = completion.choices[0].message;
+
+    // Use credits after successful AI call
+    const creditsUsed = await useCredits(userId, 'ai_chat', {
+      projectId: params.projectId,
+      message: message.substring(0, 100) // Log first 100 chars
+    }, supabase);
+
+    if (!creditsUsed) {
+      console.error('Failed to deduct credits for chat');
+    }
 
     // Check if the AI wants to use a tool
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
@@ -92,4 +104,5 @@ Guidelines:
       { status: 500 }
     );
   }
+  });
 }

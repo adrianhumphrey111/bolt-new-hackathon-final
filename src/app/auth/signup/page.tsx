@@ -1,8 +1,8 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useAuthContext } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FaGoogle, FaGithub } from 'react-icons/fa';
 import Link from 'next/link';
 
@@ -14,7 +14,14 @@ export default function Signup() {
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const { signUp, signInWithOAuth, isAuthenticated, loading } = useAuthContext();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, loading, router]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,17 +46,13 @@ export default function Signup() {
         return;
       }
 
-      const { error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
+      const result = await signUp(email.trim(), password);
 
-      if (error) throw error;
-
-      setMessage('Check your email for the confirmation link!');
+      if (result.success) {
+        setMessage(result.message || 'Check your email for the confirmation link!');
+      } else {
+        setError(result.error || 'Signup failed');
+      }
     } catch (error) {
       console.error('Signup error:', error);
       setError(error instanceof Error ? error.message : 'An error occurred');
@@ -60,18 +63,26 @@ export default function Signup() {
 
   const handleSocialLogin = async (provider: 'google' | 'github') => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) throw error;
+      const result = await signInWithOAuth(provider);
+      if (!result.success) {
+        setError(result.error || 'OAuth login failed');
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
     }
   };
+
+  // Show loading while checking auth state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 py-12 flex items-center justify-center">

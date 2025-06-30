@@ -14,7 +14,11 @@ import { AIChatPanel } from './timeline/AIChatPanel';
 import { RenderModal } from './timeline/RenderModal';
 import { CanvasSizeSelector, aspectRatios, type AspectRatio } from './CanvasSizeSelector';
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext';
+import { TimeDisplay } from './timeline/TimeDisplay';
+import { SeekBar } from './timeline/SeekBar';
 import { TimelineItem, MediaType } from '../../types/timeline';
+import { useAuthContext } from './AuthProvider';
+import { useRouter } from 'next/navigation';
 import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
@@ -39,6 +43,8 @@ export function usePlayerControls() {
 function VideoEditorContent() {
   const { state, actions } = useTimeline();
   const { projectId } = useProject();
+  const { isAuthenticated, loading: authLoading } = useAuthContext();
+  const router = useRouter();
   const [showMediaLibrary, setShowMediaLibrary] = useState(true);
   const [showPropertyPanel, setShowPropertyPanel] = useState(true);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -51,6 +57,13 @@ function VideoEditorContent() {
   const [editingTextId, setEditingTextId] = useState<string | undefined>();
   const playerRef = useRef<PlayerRef>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth/login');
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   // Get all timeline items from all tracks
   const allTimelineItems = state.tracks.flatMap(track => track.items);
@@ -338,6 +351,23 @@ function VideoEditorContent() {
     playerRef,
     handlePlayPause,
   };
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <DragProvider>

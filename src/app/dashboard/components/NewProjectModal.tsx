@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientSupabaseClient } from '@/lib/supabase/client';
 import { FaTimes } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
+import { useAuthContext } from '@/components/AuthProvider';
 
 interface NewProjectModalProps {
   isOpen: boolean;
@@ -15,7 +16,8 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClientComponentClient();
+  const { user } = useAuthContext();
+  const supabase = createClientSupabaseClient();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,8 +31,7 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      if (!user) {
         setError('You must be logged in to create a project');
         return;
       }
@@ -41,7 +42,7 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
           {
             title: title.trim(),
             description: description.trim() || null,
-            user_id: session.user.id,
+            user_id: user.id,
             status: 'active'
           }
         ])

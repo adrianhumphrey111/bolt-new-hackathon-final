@@ -1,5 +1,4 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { VideoEditor } from '../../../../components/VideoEditor';
 
@@ -11,8 +10,7 @@ interface EditorPageProps {
 
 export default async function EditorPage({ params }: EditorPageProps) {
   const { projectId } = await params;
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = createServerSupabaseClient();
 
   // Check authentication
   const { data: { session } } = await supabase.auth.getSession();
@@ -49,8 +47,7 @@ export default async function EditorPage({ params }: EditorPageProps) {
 // Generate metadata for the page
 export async function generateMetadata({ params }: EditorPageProps) {
   const { projectId } = await params;
-  const cookieStore = await cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = createServerSupabaseClient();
 
   const { data: project } = await supabase
     .from('projects')

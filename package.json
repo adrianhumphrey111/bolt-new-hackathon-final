@@ -57,7 +57,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build",web
     "start": "next start",
     "lint": "next lint",
     "test": "jest",

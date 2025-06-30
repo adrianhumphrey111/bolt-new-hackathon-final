@@ -333,7 +333,7 @@ export default function Pricing() {
               <FaVideo className="w-4 h-4 text-white" />
             </div>
             <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              AI Video Editor
+              Tailored Labs
             </h1>
           </Link>
           <div className="flex items-center space-x-4">
@@ -804,7 +804,7 @@ export default function Pricing() {
                 <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                   <FaVideo className="w-4 h-4 text-white" />
                 </div>
-                <h3 className="text-lg font-bold">AI Video Editor</h3>
+                <h3 className="text-lg font-bold">Tailored Labs</h3>
               </div>
               <p className="text-gray-400 text-sm">
                 The future of video editing is here. Create professional videos with simple prompts.
@@ -837,7 +837,7 @@ export default function Pricing() {
           
           <div className="border-t border-gray-700 mt-8 pt-8 flex flex-col md:flex-row items-center justify-between">
             <p className="text-gray-400 text-sm">
-              © 2024 AI Video Editor. Made with ❤️ for creators everywhere.
+              © 2024 Tailored Labs. Made with ❤️ for creators everywhere.
             </p>
             <Link
               href="/auth/signup"

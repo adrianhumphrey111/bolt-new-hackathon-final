@@ -85,6 +85,11 @@ export function AIVideoSorter({
   const getAuthHeaders = useCallback(async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
     
+    console.log('🔍 Client session:', session ? 'found' : 'not found', error ? `Error: ${error.message}` : '');
+    if (session?.access_token) {
+      console.log('🔍 Access token length:', session.access_token.length);
+    }
+    
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };

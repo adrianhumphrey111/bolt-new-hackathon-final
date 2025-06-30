@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTimeline } from './TimelineContext';
 import { executeAITool, getTimelineSummary } from '../../lib/timeline-ai-tools';
+import { useAuthContext } from '../AuthProvider';
 
 interface ChatMessage {
   id: string;
@@ -19,6 +20,7 @@ interface AIChatPanelProps {
 
 export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
   const { state, actions } = useTimeline();
+  const { session } = useAuthContext();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
@@ -41,7 +43,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || !session?.access_token) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -55,12 +57,18 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     setIsLoading(true);
 
     try {
+      // Check if user is authenticated
+      if (!session?.access_token) {
+        throw new Error('Please sign in to use AI chat');
+      }
+
       const timelineSummary = getTimelineSummary(state);
       
       const response = await fetch(`/api/timeline/${projectId}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           message: inputValue.trim(),
@@ -198,25 +206,32 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
 
         {/* Input */}
         <form onSubmit={handleSubmit} className="p-4 border-t border-gray-600">
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Tell me what you want to do with your timeline..."
-              className="flex-1 bg-gray-700 text-white placeholder-gray-400 px-4 py-2 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none"
-              disabled={isLoading}
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !inputValue.trim()}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </button>
-          </div>
+          {!session?.access_token ? (
+            <div className="text-center py-4">
+              <p className="text-gray-400 text-sm mb-2">Please sign in to use AI chat</p>
+              <div className="text-xs text-gray-500">Authentication required for AI features</div>
+            </div>
+          ) : (
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Tell me what you want to do with your timeline..."
+                className="flex-1 bg-gray-700 text-white placeholder-gray-400 px-4 py-2 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none"
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !inputValue.trim()}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </div>
+          )}
         </form>
 
         {/* Timeline Summary */}

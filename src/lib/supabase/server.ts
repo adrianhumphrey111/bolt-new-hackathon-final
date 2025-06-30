@@ -54,24 +54,29 @@ export async function getUserFromRequest(request: NextRequest) {
   const authorization = request.headers.get('Authorization')
   
   if (!authorization?.startsWith('Bearer ')) {
+    console.log('🔍 No authorization header found')
     return { user: null, error: 'No authorization header', supabase: null }
   }
 
   const token = authorization.replace('Bearer ', '')
+  console.log('🔍 Token found, length:', token.length)
   const supabase = createServerSupabaseClient()
   
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token)
     
     if (error || !user) {
+      console.log('🔍 Auth error:', error?.message || 'No user found')
       return { user: null, error: error?.message || 'Invalid token', supabase: null }
     }
 
+    console.log('🔍 User authenticated:', user.email)
     // Create an authenticated client for RLS
     const authenticatedSupabase = createAuthenticatedSupabaseClient(token)
 
     return { user, error: null, supabase: authenticatedSupabase }
   } catch (error) {
+    console.log('🔍 Exception in getUserFromRequest:', error)
     return { user: null, error: 'Invalid token', supabase: null }
   }
 }

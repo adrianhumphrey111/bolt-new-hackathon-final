@@ -19,6 +19,7 @@
     "@remotion/shapes": "4.0.320",
     "@remotion/transitions": "4.0.320",
     "@remotion/webcodecs": "^4.0.320",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.2",
     "@types/uuid": "^10.0.0",

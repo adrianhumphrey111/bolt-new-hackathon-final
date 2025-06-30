@@ -1,19 +1,17 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabaseClient, getUserFromRequest } from '../../../../lib/supabase/server';
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const { projectId } = await params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createServerSupabaseClient();
     
     // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { user, error: authError } = await getUserFromRequest(request);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -22,7 +20,7 @@ export async function GET(
       .from('projects')
       .select('id, user_id')
       .eq('id', projectId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .single();
 
     if (projectError || !project) {
@@ -80,17 +78,16 @@ export async function GET(
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const { projectId } = await params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createServerSupabaseClient();
     
     // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { user, error: authError } = await getUserFromRequest(request);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -99,7 +96,7 @@ export async function POST(
       .from('projects')
       .select('id, user_id')
       .eq('id', projectId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .single();
 
     if (projectError || !project) {
@@ -132,7 +129,7 @@ export async function POST(
     const { data: timelineId, error: upsertError } = await supabase
       .rpc('upsert_timeline_configuration', {
         p_project_id: projectId,
-        p_user_id: session.user.id,
+        p_user_id: user.id,
         p_timeline_data: timelineData,
         p_total_duration: totalDuration,
         p_frame_rate: frameRate,
@@ -204,17 +201,16 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const { projectId } = await params;
-    const cookieStore = await cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createServerSupabaseClient();
     
     // Check authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    const { user, error: authError } = await getUserFromRequest(request);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -223,7 +219,7 @@ export async function DELETE(
       .from('projects')
       .select('id, user_id')
       .eq('id', projectId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .single();
 
     if (projectError || !project) {

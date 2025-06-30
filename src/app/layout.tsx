@@ -3,8 +3,8 @@ import { Metadata, Viewport } from "next";
 import { AuthProvider } from "../components/AuthProvider";
 
 export const metadata: Metadata = {
-  title: "Remotion and Next.js",
-  description: "Remotion and Next.js",
+  title: "Tailored Labs - AI Video Editor",
+  description: "Professional video editing powered by AI - Create stunning videos with Tailored Labs",
 };
 
 export const viewport: Viewport = {

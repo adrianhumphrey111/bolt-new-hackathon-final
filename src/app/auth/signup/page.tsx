@@ -1,6 +1,6 @@
 'use client';
 
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientSupabaseClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { FaGoogle, FaGithub } from 'react-icons/fa';
@@ -14,7 +14,7 @@ export default function Signup() {
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createClientSupabaseClient();
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,17 +39,30 @@ export default function Signup() {
         return;
       }
 
-      const { error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+      // Call our backend API for server-side signup
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password,
+          confirmPassword: confirmPassword,
+        }),
+        credentials: 'include',
       });
 
-      if (error) throw error;
+      const data = await response.json();
 
-      setMessage('Check your email for the confirmation link!');
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sign up');
+      }
+
+      if (data.success) {
+        setMessage(data.message || 'Check your email for the confirmation link!');
+      }
     } catch (error) {
       console.error('Signup error:', error);
       setError(error instanceof Error ? error.message : 'An error occurred');

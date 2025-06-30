@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientSupabaseClient } from '@/lib/supabase/client';
 import { FaTimes } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 
@@ -15,7 +15,7 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClientComponentClient();
+  const supabase = createClientSupabaseClient();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {

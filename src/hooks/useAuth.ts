@@ -23,13 +23,21 @@ export function useAuth() {
 
   const refreshAuth = useCallback(async () => {
     try {
+      console.log('🔄 Refreshing auth state...')
       setAuthState(prev => ({ ...prev, loading: true, error: null }))
       
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
       
       if (sessionError) {
+        console.error('❌ Session error:', sessionError)
         throw sessionError
       }
+
+      console.log('✅ Auth state refreshed:', { 
+        hasUser: !!session?.user, 
+        userId: session?.user?.id,
+        email: session?.user?.email 
+      })
 
       setAuthState({
         user: session?.user || null,
@@ -38,7 +46,7 @@ export function useAuth() {
         error: null,
       })
     } catch (error) {
-      console.error('Auth refresh error:', error)
+      console.error('❌ Auth refresh error:', error)
       setAuthState({
         user: null,
         session: null,

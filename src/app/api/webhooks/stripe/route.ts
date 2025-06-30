@@ -3,14 +3,20 @@ import Stripe from 'stripe';
 import { createServerSupabaseClient } from '../../../../lib/supabase/server';
 import { addCredits, resetMonthlyCredits } from '../../../../lib/credits';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-05-28.basil',
-});
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY environment variable is not set');
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2025-05-28.basil',
+  });
+}
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 export async function POST(request: NextRequest) {
   try {
+    const stripe = getStripe()
     const body = await request.text();
     const sig = request.headers.get('stripe-signature');
 

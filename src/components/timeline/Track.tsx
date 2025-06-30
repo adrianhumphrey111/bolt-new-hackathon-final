@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { Track as TrackType } from '../../../types/timeline';
 import { useTimeline } from './TimelineContext';
 import { TimelineItemComponent } from './TimelineItemComponent';
+import { TransitionDropZone } from './TransitionDropZone';
+import { TransitionComponent } from './TransitionComponent';
 
 interface TrackProps {
   track: TrackType;
@@ -61,6 +63,10 @@ export function Track({ track, index }: TrackProps) {
           src: dropData.item.src,
           content: dropData.item.content,
         });
+      } else if (dropData.type === 'transition-item') {
+        // Handle transition drop directly on track (show helper message)
+        console.log('Transition dropped on track. Please drop between two clips.');
+        // Could show a temporary message here
       }
     } catch (error) {
       console.error('Failed to handle drop:', error);
@@ -239,6 +245,31 @@ export function Track({ track, index }: TrackProps) {
             key={item.id}
             item={item}
             trackHeight={trackHeight}
+          />
+        ))}
+
+        {/* Transition drop zones between adjacent items */}
+        {track.items
+          .sort((a, b) => a.startTime - b.startTime)
+          .map((item, index, sortedItems) => {
+            const nextItem = sortedItems[index + 1];
+            if (!nextItem) return null;
+            
+            return (
+              <TransitionDropZone
+                key={`transition-zone-${item.id}-${nextItem.id}`}
+                fromItem={item}
+                toItem={nextItem}
+                trackId={track.id}
+              />
+            );
+          })}
+
+        {/* Existing transitions */}
+        {(track.transitions || []).map(transition => (
+          <TransitionComponent
+            key={transition.id}
+            transition={transition}
           />
         ))}
       </div>

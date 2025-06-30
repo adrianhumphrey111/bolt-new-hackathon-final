@@ -43,6 +43,7 @@ export const RemotionRoot: React.FC = () => {
         height={VIDEO_HEIGHT}
         defaultProps={{
           items: [],
+          transitions: [],
           fps: VIDEO_FPS,
         }}
       />

@@ -15,16 +15,25 @@ export interface TimelineItem {
   src?: string; // for media files
   content?: string; // for text items
   properties?: Record<string, any>;
-  transitionData?: {
-    effect: any;
-    transitionId: string;
-  };
+}
+
+export interface Transition {
+  id: string;
+  type: string; // 'fade', 'slide', 'wipe', etc.
+  name: string;
+  duration: number; // in frames
+  fromItemId: string; // ID of the item this transition starts from
+  toItemId: string; // ID of the item this transition goes to
+  trackId: string;
+  effect: any; // The actual Remotion transition effect
+  position: number; // Position where transition starts (in frames)
 }
 
 export interface Track {
   id: string;
   name: string;
   items: TimelineItem[];
+  transitions: Transition[];
   height: number;
   muted?: boolean;
   locked?: boolean;
@@ -77,6 +86,9 @@ export interface TimelineContextType {
     updateItem: (itemId: string, updates: Partial<TimelineItem>) => void;
     removeItem: (itemId: string) => void;
     moveItem: (itemId: string, trackId: string, startTime: number) => void;
+    addTransition: (transition: Omit<Transition, 'id'>) => void;
+    removeTransition: (transitionId: string) => void;
+    updateTransition: (transitionId: string, updates: Partial<Transition>) => void;
     setPlayheadPosition: (position: number) => void;
     setZoom: (zoom: number) => void;
     updateDuration: () => void;

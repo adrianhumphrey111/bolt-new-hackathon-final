@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState, useCallback, useRef } from 'react';
-import { TimelineState, TimelineContextType, TimelineConfig, Track, TimelineItem, MediaType } from '../../../types/timeline';
+import { TimelineState, TimelineContextType, TimelineConfig, Track, TimelineItem, Transition, MediaType } from '../../../types/timeline';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   timelinePersistence, 
@@ -61,6 +61,9 @@ type TimelineAction =
   | { type: 'UPDATE_ITEM'; itemId: string; updates: Partial<TimelineItem> }
   | { type: 'REMOVE_ITEM'; itemId: string }
   | { type: 'MOVE_ITEM'; itemId: string; trackId: string; startTime: number }
+  | { type: 'ADD_TRANSITION'; transition: Omit<Transition, 'id'> }
+  | { type: 'REMOVE_TRANSITION'; transitionId: string }
+  | { type: 'UPDATE_TRANSITION'; transitionId: string; updates: Partial<Transition> }
   | { type: 'SET_PLAYHEAD'; position: number }
   | { type: 'SET_ZOOM'; zoom: number }
   | { type: 'UPDATE_DURATION' }
@@ -133,6 +136,9 @@ function shouldTrackInHistory(action: TimelineAction): boolean {
     'UPDATE_ITEM',
     'REMOVE_ITEM',
     'MOVE_ITEM',
+    'ADD_TRANSITION',
+    'REMOVE_TRANSITION',
+    'UPDATE_TRANSITION',
     'SPLIT_ITEM',
     'TRIM_ITEM',
     'CLEAR_TIMELINE',
@@ -147,6 +153,7 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
         id: uuidv4(),
         name: `Track ${state.tracks.length + 1}`,
         items: [],
+        transitions: [],
         height: defaultConfig.trackHeight,
       };
       return {
@@ -262,6 +269,7 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
           id: uuidv4(),
           name: `Track ${state.tracks.length + 1}`,
           items: [{ ...updatedItem, trackId: uuidv4() }],
+          transitions: [],
           height: defaultConfig.trackHeight,
         };
         updatedItem.trackId = newTrack.id;
@@ -286,6 +294,47 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
         ...state,
         tracks: finalTracks,
         totalDuration: calculateOptimalDuration(finalTracks, state.zoom, state.fps),
+      };
+    }
+
+    case 'ADD_TRANSITION': {
+      const track = state.tracks.find(t => t.id === action.transition.trackId);
+      if (!track) return state;
+
+      const newTransition: Transition = {
+        ...action.transition,
+        id: uuidv4(),
+      };
+
+      return {
+        ...state,
+        tracks: state.tracks.map(t => 
+          t.id === action.transition.trackId
+            ? { ...t, transitions: [...(t.transitions || []), newTransition] }
+            : t
+        ),
+      };
+    }
+
+    case 'REMOVE_TRANSITION': {
+      return {
+        ...state,
+        tracks: state.tracks.map(track => ({
+          ...track,
+          transitions: (track.transitions || []).filter(t => t.id !== action.transitionId),
+        })),
+      };
+    }
+
+    case 'UPDATE_TRANSITION': {
+      return {
+        ...state,
+        tracks: state.tracks.map(track => ({
+          ...track,
+          transitions: (track.transitions || []).map(t => 
+            t.id === action.transitionId ? { ...t, ...action.updates } : t
+          ),
+        })),
       };
     }
 
@@ -738,6 +787,12 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
     removeItem: (itemId: string) => dispatch({ type: 'REMOVE_ITEM', itemId }),
     moveItem: (itemId: string, trackId: string, startTime: number) =>
       dispatch({ type: 'MOVE_ITEM', itemId, trackId, startTime }),
+    addTransition: (transition: Omit<Transition, 'id'>) => 
+      dispatch({ type: 'ADD_TRANSITION', transition }),
+    removeTransition: (transitionId: string) => 
+      dispatch({ type: 'REMOVE_TRANSITION', transitionId }),
+    updateTransition: (transitionId: string, updates: Partial<Transition>) =>
+      dispatch({ type: 'UPDATE_TRANSITION', transitionId, updates }),
     setPlayheadPosition: (position: number) => dispatch({ type: 'SET_PLAYHEAD', position }),
     setZoom: (zoom: number) => dispatch({ type: 'SET_ZOOM', zoom }),
     updateDuration: () => dispatch({ type: 'UPDATE_DURATION' }),

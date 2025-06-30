@@ -2,17 +2,19 @@
 
 import React, { useState, useRef, useCallback, useEffect, createContext, useContext } from 'react';
 import { Player, PlayerRef } from "@remotion/player";
+import { preloadVideo } from "@remotion/preload";
 import { TimelineComposition } from "../remotion/TimelineComposition";
 import { Timeline } from './timeline/Timeline';
 import { MediaLibrary, ProjectProvider, useProject } from './timeline/MediaLibrary';
 import { PropertyPanel } from './timeline/PropertyPanel';
 import { GenerateAIModal } from './timeline/GenerateAIModal';
+import { DragProvider } from './timeline/DragContext';
 import { SaveStatusIndicator } from './timeline/SaveStatusIndicator';
+import { AIChatPanel } from './timeline/AIChatPanel';
+import { RenderModal } from './timeline/RenderModal';
 import { CanvasSizeSelector, aspectRatios, type AspectRatio } from './CanvasSizeSelector';
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext';
-import { TimeDisplay } from './timeline/TimeDisplay';
-import { SeekBar } from './timeline/SeekBar';
-import { TimelineItem } from '../../types/timeline';
+import { TimelineItem, MediaType } from '../../types/timeline';
 import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
@@ -40,11 +42,15 @@ function VideoEditorContent() {
   const [showMediaLibrary, setShowMediaLibrary] = useState(true);
   const [showPropertyPanel, setShowPropertyPanel] = useState(true);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showRenderModal, setShowRenderModal] = useState(false);
   const [currentAspectRatio, setCurrentAspectRatio] = useState<AspectRatio>(aspectRatios[1]); // Default to 16:9
   const [playerDimensions, setPlayerDimensions] = useState({ width: 800, height: 450 });
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>();
   const [editingTextId, setEditingTextId] = useState<string | undefined>();
   const playerRef = useRef<PlayerRef>(null);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
 
   // Get all timeline items from all tracks
   const allTimelineItems = state.tracks.flatMap(track => track.items);
@@ -66,6 +72,29 @@ function VideoEditorContent() {
   const handleCanvasClick = useCallback(() => {
     setSelectedItemId(undefined);
     setEditingTextId(undefined);
+  }, []);
+
+  // Export options
+  const exportOptions = [
+    { name: 'Render Video', icon: '🎬', format: 'Generate MP4 video', action: 'render', primary: true },
+    { name: 'Adobe Premiere Pro', icon: '🎬', format: 'XML (Final Cut Pro XML)', action: 'export' },
+    { name: 'Final Cut Pro', icon: '🎭', format: 'FCPXML', action: 'export' },
+    { name: 'CapCut', icon: '✂️', format: 'SRT/XML', action: 'export' },
+    { name: 'DaVinci Resolve', icon: '🎨', format: 'XML/AAF', action: 'export' },
+    { name: 'Avid Media Composer', icon: '📽️', format: 'AAF', action: 'export' },
+    { name: 'Adobe After Effects', icon: '🌟', format: 'AEP Project', action: 'export' },
+  ];
+
+  const handleExportOption = useCallback((option: typeof exportOptions[0]) => {
+    console.log(`Action: ${option.action} for ${option.name}`);
+    setShowExportDropdown(false);
+    
+    if (option.action === 'render') {
+      setShowRenderModal(true);
+    } else {
+      // TODO: Implement actual export functionality for editors
+      alert(`Export to ${option.name} will be implemented soon!`);
+    }
   }, []);
 
   // Keyboard shortcuts for canvas interactions
@@ -93,9 +122,27 @@ function VideoEditorContent() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedItemId, actions]);
 
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setShowExportDropdown(false);
+      }
+    };
+
+    if (showExportDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showExportDropdown]);
+
+  // Collect all transitions from all tracks
+  const allTransitions = state.tracks.flatMap(track => track.transitions || []);
+
   // Convert timeline state to Remotion player props
   const inputProps = {
     items: allTimelineItems,
+    transitions: allTransitions,
     fps: state.fps,
     selectedItemId,
     editingTextId,
@@ -179,6 +226,29 @@ function VideoEditorContent() {
       player.removeEventListener('pause', handlePause);
     };
   }, [actions]);
+
+  // Preload upcoming videos to prevent flickering
+  useEffect(() => {
+    const currentTime = state.playheadPosition;
+    const lookAheadFrames = state.fps * 5; // Look ahead 5 seconds
+    
+    // Find videos that will start within the next 5 seconds
+    const upcomingVideos = allTimelineItems
+      .filter(item => 
+        item.type === MediaType.VIDEO && 
+        item.src &&
+        item.startTime > currentTime && 
+        item.startTime < currentTime + lookAheadFrames
+      );
+    
+    // Preload these videos
+    upcomingVideos.forEach(video => {
+      if (video.src) {
+        console.log('🎬 Preloading upcoming video:', video.name, 'starting at frame', video.startTime);
+        preloadVideo(video.src);
+      }
+    });
+  }, [state.playheadPosition, allTimelineItems, state.fps]);
 
   // Handle play/pause from custom controls
   const handlePlayPause = useCallback(() => {
@@ -270,8 +340,9 @@ function VideoEditorContent() {
   };
 
   return (
-    <PlayerControlsContext.Provider value={playerControlsValue}>
-      <div className="h-screen w-screen flex flex-col bg-gray-900 overflow-hidden">
+    <DragProvider>
+      <PlayerControlsContext.Provider value={playerControlsValue}>
+        <div className="h-screen w-screen flex flex-col bg-gray-900 overflow-hidden">
         {/* Top Bar */}
         <header className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-600 flex-shrink-0">
         <div className="flex items-center space-x-4 min-w-0">
@@ -312,6 +383,20 @@ function VideoEditorContent() {
             </button>
           </div>
 
+          {/* Edit by Chat button */}
+          <button 
+            onClick={() => setShowChatPanel(true)}
+            disabled={!projectId}
+            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
+            title="Edit timeline with AI chat"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+            </svg>
+            <span className="hidden sm:inline">Edit by Chat</span>
+            <span className="sm:hidden">Chat</span>
+          </button>
+
           {/* Generate with AI button */}
           <button 
             onClick={() => setShowGenerateModal(true)}
@@ -326,11 +411,58 @@ function VideoEditorContent() {
             <span className="sm:hidden">Generate</span>
           </button>
 
-          {/* Export button */}
-          <button className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors text-sm whitespace-nowrap">
-            <span className="hidden sm:inline">Export Video</span>
-            <span className="sm:hidden">Export</span>
-          </button>
+          {/* Export dropdown */}
+          <div ref={exportDropdownRef} className="relative">
+            <button 
+              onClick={() => setShowExportDropdown(!showExportDropdown)}
+              className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
+            >
+              <span className="hidden sm:inline">Render & Export</span>
+              <span className="sm:hidden">Render</span>
+              <svg 
+                className={`w-4 h-4 transition-transform ${showExportDropdown ? 'rotate-180' : ''}`} 
+                fill="currentColor" 
+                viewBox="0 0 20 20"
+              >
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+
+            {/* Dropdown menu */}
+            {showExportDropdown && (
+              <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                <div className="py-1">
+                  <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-600">
+                    Render & Export Options
+                  </div>
+                  {exportOptions.map((option, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleExportOption(option)}
+                      className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center space-x-3 ${
+                        option.primary 
+                          ? 'bg-purple-600 hover:bg-purple-700 text-white border-b border-gray-600' 
+                          : 'text-white hover:bg-gray-700'
+                      }`}
+                    >
+                      <span className="text-lg">{option.icon}</span>
+                      <div className="flex-1">
+                        <div className="font-medium">{option.name}</div>
+                        <div className={`text-xs ${option.primary ? 'text-purple-200' : 'text-gray-400'}`}>
+                          {option.format}
+                        </div>
+                      </div>
+                      {option.primary && (
+                        <span className="text-xs bg-purple-500 px-2 py-1 rounded">
+                          NEW
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -420,8 +552,27 @@ function VideoEditorContent() {
           }}
         />
       )}
-      </div>
-    </PlayerControlsContext.Provider>
+
+      {/* AI Chat Panel */}
+      {projectId && (
+        <AIChatPanel
+          projectId={projectId}
+          isOpen={showChatPanel}
+          onClose={() => setShowChatPanel(false)}
+        />
+      )}
+
+      {/* Render Modal */}
+      {projectId && (
+        <RenderModal
+          projectId={projectId}
+          isOpen={showRenderModal}
+          onClose={() => setShowRenderModal(false)}
+        />
+      )}
+        </div>
+      </PlayerControlsContext.Provider>
+    </DragProvider>
   );
 }
 

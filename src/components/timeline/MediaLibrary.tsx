@@ -9,6 +9,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { v4 as uuidv4 } from 'uuid';
 import { useVideoProcessing } from '../../hooks/useVideoProcessing';
 import { AIAnalysisPanel } from './AIAnalysisPanel';
+import { useDrag } from './DragContext';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
 import { wipe } from '@remotion/transitions/wipe';
@@ -137,6 +138,7 @@ function DeleteConfirmationModal({ isOpen, onClose, onConfirm, videoName, isDele
 export function MediaLibrary() {
   const { state, actions } = useTimeline();
   const { projectId } = useProject();
+  const { setIsTransitionDragging } = useDrag();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('media');
   const [projectVideos, setProjectVideos] = useState<MediaItem[]>([]);
@@ -352,48 +354,10 @@ export function MediaLibrary() {
   };
 
   const handleAddTransitionToTimeline = (transition: TransitionItem) => {
-    // Find an available track or create a new one for transitions
-    let targetTrackId = '';
-    
-    if (state.tracks.length > 0) {
-      // Try to find a track with space at the playhead position
-      const availableTrack = state.tracks.find(track => {
-        const hasOverlap = track.items.some(item => {
-          const itemEnd = item.startTime + item.duration;
-          const newItemEnd = state.playheadPosition + transition.duration;
-          return !(state.playheadPosition >= itemEnd || newItemEnd <= item.startTime);
-        });
-        return !hasOverlap;
-      });
-      
-      if (availableTrack) {
-        targetTrackId = availableTrack.id;
-      }
-    }
-    
-    // If no available track found, will create new one in reducer
-    if (!targetTrackId && state.tracks.length > 0) {
-      targetTrackId = state.tracks[0].id; // This will trigger auto-track creation
-    } else if (!targetTrackId) {
-      // Create first track
-      actions.addTrack();
-      targetTrackId = 'new-track';
-    }
-
-    // Add transition as a special timeline item
-    actions.addItem({
-      type: MediaType.TEXT, // Use TEXT type for transitions temporarily
-      name: transition.name,
-      startTime: state.playheadPosition,
-      duration: transition.duration,
-      trackId: targetTrackId,
-      content: `Transition: ${transition.name}`,
-      // Store transition data in a custom property for future use
-      transitionData: {
-        effect: transition.effect,
-        transitionId: transition.id
-      }
-    });
+    // For now, we'll just log that a transition was selected
+    // The actual placement will be handled by the track drop zones
+    console.log('Transition selected for placement:', transition.name);
+    alert(`Selected ${transition.name} transition. Drag it between two clips on the timeline to create a transition.`);
   };
 
   const handleTransitionDragStart = (e: React.DragEvent, transition: TransitionItem) => {
@@ -401,6 +365,38 @@ export function MediaLibrary() {
       type: 'transition-item',
       item: transition,
     }));
+
+    // Set global drag state
+    setIsTransitionDragging(true);
+
+    // Create a custom drag image that looks like a slim transition bar
+    const dragImage = document.createElement('div');
+    dragImage.style.width = '120px';
+    dragImage.style.height = '24px';
+    dragImage.style.background = 'linear-gradient(to right, #8b5cf6, #3b82f6)';
+    dragImage.style.borderRadius = '12px';
+    dragImage.style.color = 'white';
+    dragImage.style.fontSize = '12px';
+    dragImage.style.fontWeight = 'bold';
+    dragImage.style.display = 'flex';
+    dragImage.style.alignItems = 'center';
+    dragImage.style.justifyContent = 'center';
+    dragImage.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+    dragImage.style.position = 'absolute';
+    dragImage.style.top = '-1000px';
+    dragImage.innerHTML = transition.name;
+    
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 60, 12);
+    
+    // Clean up the drag image after drag starts
+    setTimeout(() => {
+      document.body.removeChild(dragImage);
+    }, 0);
+  };
+
+  const handleTransitionDragEnd = () => {
+    setIsTransitionDragging(false);
   };
 
   const getMediaTypeFromFile = (file: File): MediaType => {
@@ -1180,6 +1176,7 @@ export function MediaLibrary() {
                     className="group flex items-center p-3 rounded bg-gray-700 hover:bg-gray-600 cursor-pointer transition-colors"
                     draggable
                     onDragStart={(e) => handleTransitionDragStart(e, transition)}
+                    onDragEnd={handleTransitionDragEnd}
                     onClick={() => handleAddTransitionToTimeline(transition)}
                   >
                     <div className="flex-shrink-0 mr-3">

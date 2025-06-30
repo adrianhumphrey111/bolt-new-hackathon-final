@@ -38,3 +38,6 @@ next-env.d.ts
 out/
 .env
 build
+
+# local renders
+/public/renders/

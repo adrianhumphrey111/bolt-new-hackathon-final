@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientSupabaseClient } from '../../lib/supabase/client';
 
 interface SceneAnalysis {
   timeRange: {
@@ -64,7 +64,7 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [reanalysisStatus, setReanalysisStatus] = useState<'idle' | 'processing' | 'polling' | 'completed' | 'error'>('idle');
   const [pollCount, setPollCount] = useState(0);
-  const supabase = createClientComponentClient();
+  const supabase = createClientSupabaseClient();
 
   useEffect(() => {
     if (isOpen && videoId) {
@@ -76,18 +76,26 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from('video_analysis')
-        .select('llm_response')
-        .eq('video_id', videoId)
-        .single();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
 
-      if (error) throw error;
+      const response = await fetch(`/api/videos/${videoId}/analysis`, { headers });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch analysis data: ${response.statusText}`);
+      }
 
-      if (data?.llm_response) {
-        setAnalysisData(data.llm_response);
+      const data = await response.json();
+
+      if (data.has_analysis && data.analysis_data) {
+        setAnalysisData(data.analysis_data);
         // Auto-select first scene if available
-        if (data.llm_response.sceneAnalysis && data.llm_response.sceneAnalysis.length > 0) {
+        if (data.analysis_data.sceneAnalysis && data.analysis_data.sceneAnalysis.length > 0) {
           setSelectedScene(0);
         }
       } else {

@@ -75,17 +75,21 @@ export default function DashboardClient() {
     if (!user) return
 
     try {
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select(`
-          *,
-          videos (*)
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
 
-      if (projectsError) throw projectsError
+      const response = await fetch('/api/projects', { headers });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch projects: ${response.statusText}`);
+      }
 
+      const { projects: projectsData } = await response.json();
       setProjects(projectsData || [])
     } catch (error) {
       console.error('Error fetching projects:', error)

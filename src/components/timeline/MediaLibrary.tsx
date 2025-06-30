@@ -5,7 +5,7 @@ import { MediaType } from '../../../types/timeline';
 import { useTimeline } from './TimelineContext';
 import { uploadToS3, deleteFromS3 } from '../../../lib/s3Upload';
 import { convertMedia } from '@remotion/webcodecs';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientSupabaseClient } from '../../lib/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
 import { useVideoProcessing } from '../../hooks/useVideoProcessing';
 import { AIAnalysisPanel } from './AIAnalysisPanel';
@@ -147,6 +147,8 @@ export function MediaLibrary() {
   const [conversionProgress, setConversionProgress] = useState<{[key: string]: number}>({});
   const [isConverting, setIsConverting] = useState<{[key: string]: boolean}>({});
   const [loading, setLoading] = useState(false);
+  const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
+  const fetchingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<{[key: string]: boolean}>({});
   const [deleteModal, setDeleteModal] = useState<{
@@ -172,7 +174,7 @@ export function MediaLibrary() {
     videoSrc: undefined,
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const supabase = createClientComponentClient();
+  const supabase = createClientSupabaseClient();
   
   // Use video processing hook for real-time status tracking
   const {
@@ -186,19 +188,47 @@ export function MediaLibrary() {
     startMonitoring
   } = useVideoProcessing(projectId);
 
-  // Fetch project videos from Supabase
-  const fetchProjectVideos = useCallback(async () => {
-    if (!projectId) return;
+  // Get auth headers for API calls
+  const getAuthHeaders = useCallback(async () => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  }, [supabase]);
 
+  // Fetch project videos via API
+  const fetchProjectVideos = useCallback(async () => {
+    if (!projectId || fetchingRef.current || loadedProjectId === projectId) return;
+
+    fetchingRef.current = true;
     setLoading(true);
     try {
-      const { data: videos, error } = await supabase
-        .from('videos')
-        .select('*, video_analysis(id)') // Select video_analysis to check for existence
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
+      const { data: { session }, error } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      
+      const response = await fetch(`/api/videos?project_id=${projectId}`, {
+        headers
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('Authentication failed when fetching videos');
+          return; // Stop retrying to prevent infinite loop
+        }
+        throw new Error(`Failed to fetch videos: ${response.statusText}`);
+      }
+
+      const { videos } = await response.json();
 
       const mediaItems: MediaItem[] = videos.map(video => {
         let videoUrl = video.file_path;
@@ -235,17 +265,29 @@ export function MediaLibrary() {
       });
 
       setProjectVideos(mediaItems);
+      setLoadedProjectId(projectId);
     } catch (error) {
       console.error('Error fetching project videos:', error);
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, [projectId, supabase, state.fps]);
+  }, [projectId, supabase, state.fps, isVideoProcessing, getVideoProcessingInfo]); // Include necessary functions
+
+  // Reset loaded state when projectId changes
+  useEffect(() => {
+    if (projectId !== loadedProjectId) {
+      setLoadedProjectId(null);
+      fetchingRef.current = false;
+    }
+  }, [projectId, loadedProjectId]);
 
   // Load project videos on mount and when projectId changes
   useEffect(() => {
-    fetchProjectVideos();
-  }, [fetchProjectVideos]);
+    if (projectId && loadedProjectId !== projectId) {
+      fetchProjectVideos();
+    }
+  }, [projectId, loadedProjectId, fetchProjectVideos]);
 
   const getMediaIcon = (type: MediaType) => {
     switch (type) {

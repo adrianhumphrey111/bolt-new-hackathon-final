@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react'
-import { createClientSupabaseClient } from '@/lib/supabase/client'
+import { createClientSupabaseClient } from '../../lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { FaPlus, FaVideo, FaSignOutAlt } from 'react-icons/fa'
 import NewProjectModal from './components/NewProjectModal'
 import ProjectCard from './components/ProjectCard'
-import { useAuthContext } from '@/components/AuthProvider'
+import { useAuthContext } from '../../components/AuthProvider'
 
 interface Video {
   id: string

@@ -22,6 +22,19 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // First, let's check if the project exists at all
+    const { data: allProjects, error: allProjectsError } = await supabase
+      .from('projects')
+      .select('id, user_id')
+      .eq('id', projectId);
+
+    console.log('🔍 Timeline GET - All projects with this ID:', { 
+      projectId,
+      allProjects,
+      allProjectsError: allProjectsError?.message || allProjectsError?.code,
+      count: allProjects?.length || 0
+    });
+
     // Verify user has access to this project
     const { data: project, error: projectError } = await supabase
       .from('projects')

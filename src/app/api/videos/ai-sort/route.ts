@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '../../../../lib/supabase/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.NEXT_OPENAI_API_KEY,
-});
+function getOpenAI() {
+  if (!process.env.NEXT_OPENAI_API_KEY) {
+    throw new Error('NEXT_OPENAI_API_KEY environment variable is not set');
+  }
+  return new OpenAI({
+    apiKey: process.env.NEXT_OPENAI_API_KEY,
+  });
+}
 
 interface VideoWithAnalysis {
   id: string;
@@ -51,6 +56,7 @@ interface AIVideoAnalysis {
 
 export async function GET(request: NextRequest) {
   try {
+    const openai = getOpenAI();
     const { user,  supabase } = await getUserFromRequest(request);
 
     if (!user) {
@@ -297,6 +303,7 @@ Focus on creating sort options that would be most valuable for video editors wor
 
 export async function POST(request: NextRequest) {
   try {
+    const openai = getOpenAI();
     const { user,  supabase } = await getUserFromRequest(request);
 
     if (!user) {

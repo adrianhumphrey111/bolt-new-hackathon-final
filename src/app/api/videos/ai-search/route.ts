@@ -3,9 +3,14 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.NEXT_OPENAI_API_KEY,
-});
+function getOpenAI() {
+  if (!process.env.NEXT_OPENAI_API_KEY) {
+    throw new Error('NEXT_OPENAI_API_KEY environment variable is not set');
+  }
+  return new OpenAI({
+    apiKey: process.env.NEXT_OPENAI_API_KEY,
+  });
+}
 
 interface VideoSearchResult {
   videoId: string;
@@ -24,6 +29,7 @@ interface VideoSearchResult {
 
 export async function POST(request: NextRequest) {
   try {
+    const openai = getOpenAI();
     const supabase = createRouteHandlerClient({ cookies });
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 

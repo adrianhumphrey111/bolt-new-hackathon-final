@@ -1,29 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useAuthContext } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FaPlay, FaEdit, FaShare } from 'react-icons/fa';
 
 export default function Home() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient();
+  const { isAuthenticated, loading } = useAuthContext();
   const router = useRouter();
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        router.push('/dashboard');
-      } else {
-        setLoading(false);
-      }
-    };
-
-    checkUser();
-  }, [supabase, router]);
+    if (!loading && isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, loading, router]);
 
   if (loading) {
     return (

@@ -1,8 +1,8 @@
 'use client';
 
-import { createClientSupabaseClient } from '@/lib/supabase/client';
+import { useAuthContext } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FaGoogle, FaGithub } from 'react-icons/fa';
 import Link from 'next/link';
 
@@ -12,7 +12,14 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClientSupabaseClient();
+  const { signIn, signInWithOAuth, isAuthenticated, loading } = useAuthContext();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, loading, router]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,32 +33,13 @@ export default function Login() {
         return;
       }
 
-      // Call our backend API for server-side authentication
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password: password,
-        }),
-        credentials: 'include', // Important for cookie handling
-      });
+      const result = await signIn(email.trim(), password);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sign in');
-      }
-
-      if (data.success) {
+      if (result.success) {
         // Successful login - redirect to dashboard
         router.push('/dashboard');
-        router.refresh();
       } else {
-        throw new Error('Login failed');
+        setError(result.error || 'Login failed');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -63,18 +51,26 @@ export default function Login() {
 
   const handleSocialLogin = async (provider: 'google' | 'github') => {
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) throw error;
+      const result = await signInWithOAuth(provider);
+      if (!result.success) {
+        setError(result.error || 'OAuth login failed');
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
     }
   };
+
+  // Show loading while checking auth state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 py-12 flex items-center justify-center">

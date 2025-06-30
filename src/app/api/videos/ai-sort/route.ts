@@ -63,19 +63,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is pro
-    const { data: userData, error: userError } = await supabase
-      .from('profiles')
-      .select('subscription_tier')
-      .eq('id', user.id)
-      .single();
-
-    if (userError || userData?.subscription_tier !== 'pro') {
-      return NextResponse.json({ 
-        error: 'AI sorting requires a Pro subscription',
-        upgrade_required: true 
-      }, { status: 403 });
-    }
+    // Pro check removed for demo - AI sort available to all users
 
     const url = new URL(request.url);
     const projectId = url.searchParams.get('project_id');
@@ -310,19 +298,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is pro
-    const { data: userData, error: userError } = await supabase
-      .from('profiles')
-      .select('subscription_tier')
-      .eq('id', user.id)
-      .single();
-
-    if (userError || userData?.subscription_tier !== 'pro') {
-      return NextResponse.json({ 
-        error: 'AI sorting requires a Pro subscription',
-        upgrade_required: true 
-      }, { status: 403 });
-    }
+    // Pro check removed for demo - AI sort available to all users
 
     const body = await request.json();
     const { projectId, sortBy, sortOrder = 'asc', searchQuery = '' } = body;

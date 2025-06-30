@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { getUserFromRequest } from '../../../../lib/supabase/server';
 import OpenAI from 'openai';
 
 function getOpenAI() {
@@ -30,26 +29,13 @@ interface VideoSearchResult {
 export async function POST(request: NextRequest) {
   try {
     const openai = getOpenAI();
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { user, supabase } = await getUserFromRequest(request);
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is pro
-    const { data: userData, error: userError } = await supabase
-      .from('profiles')
-      .select('subscription_tier')
-      .eq('id', user.id)
-      .single();
-
-    if (userError || userData?.subscription_tier !== 'pro') {
-      return NextResponse.json({ 
-        error: 'AI search requires a Pro subscription',
-        upgrade_required: true 
-      }, { status: 403 });
-    }
+    // Pro check removed for demo - AI search available to all users
 
     const body = await request.json();
     const { projectId, query, searchType = 'semantic' } = body;

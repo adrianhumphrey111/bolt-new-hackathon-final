@@ -1051,12 +1051,7 @@ export function MediaLibrary() {
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
             }`}
           >
-            <div className="flex items-center justify-center space-x-1">
-              <span>AI Sort</span>
-              <div className="bg-gradient-to-r from-purple-500 to-blue-500 text-white text-xs px-1 py-0.5 rounded font-medium">
-                PRO
-              </div>
-            </div>
+            AI Sort
           </button>
           <button
             onClick={() => setActiveTab('transitions')}

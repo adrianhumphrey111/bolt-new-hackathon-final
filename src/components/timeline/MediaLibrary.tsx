@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { FaUpload, FaVideo, FaImage, FaMusic, FaTrash, FaEye, FaSpinner, FaClock, FaExclamationTriangle } from 'react-icons/fa';
-import { uploadToS3, deleteFromS3 } from '../../lib/s3Upload';
+import { uploadToS3, deleteFromS3 } from '@/lib/s3Upload';
 import { useVideoProcessing } from '../../hooks/useVideoProcessing';
 import { AIAnalysisPanel } from './AIAnalysisPanel';
 

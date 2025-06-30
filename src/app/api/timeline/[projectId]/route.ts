@@ -11,6 +11,13 @@ export async function GET(
     
     // Check authentication
     const { user, error: authError } = await getUserFromRequest(request);
+    console.log('🔍 Timeline GET - Auth check:', { 
+      hasUser: !!user, 
+      userId: user?.id, 
+      authError,
+      projectId 
+    });
+    
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -23,8 +30,18 @@ export async function GET(
       .eq('user_id', user.id)
       .single();
 
+    console.log('🔍 Timeline GET - Project check:', { 
+      projectId, 
+      userId: user.id,
+      hasProject: !!project, 
+      projectError: projectError?.message || projectError?.code 
+    });
+
     if (projectError || !project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      return NextResponse.json({ 
+        error: 'Project not found',
+        details: projectError?.message || 'No project data'
+      }, { status: 404 });
     }
 
     // Get active timeline for this project
@@ -35,6 +52,12 @@ export async function GET(
       .eq('is_active', true)
       .single();
 
+    console.log('🔍 Timeline GET - Timeline check:', { 
+      projectId, 
+      hasTimeline: !!timeline,
+      timelineError: timelineError?.message || timelineError?.code 
+    });
+
     if (timelineError && timelineError.code !== 'PGRST116') { // PGRST116 = no rows returned
       console.error('Error fetching timeline:', timelineError);
       return NextResponse.json({ error: 'Failed to fetch timeline' }, { status: 500 });
@@ -42,6 +65,7 @@ export async function GET(
 
     // If no timeline exists, return default structure
     if (!timeline) {
+      console.log('📝 No timeline found for project, returning null');
       return NextResponse.json({
         timeline: null,
         message: 'No timeline found for this project'

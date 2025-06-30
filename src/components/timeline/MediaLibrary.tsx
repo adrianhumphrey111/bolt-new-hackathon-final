@@ -1,60 +1,20 @@
 "use client";
 
-import React, { useState, useRef, useCallback, useEffect, useContext, createContext } from 'react';
-import { MediaType } from '../../../types/timeline';
-import { useTimeline } from './TimelineContext';
-import { uploadToS3, deleteFromS3 } from '../../../lib/s3Upload';
-import { convertMedia } from '@remotion/webcodecs';
+import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { v4 as uuidv4 } from 'uuid';
+import { FaUpload, FaVideo, FaImage, FaMusic, FaTrash, FaEye, FaSpinner, FaClock, FaExclamationTriangle } from 'react-icons/fa';
+import { uploadToS3, deleteFromS3 } from '../../lib/s3Upload';
 import { useVideoProcessing } from '../../hooks/useVideoProcessing';
 import { AIAnalysisPanel } from './AIAnalysisPanel';
-import { fade } from '@remotion/transitions/fade';
-import { slide } from '@remotion/transitions/slide';
-import { wipe } from '@remotion/transitions/wipe';
-import { flip } from '@remotion/transitions/flip';
-import { clockWipe } from '@remotion/transitions/clock-wipe';
-import { iris } from '@remotion/transitions/iris';
-import { none } from '@remotion/transitions/none';
 
-interface MediaItem {
-  id: string;
-  name: string;
-  type: MediaType;
-  src?: string;
-  duration?: number; // in frames
-  thumbnail?: string;
-  file_path?: string;
-  file_name?: string; // The filename in storage
-  original_name?: string;
-  isAnalyzing?: boolean; // New property for AI analysis status
-  processingInfo?: any; // Processing information from useVideoProcessing hook
-}
-
-interface TransitionItem {
-  id: string;
-  name: string;
-  description: string;
-  type: 'transition';
-  effect: any;
-  duration: number; // in frames
-  category: 'basic' | 'premium';
-}
-
-type TabType = 'media' | 'transitions';
-
-// Create context for project information
+// Project Context
 interface ProjectContextType {
   projectId: string | null;
 }
 
-const ProjectContext = createContext<ProjectContextType>({ projectId: null });
+const ProjectContext = createContext<ProjectContextType | null>(null);
 
-export function useProject() {
-  return useContext(ProjectContext);
-}
-
-export function ProjectProvider({ projectId, children }: { projectId: string | null; children: React.ReactNode }) {
+export function ProjectProvider({ children, projectId }: { children: React.ReactNode; projectId: string | null }) {
   return (
     <ProjectContext.Provider value={{ projectId }}>
       {children}
@@ -62,623 +22,265 @@ export function ProjectProvider({ projectId, children }: { projectId: string | n
   );
 }
 
-// Sample media items removed - now fetching from project videos
-
-// File size constants
-const MAX_TRANSCODE_SIZE = 1024 * 1024 * 1024; // 1GB in bytes
-
-interface DeleteConfirmationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  videoName: string;
-  isDeleting: boolean;
+export function useProject() {
+  const context = useContext(ProjectContext);
+  if (!context) {
+    throw new Error('useProject must be used within a ProjectProvider');
+  }
+  return context;
 }
 
-function DeleteConfirmationModal({ isOpen, onClose, onConfirm, videoName, isDeleting }: DeleteConfirmationModalProps) {
-  if (!isOpen) return null;
+// Media item types
+interface MediaItem {
+  id: string;
+  type: 'video' | 'image' | 'audio';
+  name: string;
+  originalName: string;
+  src: string;
+  duration?: number;
+  thumbnail?: string;
+  size?: number;
+  createdAt: string;
+  status: string;
+  s3Location?: string;
+  processedFilePath?: string;
+}
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4 border border-gray-600">
-        <div className="flex items-center mb-4">
-          <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center mr-3">
-            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-white">Delete Video</h2>
-        </div>
-
-        <div className="mb-6">
-          <p className="text-gray-300 mb-2">
-            Are you sure you want to delete
-          </p>
-          <p className="text-white font-medium bg-gray-700 px-3 py-2 rounded mb-3 break-all">
-            "{videoName}"
-          </p>
-          <p className="text-gray-400 text-sm">
-            This action cannot be undone and will permanently remove the video from your project and storage.
-          </p>
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            disabled={isDeleting}
-            className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={isDeleting}
-            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded transition-colors disabled:opacity-60 flex items-center justify-center"
-          >
-            {isDeleting ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Deleting...
-              </>
-            ) : (
-              'Delete Video'
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+interface UploadProgress {
+  file: File;
+  progress: number;
+  status: 'uploading' | 'processing' | 'completed' | 'error';
+  error?: string;
+  mediaItem?: MediaItem;
 }
 
 export function MediaLibrary() {
-  const { state, actions } = useTimeline();
   const { projectId } = useProject();
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('media');
-  const [projectVideos, setProjectVideos] = useState<MediaItem[]>([]);
-  const [uploadedItems, setUploadedItems] = useState<MediaItem[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [conversionProgress, setConversionProgress] = useState<{[key: string]: number}>({});
-  const [isConverting, setIsConverting] = useState<{[key: string]: boolean}>({});
-  const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [deleting, setDeleting] = useState<{[key: string]: boolean}>({});
-  const [deleteModal, setDeleteModal] = useState<{
-    isOpen: boolean;
-    videoId: string;
-    fileName: string;
-    videoName: string;
-  }>({
-    isOpen: false,
-    videoId: '',
-    fileName: '',
-    videoName: '',
-  });
-  const [analysisPanel, setAnalysisPanel] = useState<{
-    isOpen: boolean;
-    videoId: string;
-    videoName: string;
-    videoSrc?: string;
-  }>({
-    isOpen: false,
-    videoId: '',
-    videoName: '',
-    videoSrc: undefined,
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [uploads, setUploads] = useState<UploadProgress[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+  const [showAnalysisPanel, setShowAnalysisPanel] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  
   const supabase = createClientComponentClient();
   
-  // Use video processing hook for real-time status tracking
-  const {
-    isProcessing,
-    processingVideos,
-    currentProcessingVideo,
-    error: processingError,
+  // Use video processing hook for real-time status updates
+  const { 
+    isProcessing, 
+    processingVideos, 
     formatElapsedTime,
-    isVideoProcessing,
-    getVideoProcessingInfo,
-    startMonitoring
+    startMonitoring 
   } = useVideoProcessing(projectId);
 
-  // Fetch project videos from Supabase
-  const fetchProjectVideos = useCallback(async () => {
-    if (!projectId) return;
+  // Load media items for the project
+  const loadMediaItems = useCallback(async () => {
+    if (!projectId) {
+      setMediaItems([]);
+      setLoading(false);
+      return;
+    }
 
-    setLoading(true);
     try {
-      const { data: videos, error } = await supabase
+      setLoading(true);
+      const { data, error } = await supabase
         .from('videos')
-        .select('*, video_analysis(id)') // Select video_analysis to check for existence
+        .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const mediaItems: MediaItem[] = videos.map(video => {
-        let videoUrl = video.file_path;
-        
-        if (video.file_path && video.file_path.startsWith('http')) {
-          videoUrl = video.file_path;
-        } else if (video.file_name) {
-          const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET;
-          if (bucketName) {
-            videoUrl = `https://${bucketName}.s3.amazonaws.com/${video.file_path}`;
-          } else {
-            console.warn('NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET is not set. Cannot construct S3 URL.');
-            videoUrl = undefined;
-          }
-        }
-        
-        // Determine if video is still analyzing using the processing hook
-        const isAnalyzing = isVideoProcessing(video.id);
-        const processingInfo = getVideoProcessingInfo(video.id);
+      const items: MediaItem[] = (data || []).map(video => ({
+        id: video.id,
+        type: 'video' as const,
+        name: video.file_name,
+        originalName: video.original_name,
+        src: video.s3_location || video.file_path,
+        duration: video.duration,
+        size: video.file_size,
+        createdAt: video.created_at,
+        status: video.status,
+        s3Location: video.s3_location,
+        processedFilePath: video.processed_file_path,
+      }));
 
-        return {
-          id: video.id,
-          name: video.original_name,
-          type: MediaType.VIDEO,
-          src: videoUrl,
-          duration: video.duration ? Math.round(video.duration * state.fps) : 150,
-          thumbnail: video.thumbnail_url,
-          file_path: video.file_path,
-          file_name: video.file_name,
-          original_name: video.original_name,
-          isAnalyzing: isAnalyzing,
-          processingInfo: processingInfo,
-        };
-      });
-
-      setProjectVideos(mediaItems);
-    } catch (error) {
-      console.error('Error fetching project videos:', error);
+      setMediaItems(items);
+    } catch (err) {
+      console.error('Error loading media items:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load media');
     } finally {
       setLoading(false);
     }
-  }, [projectId, supabase, state.fps]);
+  }, [projectId, supabase]);
 
-  // Load project videos on mount and when projectId changes
+  // Load media items on mount and when project changes
   useEffect(() => {
-    fetchProjectVideos();
-  }, [fetchProjectVideos]);
+    loadMediaItems();
+  }, [loadMediaItems]);
 
-  const getMediaIcon = (type: MediaType) => {
-    switch (type) {
-      case MediaType.VIDEO:
-        return (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-          </svg>
-        );
-      case MediaType.AUDIO:
-        return (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.792L5.5 14H3a1 1 0 01-1-1V7a1 1 0 011-1h2.5l2.883-2.792zM15 8.75a1.25 1.25 0 00-2.5 0v2.5a1.25 1.25 0 002.5 0v-2.5z" clipRule="evenodd" />
-          </svg>
-        );
-      case MediaType.IMAGE:
-        return (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-          </svg>
-        );
-      case MediaType.TEXT:
-        return (
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 2v10h8V6H6z" clipRule="evenodd" />
-          </svg>
-        );
-    }
-  };
+  // Subscribe to real-time updates
+  useEffect(() => {
+    if (!projectId) return;
 
-  const getMediaColor = (type: MediaType) => {
-    switch (type) {
-      case MediaType.VIDEO:
-        return 'text-blue-400';
-      case MediaType.AUDIO:
-        return 'text-green-400';
-      case MediaType.IMAGE:
-        return 'text-purple-400';
-      case MediaType.TEXT:
-        return 'text-orange-400';
-    }
-  };
+    const channel = supabase
+      .channel(`media_library_${projectId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'videos',
+        filter: `project_id=eq.${projectId}`
+      }, () => {
+        loadMediaItems();
+      })
+      .subscribe();
 
-  const handleVideoClick = (mediaItem: MediaItem) => {
-    if (mediaItem.type === MediaType.VIDEO && projectVideos.some(video => video.id === mediaItem.id)) {
-      // Open AI Analysis panel for project videos
-      setAnalysisPanel({
-        isOpen: true,
-        videoId: mediaItem.id,
-        videoName: mediaItem.name,
-        videoSrc: mediaItem.src,
-      });
-    } else {
-      // Add non-video items or uploaded items to timeline
-      handleAddToTimeline(mediaItem);
-    }
-  };
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [projectId, supabase, loadMediaItems]);
 
-  const handleAddToTimeline = (mediaItem: MediaItem) => {
-    // Find an available track or create a new one
-    let targetTrackId = '';
-    
-    if (state.tracks.length > 0) {
-      // Try to find a track with space at the playhead position
-      const availableTrack = state.tracks.find(track => {
-        const hasOverlap = track.items.some(item => {
-          const itemEnd = item.startTime + item.duration;
-          const newItemEnd = state.playheadPosition + (mediaItem.duration || 90);
-          return !(state.playheadPosition >= itemEnd || newItemEnd <= item.startTime);
-        });
-        return !hasOverlap;
-      });
-      
-      if (availableTrack) {
-        targetTrackId = availableTrack.id;
-      }
-    }
-    
-    // If no available track found, will create new one in reducer
-    if (!targetTrackId && state.tracks.length > 0) {
-      targetTrackId = state.tracks[0].id; // This will trigger auto-track creation
-    } else if (!targetTrackId) {
-      // Create first track
-      actions.addTrack();
-      // We'll need to get the track ID after it's created
-      // For now, we'll use a placeholder and the reducer will handle it
-      targetTrackId = 'new-track';
-    }
-
-    actions.addItem({
-      type: mediaItem.type,
-      name: mediaItem.name,
-      startTime: state.playheadPosition,
-      duration: mediaItem.duration || 90, // Default 3 seconds
-      trackId: targetTrackId,
-      src: mediaItem.src,
-      content: mediaItem.type === MediaType.TEXT ? 'Sample Text' : undefined,
-    });
-  };
-
-  const handleDragStart = (e: React.DragEvent, mediaItem: MediaItem) => {
-    e.dataTransfer.setData('application/json', JSON.stringify({
-      type: 'media-item',
-      item: mediaItem,
-    }));
-  };
-
-  const handleAddTransitionToTimeline = (transition: TransitionItem) => {
-    // Find an available track or create a new one for transitions
-    let targetTrackId = '';
-    
-    if (state.tracks.length > 0) {
-      // Try to find a track with space at the playhead position
-      const availableTrack = state.tracks.find(track => {
-        const hasOverlap = track.items.some(item => {
-          const itemEnd = item.startTime + item.duration;
-          const newItemEnd = state.playheadPosition + transition.duration;
-          return !(state.playheadPosition >= itemEnd || newItemEnd <= item.startTime);
-        });
-        return !hasOverlap;
-      });
-      
-      if (availableTrack) {
-        targetTrackId = availableTrack.id;
-      }
-    }
-    
-    // If no available track found, will create new one in reducer
-    if (!targetTrackId && state.tracks.length > 0) {
-      targetTrackId = state.tracks[0].id; // This will trigger auto-track creation
-    } else if (!targetTrackId) {
-      // Create first track
-      actions.addTrack();
-      targetTrackId = 'new-track';
-    }
-
-    // Add transition as a special timeline item
-    actions.addItem({
-      type: MediaType.TEXT, // Use TEXT type for transitions temporarily
-      name: transition.name,
-      startTime: state.playheadPosition,
-      duration: transition.duration,
-      trackId: targetTrackId,
-      content: `Transition: ${transition.name}`,
-      // Store transition data in a custom property for future use
-      transitionData: {
-        effect: transition.effect,
-        transitionId: transition.id
-      }
-    });
-  };
-
-  const handleTransitionDragStart = (e: React.DragEvent, transition: TransitionItem) => {
-    e.dataTransfer.setData('application/json', JSON.stringify({
-      type: 'transition-item',
-      item: transition,
-    }));
-  };
-
-  const getMediaTypeFromFile = (file: File): MediaType => {
-    const type = file.type.toLowerCase();
-    if (type.startsWith('video/')) return MediaType.VIDEO;
-    if (type.startsWith('audio/')) return MediaType.AUDIO;
-    if (type.startsWith('image/')) return MediaType.IMAGE;
-    return MediaType.TEXT; // Default fallback
-  };
-
-  const estimateDurationFromFile = (file: File): Promise<number> => {
-    return new Promise((resolve) => {
-      if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
-        const media = document.createElement(file.type.startsWith('video/') ? 'video' : 'audio');
-        media.preload = 'metadata';
-        
-        media.onloadedmetadata = () => {
-          const durationInFrames = Math.round(media.duration * state.fps);
-          resolve(durationInFrames);
-          URL.revokeObjectURL(media.src);
-        };
-        
-        media.onerror = () => {
-          resolve(90); // Default 3 seconds
-          URL.revokeObjectURL(media.src);
-        };
-        
-        media.src = URL.createObjectURL(file);
-      } else {
-        resolve(90); // Default 3 seconds for images and other files
-      }
-    });
-  };
-
-  const convertMovToMp4 = async (file: File, itemId: string): Promise<File> => {
-    console.log('🔄 Converting .mov to .mp4:', file.name);
-    
-    setIsConverting(prev => ({ ...prev, [itemId]: true }));
-    setConversionProgress(prev => ({ ...prev, [itemId]: 0 }));
-
-    try {
-      const mp4Result = await convertMedia({
-        src: file,
-        container: 'mp4',
-        onProgress: (progress) => {
-          // Check if progress has a progress property, otherwise use the value directly
-          const progressValue = typeof progress === 'object' && 'progress' in progress 
-            ? (progress as any).progress 
-            : progress;
-          setConversionProgress(prev => ({ ...prev, [itemId]: progressValue * 100 }));
-        },
-      });
-
-      const mp4Blob = await mp4Result.save()
-
-      console.log('DEBUG: convertMovToMp4 - mp4Blob size:', mp4Blob.size, 'bytes');
-      console.log('DEBUG: convertMovToMp4 - mp4Blob type:', mp4Blob.type);
-      const mp4File = new File([mp4Blob], file.name.replace(/\.mov$/i, '.mp4'), {
-        type: 'video/mp4',
-      });
-      
-      console.log('✅ Conversion completed for:', file.name);
-      console.log('DEBUG: convertMovToMp4 - Transcoded file size:', mp4File.size, 'bytes');
-      return mp4File;
-    } catch (error) {
-      console.error('❌ Error during MOV to MP4 conversion:', error);
-      console.log('DEBUG: convertMovToMp4 - Caught error object:', error);
-      throw error;
-    } finally {
-      setIsConverting(prev => ({ ...prev, [itemId]: false }));
-      setConversionProgress(prev => {
-        const newProgress = { ...prev };
-        delete newProgress[itemId];
-        return newProgress;
-      });
-    }
-  };
-
-  const isValidVideoFile = (file: File): boolean => {
-    const extension = file.name.toLowerCase().split('.').pop();
-    return extension === 'mov' || extension === 'mp4' || file.type === 'video/mp4' || file.type === 'video/quicktime';
-  };
-
-  const shouldTranscodeFile = (file: File): boolean => {
-    const extension = file.name.toLowerCase().split('.').pop();
-    return extension === 'mov' && file.size <= MAX_TRANSCODE_SIZE;
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  };
-
-  const saveVideoToProject = useCallback(async (file: File, duration: number): Promise<string | null> => {
-    if (!projectId) {
-      console.error('No project ID available for video upload');
-      return null;
-    }
-
-    try {
-      // Get current user session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('No user session available');
-        return null;
-      }
-
-      const videoId = uuidv4(); // Generate a unique ID for the video
-      const userId = session.user.id;
-      const timestamp = Date.now();
-      const originalName = file.name;
-      const fileName = `${userId}/${projectId}/videos/${videoId}_${timestamp}_${originalName}`;
-      const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET as string;
-
-      // Save video record to database
-      const { data: videoData, error: dbError } = await supabase
-        .from('videos')
-        .insert({
-          id: videoId, // Use the generated UUID as the video ID
-          project_id: projectId,
-          file_name: fileName,
-          original_name: originalName,
-          file_path: fileName, // Store the S3 key directly
-          duration: duration / state.fps, // Convert frames to seconds
-          status: 'processing'
-        })
-        .select()
-        .single();
-
-      if (dbError) throw dbError;
-
-      console.log('✅ Video saved to project:', videoData);
-      
-      console.log('DEBUG: saveVideoToProject - File to upload to S3:', file);
-      console.log('DEBUG: saveVideoToProject - File to upload to S3 size:', file.size, 'bytes');
-      console.log('DEBUG: saveVideoToProject - File to upload to S3 type:', file.type);
-      // Now upload to S3
-      await uploadToS3({ file, fileName, bucketName });
-      return fileName
-    } catch (error) {
-      console.error('Error saving video to project:', error);
-      return null;
-    }
-  }, [projectId, supabase, state.fps, fetchProjectVideos]);
-
-  const deleteVideoFromProject = useCallback(async (videoId: string, s3Key: string): Promise<boolean> => {
-    setDeleting(prev => ({ ...prev, [videoId]: true }));
-    
-    try {
-      // First, delete related shot list items (they have ON DELETE RESTRICT)
-      const { error: shotListError } = await supabase
-        .from('shot_list_items')
-        .delete()
-        .eq('video_id', videoId);
-
-      if (shotListError) {
-        console.warn('Failed to delete shot list items:', shotListError);
-        // Continue anyway - this table might not exist in all environments
-      }
-
-      // Then, delete the video from database
-      // (video_analysis and timeline_clips will be handled automatically by their CASCADE/SET NULL constraints)
-      const { error: dbError } = await supabase
-        .from('videos')
-        .delete()
-        .eq('id', videoId);
-
-      if (dbError) throw dbError;
-
-      // Finally, delete from storage
-      const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET as string;
-      try {
-        await deleteFromS3(s3Key, bucketName);
-      } catch (storageError) {
-        console.warn('Failed to delete file from S3 storage:', storageError);
-        // Don't throw here since database deletion succeeded
-      }
-
-      console.log('✅ Video deleted successfully:');
-      
-      // Refresh the project videos list
-      fetchProjectVideos();
-      
-      return true;
-    } catch (error) {
-      console.error('Error deleting video:', error);
-      return false;
-    } finally {
-      setDeleting(prev => ({ ...prev, [videoId]: false }));
-    }
-  }, [supabase, fetchProjectVideos]);
-
+  // Handle file upload
   const handleFileUpload = useCallback(async (files: FileList) => {
-    setUploading(true);
-    
-    try {
-      const file = files[0];
-      console.log('DEBUG: handleFileUpload - Initial file:', file);
-      console.log('DEBUG: handleFileUpload - Initial file size:', file.size, 'bytes');
-      console.log('DEBUG: handleFileUpload - Initial file type:', file.type);
-      
-      // Filter for video files - only allow .mov and .mp4
-      if (file.type.startsWith('video/')) {
-        if (!isValidVideoFile(file)) {
-          console.warn('❌ Invalid video file type:', file.name, 'Only .mov and .mp4 files are supported');
-          return; // Exit if invalid file type
-        }
-      }
-      
-      const mediaType = getMediaTypeFromFile(file);
-      const duration = await estimateDurationFromFile(file);
-      const itemId = `upload-${Date.now()}`;
-      
-      let objectUrl: string;
-      let finalName = file.name;
-      let fileToUpload = file; // Track which file to upload (original or transcoded)
-      
-      // Check MOV files for transcoding based on size
-      const extension = file.name.toLowerCase().split('.').pop();
-      if (extension === 'mov') {
-        const fileSize = formatFileSize(file.size);
-        
-        if (shouldTranscodeFile(file)) {
-          console.log(`🔄 MOV file (${fileSize}) detected, transcoding to MP4:`, file.name);
-          const transcodedFile = await convertMovToMp4(file, itemId);
-          console.log('DEBUG: handleFileUpload - Transcoded file returned from convertMovToMp4:', transcodedFile);
-          console.log('DEBUG: handleFileUpload - Transcoded file size from convertMovToMp4:', transcodedFile.size, 'bytes');
-          objectUrl = URL.createObjectURL(transcodedFile);
-          finalName = transcodedFile.name;
-          fileToUpload = transcodedFile;
-        } else {
-          console.log(`📁 Large MOV file (${fileSize}) detected, uploading directly without transcoding:`, file.name);
-          objectUrl = URL.createObjectURL(file);
-          // Keep original filename and file for upload
-        }
-      } else {
-        objectUrl = URL.createObjectURL(file);
-      }
-      
-      // If we have a project, save to database; otherwise, add to temporary uploaded items
-      if (projectId && mediaType === MediaType.VIDEO) {
-        console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject:', fileToUpload);
-        console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject size:', fileToUpload.size, 'bytes');
-        console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject type:', fileToUpload.type);
-        const videoId = await saveVideoToProject(fileToUpload, duration);
-        if (videoId) {
-          console.log('✅ Video uploaded and saved to project');
-          // Refresh project videos to show the new upload with processing status
-          await fetchProjectVideos();
-          // Start monitoring for processing status
+    if (!projectId) {
+      alert('Please select a project first');
+      return;
+    }
+
+    const fileArray = Array.from(files);
+    const validFiles = fileArray.filter(file => {
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      const isAudio = file.type.startsWith('audio/');
+      return isVideo || isImage || isAudio;
+    });
+
+    if (validFiles.length === 0) {
+      alert('Please select valid media files (video, image, or audio)');
+      return;
+    }
+
+    // Initialize upload progress tracking
+    const newUploads: UploadProgress[] = validFiles.map(file => ({
+      file,
+      progress: 0,
+      status: 'uploading',
+    }));
+
+    setUploads(prev => [...prev, ...newUploads]);
+
+    // Process each file
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
+      const uploadIndex = uploads.length + i;
+
+      try {
+        // Update progress to show upload starting
+        setUploads(prev => prev.map((upload, idx) => 
+          idx === uploadIndex 
+            ? { ...upload, progress: 5, status: 'uploading' }
+            : upload
+        ));
+
+        // Generate unique filename
+        const timestamp = Date.now();
+        const randomString = Math.random().toString(36).substring(2, 15);
+        const fileExtension = file.name.split('.').pop();
+        const fileName = `${timestamp}-${randomString}.${fileExtension}`;
+        const filePath = `${projectId}/${fileName}`;
+
+        // Upload to S3
+        const s3Url = await uploadToS3({
+          file,
+          fileName: filePath,
+          bucketName: process.env.NEXT_PUBLIC_AWS_BUCKET_NAME || 'your-bucket-name',
+          onProgress: (progress) => {
+            setUploads(prev => prev.map((upload, idx) => 
+              idx === uploadIndex 
+                ? { ...upload, progress: Math.min(progress * 0.8, 80) } // Reserve 20% for DB operations
+                : upload
+            ));
+          }
+        });
+
+        // Update progress to show S3 upload complete
+        setUploads(prev => prev.map((upload, idx) => 
+          idx === uploadIndex 
+            ? { ...upload, progress: 85, status: 'processing' }
+            : upload
+        ));
+
+        // Create database record
+        const { data: videoData, error: dbError } = await supabase
+          .from('videos')
+          .insert({
+            project_id: projectId,
+            file_name: fileName,
+            original_name: file.name,
+            file_path: filePath,
+            s3_location: s3Url,
+            status: 'uploaded',
+            duration: null, // Will be populated by processing
+          })
+          .select()
+          .single();
+
+        if (dbError) throw dbError;
+
+        // Create media item
+        const mediaItem: MediaItem = {
+          id: videoData.id,
+          type: file.type.startsWith('video/') ? 'video' : 
+                file.type.startsWith('image/') ? 'image' : 'audio',
+          name: fileName,
+          originalName: file.name,
+          src: s3Url,
+          size: file.size,
+          createdAt: videoData.created_at,
+          status: 'uploaded',
+          s3Location: s3Url,
+        };
+
+        // Update upload progress to completed
+        setUploads(prev => prev.map((upload, idx) => 
+          idx === uploadIndex 
+            ? { ...upload, progress: 100, status: 'completed', mediaItem }
+            : upload
+        ));
+
+        // Start monitoring for video processing
+        if (file.type.startsWith('video/')) {
           startMonitoring();
         }
-      }
-      
-      // If not saved to project (e.g., no projectId), add to temporary uploaded items
-      if (!projectId || mediaType !== MediaType.VIDEO) {
-        const newItem: MediaItem = {
-          id: itemId,
-          name: finalName,
-          type: mediaType,
-          src: objectUrl,
-          duration,
-        };
-        setUploadedItems(prev => [...prev, newItem]);
-      }
-    } catch (error) {
-      console.error('Error during file upload:', error);
-    } finally {
-      setUploading(false);
-    }
-  }, [state.fps, projectId, saveVideoToProject, startMonitoring]);
 
+        // Refresh media library
+        loadMediaItems();
+
+      } catch (err) {
+        console.error('Upload error:', err);
+        setUploads(prev => prev.map((upload, idx) => 
+          idx === uploadIndex 
+            ? { 
+                ...upload, 
+                status: 'error', 
+                error: err instanceof Error ? err.message : 'Upload failed' 
+              }
+            : upload
+        ));
+      }
+    }
+
+    // Clear completed uploads after a delay
+    setTimeout(() => {
+      setUploads(prev => prev.filter(upload => upload.status !== 'completed'));
+    }, 3000);
+  }, [projectId, supabase, uploads.length, loadMediaItems, startMonitoring]);
+
+  // Handle drag and drop
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
+    setDragOver(false);
     
     const files = e.dataTransfer.files;
     if (files.length > 0) {
@@ -688,567 +290,331 @@ export function MediaLibrary() {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
+    setDragOver(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
+    setDragOver(false);
   }, []);
 
+  // Handle file input change
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) {
+    if (files) {
       handleFileUpload(files);
     }
-    // Reset input value to allow uploading the same file again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    // Reset input value to allow re-uploading same file
+    e.target.value = '';
   }, [handleFileUpload]);
 
-  const handleUploadClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  // Handle item deletion
+  const handleDeleteItem = useCallback(async (item: MediaItem) => {
+    if (!confirm(`Are you sure you want to delete "${item.originalName}"?`)) {
+      return;
+    }
 
-  const removeUploadedItem = useCallback((itemId: string) => {
-    setUploadedItems(prev => {
-      const item = prev.find(item => item.id === itemId);
-      if (item?.src) {
-        URL.revokeObjectURL(item.src);
+    try {
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('videos')
+        .delete()
+        .eq('id', item.id);
+
+      if (dbError) throw dbError;
+
+      // Delete from S3 (optional - you might want to keep files for backup)
+      if (item.s3Location) {
+        try {
+          const fileName = item.s3Location.split('/').pop() || '';
+          await deleteFromS3(fileName, process.env.NEXT_PUBLIC_AWS_BUCKET_NAME || 'your-bucket-name');
+        } catch (s3Error) {
+          console.warn('Failed to delete from S3:', s3Error);
+          // Continue anyway - database deletion is more important
+        }
       }
-      return prev.filter(item => item.id !== itemId);
-    });
-  }, []);
 
-  const handleDeleteProjectVideo = useCallback((e: React.MouseEvent, videoId: string, s3Key: string, videoName: string) => {
-    e.stopPropagation();
-    
-    setDeleteModal({
-      isOpen: true,
-      videoId,
-      fileName: s3Key,
-      videoName,
-    });
-  }, []);
-
-  const handleConfirmDelete = useCallback(async () => {
-    if (!deleteModal.videoId) return;
-    
-    const success = await deleteVideoFromProject(deleteModal.videoId, deleteModal.fileName);
-    
-    if (success) {
-      setDeleteModal({ isOpen: false, videoId: '', fileName: '', videoName: '' });
-    } else {
-      // Keep modal open and show error - you could add error state here
-      alert('Failed to delete video. Please try again.');
+      // Refresh media library
+      loadMediaItems();
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Failed to delete item');
     }
-  }, [deleteModal, deleteVideoFromProject]);
+  }, [supabase, loadMediaItems]);
 
-  const handleCloseDeleteModal = useCallback(() => {
-    setDeleteModal({ isOpen: false, videoId: '', fileName: '', videoName: '' });
+  // Handle item drag start for timeline
+  const handleItemDragStart = useCallback((e: React.DragEvent, item: MediaItem) => {
+    const dragData = {
+      type: 'media-item',
+      item: {
+        type: item.type,
+        name: item.originalName,
+        src: item.src,
+        duration: item.duration || 90, // Default 3 seconds at 30fps
+        content: item.type === 'text' ? item.name : undefined,
+      }
+    };
+    
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+    e.dataTransfer.effectAllowed = 'copy';
   }, []);
 
-  const handleCloseAnalysisPanel = useCallback(() => {
-    setAnalysisPanel({ isOpen: false, videoId: '', videoName: '', videoSrc: undefined });
-  }, []);
-
-  // Combine project videos and uploaded items
-  const allMediaItems = [...projectVideos, ...uploadedItems];
-
-  // Available transitions
-  const availableTransitions: TransitionItem[] = [
-    {
-      id: 'fade',
-      name: 'Fade',
-      description: 'Animate the opacity of the scenes',
-      type: 'transition',
-      effect: fade,
-      duration: 30, // 1 second at 30fps
-      category: 'basic'
-    },
-    {
-      id: 'slide',
-      name: 'Slide',
-      description: 'Slide in and push out the previous scene',
-      type: 'transition',
-      effect: slide,
-      duration: 30,
-      category: 'basic'
-    },
-    {
-      id: 'wipe',
-      name: 'Wipe',
-      description: 'Slide over the previous scene',
-      type: 'transition',
-      effect: wipe,
-      duration: 30,
-      category: 'basic'
-    },
-    {
-      id: 'flip',
-      name: 'Flip',
-      description: 'Rotate the previous scene',
-      type: 'transition',
-      effect: flip,
-      duration: 30,
-      category: 'basic'
-    },
-    {
-      id: 'clockWipe',
-      name: 'Clock Wipe',
-      description: 'Reveal the new scene in a circular movement',
-      type: 'transition',
-      effect: clockWipe,
-      duration: 30,
-      category: 'basic'
-    },
-    {
-      id: 'iris',
-      name: 'Iris',
-      description: 'Reveal the scene through a circular mask from center',
-      type: 'transition',
-      effect: iris,
-      duration: 30,
-      category: 'basic'
-    },
-    {
-      id: 'none',
-      name: 'None',
-      description: 'Have no visual effect',
-      type: 'transition',
-      effect: none,
-      duration: 0,
-      category: 'basic'
+  // Get media type icon
+  const getMediaIcon = (type: string) => {
+    switch (type) {
+      case 'video': return <FaVideo className="text-blue-400" />;
+      case 'image': return <FaImage className="text-green-400" />;
+      case 'audio': return <FaMusic className="text-purple-400" />;
+      default: return <FaVideo className="text-gray-400" />;
     }
-  ];
+  };
+
+  // Format file size
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
+  };
+
+  // Format duration
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Check if item is currently processing
+  const isItemProcessing = (item: MediaItem) => {
+    return processingVideos.some(pv => pv.video.id === item.id);
+  };
+
+  // Get processing info for item
+  const getProcessingInfo = (item: MediaItem) => {
+    return processingVideos.find(pv => pv.video.id === item.id);
+  };
+
+  if (!projectId) {
+    return (
+      <div className="w-80 bg-gray-800 border-r border-gray-600 flex items-center justify-center">
+        <div className="text-center text-gray-500">
+          <FaVideo className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>No project selected</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`bg-gray-800 border-r border-gray-600 transition-all duration-300 flex flex-col ${isCollapsed ? 'w-12' : 'w-80'}`}>
+    <div className="w-80 bg-gray-800 border-r border-gray-600 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-600">
-        {!isCollapsed && (
-          <h3 className="text-white font-medium">Media Library</h3>
-        )}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+      <div className="p-4 border-b border-gray-600">
+        <h2 className="text-lg font-semibold text-white mb-3">Media Library</h2>
+        
+        {/* Upload Area */}
+        <div
+          className={`
+            border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer
+            ${dragOver 
+              ? 'border-blue-500 bg-blue-500/10' 
+              : 'border-gray-600 hover:border-gray-500'
+            }
+          `}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onClick={() => document.getElementById('file-input')?.click()}
         >
-          <svg 
-            className={`w-5 h-5 transition-transform ${isCollapsed ? 'rotate-180' : ''}`} 
-            fill="currentColor" 
-            viewBox="0 0 20 20"
-          >
-            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-        </button>
+          <input
+            id="file-input"
+            type="file"
+            multiple
+            accept="video/*,image/*,audio/*"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+          <FaUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-sm text-gray-400">
+            Drop files here or click to upload
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Supports video, image, and audio files
+          </p>
+        </div>
       </div>
 
-      {/* Tabs */}
-      {!isCollapsed && (
-        <div className="flex border-b border-gray-600">
-          <button
-            onClick={() => setActiveTab('media')}
-            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === 'media'
-                ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
-                : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
-            }`}
-          >
-            Media
-          </button>
-          <button
-            onClick={() => setActiveTab('transitions')}
-            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === 'transitions'
-                ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
-                : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
-            }`}
-          >
-            Transitions
-          </button>
+      {/* Upload Progress */}
+      {uploads.length > 0 && (
+        <div className="p-4 border-b border-gray-600 space-y-2">
+          <h3 className="text-sm font-medium text-white">Uploading...</h3>
+          {uploads.map((upload, index) => (
+            <div key={index} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300 truncate">{upload.file.name}</span>
+                <span className="text-gray-400">{upload.progress}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-1">
+                <div 
+                  className={`h-1 rounded-full transition-all ${
+                    upload.status === 'error' ? 'bg-red-500' : 
+                    upload.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
+                  }`}
+                  style={{ width: `${upload.progress}%` }}
+                />
+              </div>
+              {upload.error && (
+                <p className="text-xs text-red-400">{upload.error}</p>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {!isCollapsed && (
-        <div className="h-full flex flex-col">
-          {/* Media Tab Content */}
-          {activeTab === 'media' && (
-            <>
-              <div className="p-3 flex-shrink-0">
-                {/* Upload Section */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-300 mb-3">Upload Media</h4>
-            <input
-              ref={fileInputRef}
-              type="file"
-              
-              accept="video/mp4,video/quicktime,.mov,.mp4,audio/*,image/*"
-              onChange={handleFileInputChange}
-              className="hidden"
-            />
-            <div
-              className={`
-                p-4 border-2 border-dashed rounded transition-colors cursor-pointer
-                ${uploading 
-                  ? 'border-green-500 bg-green-500/10 cursor-wait' 
-                  : isDragOver 
-                    ? 'border-blue-500 bg-blue-500/10' 
-                    : 'border-gray-600 hover:border-gray-500'
-                }
-              `}
-              onDrop={uploading ? undefined : handleDrop}
-              onDragOver={uploading ? undefined : handleDragOver}
-              onDragLeave={uploading ? undefined : handleDragLeave}
-              onClick={uploading ? undefined : handleUploadClick}
-            >
-              <div className="text-center">
-                {uploading ? (
-                  <div className="w-8 h-8 mx-auto mb-2 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <svg className="w-8 h-8 mx-auto mb-2 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-                <div className="text-sm text-gray-300">
-                  {uploading 
-                    ? 'Uploading videos...' 
-                    : isDragOver 
-                      ? 'Drop files here' 
-                      : 'Drop files or click to upload'
-                  }
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {uploading 
-                    ? projectId 
-                      ? 'Saving to project...' 
-                      : 'Processing files...'
-                    : 'Video: .mov, .mp4 • Audio & Images supported'
-                  }
-                </div>
+      {/* Processing Status */}
+      {isProcessing && (
+        <div className="p-4 border-b border-gray-600">
+          <div className="flex items-center space-x-2 text-blue-400 mb-2">
+            <FaSpinner className="w-4 h-4 animate-spin" />
+            <span className="text-sm font-medium">Processing Videos</span>
+          </div>
+          {processingVideos.map((pv) => (
+            <div key={pv.video.id} className="text-xs text-gray-400 mb-1">
+              <div className="flex items-center justify-between">
+                <span className="truncate">{pv.video.original_name}</span>
+                <span>{formatElapsedTime(pv.elapsedSeconds)}</span>
+              </div>
+              <div className="text-blue-400">
+                {pv.analysis?.status || 'Processing...'}
               </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Media Items */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <FaSpinner className="w-6 h-6 text-gray-400 animate-spin" />
           </div>
+        ) : error ? (
+          <div className="p-4 text-center">
+            <FaExclamationTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+            <p className="text-sm text-red-400">{error}</p>
+            <button 
+              onClick={loadMediaItems}
+              className="mt-2 px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
+            >
+              Retry
+            </button>
           </div>
-
-              {/* Scrollable Content Area */}
-              <div className="flex-1 overflow-y-auto px-3 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-            {/* Processing Status Banner */}
-            {isProcessing && (
-              <div className="mb-4 p-3 bg-purple-900/30 border border-purple-600/50 rounded">
-                <div className="flex items-center space-x-2">
-                  <svg className="w-4 h-4 animate-spin text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-purple-300 text-sm font-medium">
-                    {processingVideos.length === 1 ? 
-                      `1 video processing` : 
-                      `${processingVideos.length} videos processing`
-                    }
-                  </span>
-                </div>
-                {currentProcessingVideo && (
-                  <div className="mt-2 text-xs text-purple-400">
-                    Latest: {currentProcessingVideo.video.original_name} • {formatElapsedTime(currentProcessingVideo.elapsedSeconds)}
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* Processing Error */}
-            {processingError && (
-              <div className="mb-4 p-3 bg-red-900/30 border border-red-600/50 rounded">
-                <div className="flex items-center space-x-2">
-                  <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-red-300 text-sm">Processing Error</span>
-                </div>
-                <div className="mt-1 text-xs text-red-400">{processingError}</div>
-              </div>
-            )}
-            
-            {/* Loading State */}
-            {loading && (
-              <div className="flex items-center justify-center py-8">
-                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                <span className="ml-2 text-gray-400 text-sm">Loading videos...</span>
-              </div>
-            )}
-
-            {/* No Project Selected */}
-            {!projectId && !loading && (
-              <div className="text-center py-8">
-                <div className="text-gray-500 text-sm">No project selected</div>
-                <div className="text-gray-600 text-xs mt-1">Open a project to see its videos</div>
-              </div>
-            )}
-
-                {/* Media Categories */}
-                <div className="space-y-4">
-                {Object.values(MediaType).map(type => {
-              const itemsOfType = allMediaItems.filter(item => item.type === type);
-              
-              if (itemsOfType.length === 0) return null;
+        ) : mediaItems.length === 0 ? (
+          <div className="p-4 text-center text-gray-500">
+            <FaVideo className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p className="text-sm">No media files yet</p>
+            <p className="text-xs mt-1">Upload some files to get started</p>
+          </div>
+        ) : (
+          <div className="p-2 space-y-2">
+            {mediaItems.map((item) => {
+              const processing = isItemProcessing(item);
+              const processingInfo = getProcessingInfo(item);
               
               return (
-                <div key={type} className="space-y-2">
-                  <h4 className="text-sm font-medium text-gray-300 capitalize flex items-center justify-between">
-                    <span>{type}</span>
-                    <span className="text-xs text-gray-500">({itemsOfType.length})</span>
-                  </h4>
-                  
-                  <div className="space-y-1">
-                    {itemsOfType.map(item => (
-                      <div
-                        key={item.id}
-                        className={`group flex items-center p-2 rounded transition-colors ${
-                          isConverting[item.id]
-                            ? 'bg-blue-700/50 cursor-wait' 
-                            : 'bg-gray-700 hover:bg-gray-600 cursor-pointer'
-                        }`}
-                        draggable={!isConverting[item.id]}
-                        onDragStart={(e) => !isConverting[item.id] && handleDragStart(e, item)}
-                        onClick={() => !isConverting[item.id] && handleVideoClick(item)}
-                      >
-                        <div className={`flex-shrink-0 mr-3 ${getMediaColor(item.type)}`}>
-                          {isConverting[item.id] ? (
-                            <svg className="w-5 h-5 animate-spin text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                            </svg>
-                          ) : item.isAnalyzing ? (
-                            <svg className="w-5 h-5 animate-spin text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49zM10 18.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5z" clipRule="evenodd" />
-                            </svg>
-                          ) : (
-                            getMediaIcon(item.type)
-                          )}
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-white truncate">
-                            {item.name}
-                            {isConverting[item.id] && (
-                              <span className="ml-2 text-blue-400 text-xs">
-                                Converting...
-                              </span>
-                            )}
-                            {item.isAnalyzing && (
-                              <span className="ml-2 text-yellow-400 text-xs">
-                                {item.processingInfo ? 
-                                  `Analyzing... ${formatElapsedTime(item.processingInfo.elapsedSeconds)}` :
-                                  'Analyzing by AI...'
-                                }
-                              </span>
-                            )}
-                          </div>
-                          {isConverting[item.id] && conversionProgress[item.id] !== undefined ? (
-                            <div className="mt-1">
-                              <div className="flex items-center space-x-2">
-                                <div className="flex-1 bg-gray-600 rounded-full h-1.5">
-                                  <div 
-                                    className="bg-blue-400 h-1.5 rounded-full transition-all duration-300"
-                                    style={{ width: `${conversionProgress[item.id]}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs text-blue-400 min-w-12">
-                                  {Math.round(conversionProgress[item.id])}%
-                                </span>
-                              </div>
-                            </div>
-                          ) : item.duration ? (
-                            <div className="text-xs text-gray-400">
-                              {Math.round(item.duration / state.fps * 10) / 10}s
-                            </div>
-                          ) : null}
-                        </div>
-                        
-                        <div className="flex-shrink-0 flex items-center space-x-1">
-                          
-                          {/* Action buttons for project videos */}
-                          {projectVideos.some(video => video.id === item.id) && (
-                            <>
-                              {/* AI Analysis button for project videos with analysis */}
-                              {!item.isAnalyzing && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAnalysisPanel({
-                                      isOpen: true,
-                                      videoId: item.id,
-                                      videoName: item.name,
-                                      videoSrc: item.src,
-                                    });
-                                  }}
-                                  className="w-4 h-4 text-purple-400 hover:text-purple-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  title="View AI analysis"
-                                >
-                                  <svg fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                </button>
-                              )}
-                              
-                              {/* Add to timeline button */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddToTimeline(item);
-                                }}
-                                className="w-4 h-4 text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Add to timeline"
-                              >
-                                <svg fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                              
-                              {/* Delete button */}
-                              <button
-                                onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_path || '', item.name)}
-                                disabled={deleting[item.id]}
-                                className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                  deleting[item.id] 
-                                    ? 'text-gray-400 cursor-wait' 
-                                    : 'text-red-400 hover:text-red-300'
-                                }`}
-                                title={deleting[item.id] ? 'Deleting...' : 'Delete video from project'}
-                              >
-                                {deleting[item.id] ? (
-                                  <svg className="animate-spin" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                                  </svg>
-                                ) : (
-                                  <svg fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                              </button>
-                            </>
-                          )}
-                          
-                          {/* Delete button for uploaded items */}
-                          {uploadedItems.some(uploaded => uploaded.id === item.id) && (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeUploadedItem(item.id);
-                                }}
-                                className="w-4 h-4 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Remove uploaded file"
-                              >
-                                <svg fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                              
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-                })}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Transitions Tab Content */}
-          {activeTab === 'transitions' && (
-            <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-300 mb-3">Available Transitions</h4>
-                <p className="text-xs text-gray-500 mb-4">Drag transitions to the timeline to add them between scenes</p>
-              </div>
-
-              <div className="space-y-2">
-                {availableTransitions.map(transition => (
-                  <div
-                    key={transition.id}
-                    className="group flex items-center p-3 rounded bg-gray-700 hover:bg-gray-600 cursor-pointer transition-colors"
-                    draggable
-                    onDragStart={(e) => handleTransitionDragStart(e, transition)}
-                    onClick={() => handleAddTransitionToTimeline(transition)}
-                  >
-                    <div className="flex-shrink-0 mr-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
-                        <span className="text-white text-lg font-bold">
-                          {transition.name.charAt(0)}
-                        </span>
-                      </div>
+                <div
+                  key={item.id}
+                  className="bg-gray-700 rounded-lg p-3 hover:bg-gray-600 transition-colors cursor-pointer group"
+                  draggable={!processing}
+                  onDragStart={(e) => handleItemDragStart(e, item)}
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0 mt-1">
+                      {processing ? (
+                        <FaSpinner className="w-4 h-4 text-blue-400 animate-spin" />
+                      ) : (
+                        getMediaIcon(item.type)
+                      )}
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-white truncate">
-                        {transition.name}
-                      </div>
-                      <div className="text-xs text-gray-400 truncate">
-                        {transition.description}
-                      </div>
-                      {transition.duration > 0 && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          {Math.round(transition.duration / state.fps * 10) / 10}s
+                      <h4 className="text-sm font-medium text-white truncate">
+                        {item.originalName}
+                      </h4>
+                      
+                      <div className="text-xs text-gray-400 space-y-1">
+                        {item.duration && (
+                          <div className="flex items-center space-x-1">
+                            <FaClock className="w-3 h-3" />
+                            <span>{formatDuration(item.duration)}</span>
+                          </div>
+                        )}
+                        
+                        {item.size && (
+                          <div>{formatFileSize(item.size)}</div>
+                        )}
+                        
+                        {processing && processingInfo && (
+                          <div className="text-blue-400">
+                            Processing... {formatElapsedTime(processingInfo.elapsedSeconds)}
+                          </div>
+                        )}
+                        
+                        <div className="text-xs text-gray-500">
+                          {new Date(item.createdAt).toLocaleDateString()}
                         </div>
-                      )}
+                      </div>
                     </div>
                     
-                    <div className="flex-shrink-0 flex items-center space-x-1">
-                      {transition.category === 'premium' && (
-                        <div className="bg-yellow-500 text-black text-xs px-2 py-1 rounded font-medium">
-                          Pro
-                        </div>
-                      )}
-                      
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAddTransitionToTimeline(transition);
-                        }}
-                        className="w-6 h-6 text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Add to timeline"
-                      >
-                        <svg fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                        </svg>
-                      </button>
+                    <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center space-x-1">
+                        {item.type === 'video' && !processing && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedItem(item);
+                              setShowAnalysisPanel(true);
+                            }}
+                            className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-600 text-gray-400 hover:text-blue-400"
+                            title="View AI Analysis"
+                          >
+                            <FaEye className="w-3 h-3" />
+                          </button>
+                        )}
+                        
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteItem(item);
+                          }}
+                          className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-600 text-gray-400 hover:text-red-400"
+                          title="Delete"
+                        >
+                          <FaTrash className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Delete Confirmation Modal */}
-      <DeleteConfirmationModal
-        isOpen={deleteModal.isOpen}
-        onClose={handleCloseDeleteModal}
-        onConfirm={handleConfirmDelete}
-        videoName={deleteModal.videoName}
-        isDeleting={deleting[deleteModal.videoId]}
-      />
-      
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* AI Analysis Panel */}
-      <AIAnalysisPanel
-        videoId={analysisPanel.videoId}
-        videoName={analysisPanel.videoName}
-        videoSrc={analysisPanel.videoSrc}
-        isOpen={analysisPanel.isOpen}
-        onClose={handleCloseAnalysisPanel}
-      />
+      {selectedItem && (
+        <AIAnalysisPanel
+          videoId={selectedItem.id}
+          videoName={selectedItem.originalName}
+          videoSrc={selectedItem.src}
+          isOpen={showAnalysisPanel}
+          onClose={() => {
+            setShowAnalysisPanel(false);
+            setSelectedItem(null);
+          }}
+        />
+      )}
     </div>
   );
 }

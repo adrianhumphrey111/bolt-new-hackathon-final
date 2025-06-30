@@ -30,16 +30,19 @@ export default function DashboardClient() {
   const [projects, setProjects] = useState<Project[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
-  const { user, signOut, isAuthenticated } = useAuthContext()
+  const { user, signOut, isAuthenticated, loading: authLoading } = useAuthContext()
+  
+  console.log('🏠 Dashboard render:', { isAuthenticated, hasUser: !!user, authLoading, loading })
   const supabase = createClientSupabaseClient()
   const router = useRouter()
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!authLoading && !isAuthenticated) {
+      console.log('🔐 Redirecting to login - not authenticated')
       router.push('/auth/login')
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, authLoading, router])
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -108,12 +111,14 @@ export default function DashboardClient() {
     router.push('/editor')
   }
 
-  if (!isAuthenticated || !user) {
+  if (authLoading || (!isAuthenticated || !user)) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-400">Loading...</p>
+          <p className="text-gray-400">
+            {authLoading ? 'Checking authentication...' : 'Loading...'}
+          </p>
         </div>
       </div>
     )

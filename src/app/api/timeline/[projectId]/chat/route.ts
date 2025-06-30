@@ -4,9 +4,14 @@ import { AI_TOOLS } from '../../../../../lib/timeline-ai-tools';
 import { withCreditsCheck, useCredits } from '../../../../../lib/credits';
 
 // Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.NEXT_OPENAI_API_KEY,
-});
+function getOpenAI() {
+  if (!process.env.NEXT_OPENAI_API_KEY) {
+    throw new Error('NEXT_OPENAI_API_KEY environment variable is not set');
+  }
+  return new OpenAI({
+    apiKey: process.env.NEXT_OPENAI_API_KEY,
+  });
+}
 
 export async function POST(
   request: NextRequest,
@@ -42,6 +47,7 @@ Guidelines:
 - If you can't perform an action, explain why and suggest alternatives
 - Always be concise but friendly`;
 
+    const openai = getOpenAI();
     const completion = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [

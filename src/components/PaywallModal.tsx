@@ -31,6 +31,19 @@ export function PaywallModal({
   const router = useRouter();
   const supabase = createClientSupabaseClient();
 
+  // Get auth headers for API calls
+  const getAuthHeaders = async () => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  };
+
   // Fetch actual user credits when modal opens
   useEffect(() => {
     if (!isOpen) return;
@@ -38,7 +51,8 @@ export function PaywallModal({
     const fetchCredits = async () => {
       setFetchingCredits(true);
       try {
-        const response = await fetch('/api/user/credits');
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/user/credits', { headers });
         if (response.ok) {
           const data = await response.json();
           setActualCredits(data);
@@ -58,13 +72,10 @@ export function PaywallModal({
   const handleTopUp = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('sb-access-token');
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/stripe/topup-credits', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify({
           creditsAmount: 100
         })

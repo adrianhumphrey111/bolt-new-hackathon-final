@@ -12,34 +12,13 @@ export default async function EditorPage({ params }: EditorPageProps) {
   const { projectId } = await params;
   const supabase = createServerSupabaseClient();
 
-  // Check authentication
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    redirect('/auth/login');
-  }
-
-  // Fetch project details and verify ownership
-  const { data: project, error: projectError } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .eq('user_id', session.user.id)
-    .single();
-
-  if (projectError || !project) {
-    console.error('Error fetching project:', projectError);
-    redirect('/dashboard');
-  }
-
+  // For server-side, we'll just pass the projectId to the client component
+  // The client component will handle authentication checks
+  
   return (
     <div className="h-screen w-screen">
       {/* Pass project information to the VideoEditor */}
       <VideoEditor projectId={projectId} />
-      
-      {/* Screen reader only project info */}
-      <div className="sr-only">
-        Currently editing project: {project.title}
-      </div>
     </div>
   );
 }
@@ -47,16 +26,9 @@ export default async function EditorPage({ params }: EditorPageProps) {
 // Generate metadata for the page
 export async function generateMetadata({ params }: EditorPageProps) {
   const { projectId } = await params;
-  const supabase = createServerSupabaseClient();
-
-  const { data: project } = await supabase
-    .from('projects')
-    .select('title')
-    .eq('id', projectId)
-    .single();
-
+  
   return {
-    title: project?.title ? `Editing ${project.title}` : 'Video Editor',
+    title: 'Video Editor',
     description: 'AI-powered video timeline editor',
   };
 }

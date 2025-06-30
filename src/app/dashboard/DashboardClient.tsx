@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { FaPlus, FaVideo, FaSignOutAlt } from 'react-icons/fa'
 import NewProjectModal from './components/NewProjectModal'
 import ProjectCard from './components/ProjectCard'
-import type { User } from '@supabase/supabase-js'
+import { useAuthContext } from '@/components/AuthProvider'
 
 interface Video {
   id: string
@@ -26,18 +26,30 @@ interface Project {
   videos?: Video[]
 }
 
-interface DashboardClientProps {
-  initialProjects: Project[]
-  user: User
-}
-
-export default function DashboardClient({ initialProjects, user }: DashboardClientProps) {
-  const [projects, setProjects] = useState<Project[]>(initialProjects)
+export default function DashboardClient() {
+  const [projects, setProjects] = useState<Project[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const { user, signOut, isAuthenticated } = useAuthContext()
   const supabase = createClientSupabaseClient()
   const router = useRouter()
 
+  // Redirect if not authenticated
   useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/auth/login')
+    }
+  }, [isAuthenticated, router])
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      fetchProjects()
+    }
+  }, [isAuthenticated, user])
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return
+
     // Subscribe to realtime changes
     const projectsSubscription = supabase
       .channel('projects_channel')
@@ -54,9 +66,11 @@ export default function DashboardClient({ initialProjects, user }: DashboardClie
     return () => {
       projectsSubscription.unsubscribe()
     }
-  }, [supabase])
+  }, [supabase, isAuthenticated, user])
 
   const fetchProjects = async () => {
+    if (!user) return
+
     try {
       const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
@@ -64,6 +78,7 @@ export default function DashboardClient({ initialProjects, user }: DashboardClie
           *,
           videos (*)
         `)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (projectsError) throw projectsError
@@ -71,22 +86,18 @@ export default function DashboardClient({ initialProjects, user }: DashboardClie
       setProjects(projectsData || [])
     } catch (error) {
       console.error('Error fetching projects:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleSignOut = async () => {
     try {
-      // Call our logout API endpoint
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      })
-
-      if (response.ok) {
+      const result = await signOut()
+      if (result.success) {
         router.push('/auth/login')
-        router.refresh()
       } else {
-        console.error('Logout failed')
+        console.error('Logout failed:', result.error)
       }
     } catch (error) {
       console.error('Error during logout:', error)
@@ -95,6 +106,28 @@ export default function DashboardClient({ initialProjects, user }: DashboardClie
 
   const openEditor = () => {
     router.push('/editor')
+  }
+
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading projects...</p>
+        </div>
+      </div>
+    )
   }
 
   return (

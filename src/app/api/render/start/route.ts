@@ -52,13 +52,15 @@ export async function POST(request: NextRequest) {
       },
       codec: outputFormat === 'mp4' ? 'h264' : 'h265',
       imageFormat: 'jpeg',
-      maxRetries: 1,
+      maxRetries: 3,
       privacy: 'public',
       logLevel: 'info',
       // Quality settings
       crf: quality === 'high' ? 18 : quality === 'medium' ? 23 : 28,
       // Performance optimizations
       jpegQuality: quality === 'high' ? 95 : quality === 'medium' ? 90 : 80,
+      // Concurrency controls to prevent AWS limits
+      framesPerLambda: 30, // Increase chunk size to reduce total Lambda invocations
       // Webhook for progress updates (optional)
       webhook: process.env.WEBHOOK_SECRET ? {
         url: `${process.env.NEXT_PUBLIC_APP_URL}/api/render/webhook`,

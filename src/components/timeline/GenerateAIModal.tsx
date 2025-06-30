@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useEDLGeneration } from '../../hooks/useEDLGeneration';
 import { useTimeline } from './TimelineContext';
+import { useAuthContext } from '../AuthProvider';
+import { PaywallModal } from '../PaywallModal';
 
 interface GenerateAIModalProps {
   projectId: string;
@@ -15,23 +17,83 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
   const [userIntent, setUserIntent] = useState('');
   const [scriptContent, setScriptContent] = useState('');
   const { actions } = useTimeline();
+  const { isAuthenticated, loading: authLoading, session } = useAuthContext();
+
+  // Helper function to get step status display
+  const getStepStatusIcon = (step: any) => {
+    switch (step.status) {
+      case 'completed':
+        return '✓';
+      case 'running':
+        return '⟳';
+      case 'failed':
+        return '✗';
+      default:
+        return step.step_number;
+    }
+  };
+
+  const getStepStatusColor = (step: any) => {
+    switch (step.status) {
+      case 'completed':
+        return 'bg-green-600 text-white';
+      case 'running':
+        return 'bg-blue-600 text-white';
+      case 'failed':
+        return 'bg-red-600 text-white';
+      default:
+        return 'bg-gray-600 text-gray-300';
+    }
+  };
+
+  const getStepTextColor = (step: any) => {
+    switch (step.status) {
+      case 'completed':
+        return 'text-green-400';
+      case 'running':
+        return 'text-blue-400';
+      case 'failed':
+        return 'text-red-400';
+      default:
+        return 'text-gray-400';
+    }
+  };
 
   const {
     currentJob,
     isGenerating,
     error,
+    creditError,
     startGeneration,
     formatElapsedTime,
     getCurrentStepStatus,
     canCreateTimeline,
     isComplete,
     progress,
-    shotList
-  } = useEDLGeneration(projectId);
+    shotList,
+    clearCreditError
+  } = useEDLGeneration(projectId, session);
 
   const handleStartGeneration = async () => {
     if (!userIntent.trim()) {
       alert('Please enter your video intent');
+      return;
+    }
+
+    // Prevent starting a new job if one is already running
+    if (isGenerating || currentJob) {
+      alert('AI generation is already in progress. Please wait for it to complete before starting a new one.');
+      return;
+    }
+
+    // Check authentication state before proceeding
+    if (!isAuthenticated) {
+      alert('Please sign in to generate timelines');
+      return;
+    }
+
+    if (authLoading) {
+      alert('Authentication is still loading. Please wait a moment and try again.');
       return;
     }
 
@@ -207,28 +269,33 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
               {currentJob?.steps && currentJob.steps.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium text-gray-300">Processing Steps:</h4>
-                  {currentJob.steps.map((step, index) => (
+                  {[...currentJob.steps]
+                    .sort((a, b) => a.step_number - b.step_number)
+                    .map((step) => (
                     <div key={step.step_number} className="flex items-center space-x-3">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                        step.status === 'completed' 
-                          ? 'bg-green-600 text-white' 
-                          : step.status === 'running'
-                            ? 'bg-blue-600 text-white'
-                            : step.status === 'failed'
-                              ? 'bg-red-600 text-white'
-                              : 'bg-gray-600 text-gray-300'
-                      }`}>
-                        {step.status === 'completed' ? '✓' : 
-                         step.status === 'running' ? '⟳' :
-                         step.status === 'failed' ? '✗' : step.step_number}
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${getStepStatusColor(step)}`}>
+                        {getStepStatusIcon(step)}
                       </div>
-                      <span className={`text-sm ${
-                        step.status === 'completed' ? 'text-green-400' :
-                        step.status === 'running' ? 'text-blue-400' :
-                        step.status === 'failed' ? 'text-red-400' : 'text-gray-400'
-                      }`}>
-                        {step.step_name}
-                      </span>
+                      <div className="flex-1">
+                        <span className={`text-sm font-medium ${getStepTextColor(step)}`}>
+                          {step.step_name}
+                        </span>
+                        {step.status === 'running' && step.started_at && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Running for {formatElapsedTime(step.started_at)}
+                          </div>
+                        )}
+                        {step.status === 'completed' && step.duration_seconds && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Completed in {step.duration_seconds}s
+                          </div>
+                        )}
+                        {step.status === 'failed' && step.error_message && (
+                          <div className="text-xs text-red-400 mt-1">
+                            Error: {step.error_message}
+                          </div>
+                        )}
+                      </div>
                       {step.status === 'running' && (
                         <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                       )}
@@ -291,10 +358,10 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
                 </button>
                 <button
                   onClick={handleStartGeneration}
-                  disabled={!userIntent.trim()}
+                  disabled={!userIntent.trim() || !isAuthenticated || authLoading}
                   className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors font-medium"
                 >
-                  Generate Timeline
+                  {authLoading ? 'Authenticating...' : !isAuthenticated ? 'Sign in Required' : 'Generate Timeline'}
                 </button>
               </>
             )}
@@ -320,6 +387,15 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
           </div>
         </div>
       </div>
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        isOpen={!!creditError}
+        onClose={clearCreditError}
+        requiredCredits={creditError?.requiredCredits || 0}
+        availableCredits={creditError?.availableCredits || 0}
+        action="AI Timeline Generation"
+      />
     </div>
   );
 }

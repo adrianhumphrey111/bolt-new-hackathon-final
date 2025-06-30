@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClientSupabaseClient } from '../../lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { FaPlus, FaVideo, FaSignOutAlt } from 'react-icons/fa'
+import { FaPlus, FaVideo, FaSignOutAlt, FaCog } from 'react-icons/fa'
 import NewProjectModal from './components/NewProjectModal'
 import ProjectCard from './components/ProjectCard'
 import { useAuthContext } from '../../components/AuthProvider'
@@ -167,6 +167,13 @@ export default function DashboardClient() {
               >
                 <FaPlus />
                 <span>New Project</span>
+              </button>
+              <button
+                onClick={() => router.push('/settings')}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+              >
+                <FaCog />
+                <span>Settings</span>
               </button>
               <button
                 onClick={handleSignOut}

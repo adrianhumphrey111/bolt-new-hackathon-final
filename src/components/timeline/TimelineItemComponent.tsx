@@ -353,7 +353,7 @@ export function TimelineItemComponent({ item, trackHeight }: TimelineItemProps) 
         ${isSelected ? 'border-white shadow-lg ring-2 ring-white/20' : 'border-transparent'}
         ${isDragging ? 'opacity-75 shadow-2xl' : 'opacity-90'}
         hover:opacity-100 hover:shadow-md transition-all duration-150
-        hover:scale-105
+        hover:ring-2 hover:ring-white/40
       `}
       style={{
         left: x,

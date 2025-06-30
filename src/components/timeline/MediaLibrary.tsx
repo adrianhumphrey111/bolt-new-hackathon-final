@@ -9,7 +9,10 @@ import { createClientSupabaseClient } from '../../lib/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
 import { useVideoProcessing } from '../../hooks/useVideoProcessing';
 import { AIAnalysisPanel } from './AIAnalysisPanel';
+import { AIVideoSorter } from './AIVideoSorter';
 import { useDrag } from './DragContext';
+import { StoragePaywallModal } from '../StoragePaywallModal';
+import { PaywallModal } from '../PaywallModal';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
 import { wipe } from '@remotion/transitions/wipe';
@@ -42,7 +45,7 @@ interface TransitionItem {
   category: 'basic' | 'premium';
 }
 
-type TabType = 'media' | 'transitions';
+type TabType = 'media' | 'transitions' | 'ai-sort';
 
 // Create context for project information
 interface ProjectContextType {
@@ -172,6 +175,28 @@ export function MediaLibrary() {
     videoId: '',
     videoName: '',
     videoSrc: undefined,
+  });
+  const [storagePaywall, setStoragePaywall] = useState<{
+    isOpen: boolean;
+    currentStorageGB: number;
+    storageLimit: number;
+    fileSize: number;
+  }>({
+    isOpen: false,
+    currentStorageGB: 0,
+    storageLimit: 2,
+    fileSize: 0,
+  });
+  const [creditsPaywall, setCreditsPaywall] = useState<{
+    isOpen: boolean;
+    requiredCredits: number;
+    availableCredits: number;
+    action: string;
+  }>({
+    isOpen: false,
+    requiredCredits: 0,
+    availableCredits: 0,
+    action: '',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClientSupabaseClient();
@@ -333,6 +358,12 @@ export function MediaLibrary() {
 
   const handleVideoClick = (mediaItem: MediaItem) => {
     if (mediaItem.type === MediaType.VIDEO && projectVideos.some(video => video.id === mediaItem.id)) {
+      // Check if video is still analyzing
+      if (mediaItem.isAnalyzing) {
+        alert('This video is currently being analyzed. Please check back in a few moments to view the AI analysis.');
+        return;
+      }
+      
       // Open AI Analysis panel for project videos
       setAnalysisPanel({
         isOpen: true,
@@ -555,7 +586,7 @@ export function MediaLibrary() {
       const fileName = `${userId}/${projectId}/videos/${videoId}_${timestamp}_${originalName}`;
       const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET as string;
 
-      // Save video record to database
+      // Save video record to database with file size
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
         .insert({
@@ -565,7 +596,8 @@ export function MediaLibrary() {
           original_name: originalName,
           file_path: fileName, // Store the S3 key directly
           duration: duration / state.fps, // Convert frames to seconds
-          status: 'processing'
+          status: 'processing',
+          file_size_bytes: file.size // Track file size in bytes
         })
         .select()
         .single();
@@ -579,6 +611,28 @@ export function MediaLibrary() {
       console.log('DEBUG: saveVideoToProject - File to upload to S3 type:', file.type);
       // Now upload to S3
       await uploadToS3({ file, fileName, bucketName });
+      
+      // Deduct 10 credits for video upload
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/user/usage/deduct', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            action: 'video_upload',
+            credits: 10
+          })
+        });
+        
+        if (!response.ok) {
+          console.warn('Failed to deduct credits for video upload');
+        } else {
+          console.log('✅ Deducted 10 credits for video upload');
+        }
+      } catch (error) {
+        console.warn('Error deducting credits:', error);
+      }
+      
       return fileName
     } catch (error) {
       console.error('Error saving video to project:', error);
@@ -633,21 +687,113 @@ export function MediaLibrary() {
     }
   }, [supabase, fetchProjectVideos]);
 
+  const isValidFileType = (file: File): boolean => {
+    const fileName = file.name.toLowerCase();
+    const fileType = file.type.toLowerCase();
+    
+    // Video files: only MP4 and MOV
+    if (fileType.startsWith('video/')) {
+      return fileName.endsWith('.mp4') || fileName.endsWith('.mov') || 
+             fileType === 'video/mp4' || fileType === 'video/quicktime';
+    }
+    
+    // Audio files: common formats
+    if (fileType.startsWith('audio/')) {
+      return fileName.endsWith('.mp3') || fileName.endsWith('.wav') || 
+             fileName.endsWith('.m4a') || fileName.endsWith('.aac') ||
+             fileType === 'audio/mpeg' || fileType === 'audio/wav' || 
+             fileType === 'audio/mp4' || fileType === 'audio/aac';
+    }
+    
+    // Image files: common formats
+    if (fileType.startsWith('image/')) {
+      return fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || 
+             fileName.endsWith('.png') || fileName.endsWith('.gif') ||
+             fileName.endsWith('.webp') || fileName.endsWith('.bmp') ||
+             fileType === 'image/jpeg' || fileType === 'image/png' || 
+             fileType === 'image/gif' || fileType === 'image/webp';
+    }
+    
+    return false;
+  };
+
+  // Check storage and credits before upload
+  const checkUploadLimits = async (file: File): Promise<{ canUpload: boolean; reason?: string }> => {
+    try {
+      const headers = await getAuthHeaders();
+      
+      // Check current usage
+      const usageResponse = await fetch('/api/user/usage', { headers });
+      if (!usageResponse.ok) {
+        throw new Error('Failed to fetch usage data');
+      }
+      const usage = await usageResponse.json();
+      
+      // Check storage limit
+      const fileSizeGB = file.size / (1024 * 1024 * 1024);
+      const totalAfterUpload = usage.storageUsed + fileSizeGB;
+      
+      if (totalAfterUpload > usage.storageLimit) {
+        setStoragePaywall({
+          isOpen: true,
+          currentStorageGB: usage.storageUsed,
+          storageLimit: usage.storageLimit,
+          fileSize: file.size,
+        });
+        return { canUpload: false, reason: 'storage_limit' };
+      }
+      
+      // Check credits for video uploads (10 credits)
+      if (file.type.startsWith('video/')) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const creditsResponse = await fetch('/api/user/credits', { headers });
+          if (creditsResponse.ok) {
+            const credits = await creditsResponse.json();
+            if (credits.remaining < 10) {
+              setCreditsPaywall({
+                isOpen: true,
+                requiredCredits: 10,
+                availableCredits: credits.remaining,
+                action: 'upload video',
+              });
+              return { canUpload: false, reason: 'insufficient_credits' };
+            }
+          }
+        }
+      }
+      
+      return { canUpload: true };
+    } catch (error) {
+      console.error('Error checking upload limits:', error);
+      return { canUpload: true }; // Allow upload if check fails
+    }
+  };
+
   const handleFileUpload = useCallback(async (files: FileList) => {
     setUploading(true);
     
     try {
       const file = files[0];
       console.log('DEBUG: handleFileUpload - Initial file:', file);
+      
+      // Check upload limits before proceeding
+      const { canUpload, reason } = await checkUploadLimits(file);
+      if (!canUpload) {
+        console.log('Upload blocked:', reason);
+        setUploading(false);
+        return;
+      }
       console.log('DEBUG: handleFileUpload - Initial file size:', file.size, 'bytes');
       console.log('DEBUG: handleFileUpload - Initial file type:', file.type);
       
-      // Filter for video files - only allow .mov and .mp4
-      if (file.type.startsWith('video/')) {
-        if (!isValidVideoFile(file)) {
-          console.warn('❌ Invalid video file type:', file.name, 'Only .mov and .mp4 files are supported');
-          return; // Exit if invalid file type
-        }
+      // Validate file type
+      if (!isValidFileType(file)) {
+        const fileType = file.type.startsWith('video/') ? 'video' : 
+                        file.type.startsWith('audio/') ? 'audio' : 
+                        file.type.startsWith('image/') ? 'image' : 'file';
+        alert(`Invalid ${fileType} format. \n\nSupported formats:\n• Videos: MP4, MOV\n• Audio: MP3, WAV, M4A, AAC\n• Images: JPG, PNG, GIF, WebP`);
+        return;
       }
       
       const mediaType = getMediaTypeFromFile(file);
@@ -889,7 +1035,7 @@ export function MediaLibrary() {
         <div className="flex border-b border-gray-600">
           <button
             onClick={() => setActiveTab('media')}
-            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'media'
                 ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
@@ -898,8 +1044,23 @@ export function MediaLibrary() {
             Media
           </button>
           <button
+            onClick={() => setActiveTab('ai-sort')}
+            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors relative ${
+              activeTab === 'ai-sort'
+                ? 'text-purple-400 border-b-2 border-purple-400 bg-gray-700/50'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+            }`}
+          >
+            <div className="flex items-center justify-center space-x-1">
+              <span>AI Sort</span>
+              <div className="bg-gradient-to-r from-purple-500 to-blue-500 text-white text-xs px-1 py-0.5 rounded font-medium">
+                PRO
+              </div>
+            </div>
+          </button>
+          <button
             onClick={() => setActiveTab('transitions')}
-            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'transitions'
                 ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
@@ -961,9 +1122,9 @@ export function MediaLibrary() {
                 <div className="text-xs text-gray-500 mt-1">
                   {uploading 
                     ? projectId 
-                      ? 'Saving to project...' 
+                      ? 'Processing and saving to project...' 
                       : 'Processing files...'
-                    : 'Video: .mov, .mp4 • Audio & Images supported'
+                    : 'Videos: MP4, MOV (≤1GB converts to MP4) • Audio: MP3, WAV, M4A • Images: JPG, PNG, GIF'
                   }
                 </div>
               </div>
@@ -1203,6 +1364,39 @@ export function MediaLibrary() {
             </>
           )}
 
+          {/* AI Sort Tab Content */}
+          {activeTab === 'ai-sort' && (
+            <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+              <AIVideoSorter
+                projectId={projectId || ''}
+                onVideoSelect={(videoId) => {
+                  // Find the video in project videos and open analysis panel
+                  const video = projectVideos.find(v => v.id === videoId);
+                  if (video) {
+                    setAnalysisPanel({
+                      isOpen: true,
+                      videoId: video.id,
+                      videoName: video.name,
+                      videoSrc: video.src,
+                    });
+                  }
+                }}
+                onError={(error) => {
+                  console.error('AI Sort Error:', error);
+                  // You could add a toast notification here
+                }}
+                onUpgradeRequired={() => {
+                  setCreditsPaywall({
+                    isOpen: true,
+                    requiredCredits: 0,
+                    availableCredits: 0,
+                    action: 'access AI video sorting',
+                  });
+                }}
+              />
+            </div>
+          )}
+
           {/* Transitions Tab Content */}
           {activeTab === 'transitions' && (
             <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
@@ -1287,6 +1481,24 @@ export function MediaLibrary() {
         videoSrc={analysisPanel.videoSrc}
         isOpen={analysisPanel.isOpen}
         onClose={handleCloseAnalysisPanel}
+      />
+
+      {/* Storage Paywall Modal */}
+      <StoragePaywallModal
+        isOpen={storagePaywall.isOpen}
+        onClose={() => setStoragePaywall(prev => ({ ...prev, isOpen: false }))}
+        currentStorageGB={storagePaywall.currentStorageGB}
+        storageLimit={storagePaywall.storageLimit}
+        fileSize={storagePaywall.fileSize}
+      />
+
+      {/* Credits Paywall Modal */}
+      <PaywallModal
+        isOpen={creditsPaywall.isOpen}
+        onClose={() => setCreditsPaywall(prev => ({ ...prev, isOpen: false }))}
+        requiredCredits={creditsPaywall.requiredCredits}
+        availableCredits={creditsPaywall.availableCredits}
+        action={creditsPaywall.action}
       />
     </div>
   );

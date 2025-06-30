@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '../../../../../lib/supabase/server';
+import { withCreditsCheck, useCredits } from '../../../../../lib/credits';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ videoId: string }> }
 ) {
-  try {
-    const { videoId } = await params;
-    const body = await request.json();
-    const { additional_context } = body;
-
-    // Check authentication and get authenticated client
-    const { user, error: authError, supabase } = await getUserFromRequest(request);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  return withCreditsCheck(request, 'video_upload', async (userId, supabase) => {
+    try {
+      const { videoId } = await params;
+      const body = await request.json();
+      const { additional_context } = body;
 
     // Verify video exists and belongs to user
     const { data: video, error: videoError } = await supabase
@@ -27,7 +23,7 @@ export async function POST(
         projects!inner(user_id)
       `)
       .eq('id', videoId)
-      .eq('projects.user_id', user.id)
+      .eq('projects.user_id', userId)
       .single();
 
     if (videoError || !video) {
@@ -65,13 +61,24 @@ export async function POST(
       }
     });
 
+    // Use credits after Lambda has been triggered
+    const creditsUsed = await useCredits(userId, 'video_upload', {
+      videoId,
+      videoName: video.original_name,
+      action: 'reanalyze'
+    }, supabase);
+
+    if (!creditsUsed) {
+      console.error('Failed to deduct credits for video reanalysis');
+    }
+
     // Update video analysis status to indicate re-analysis is in progress
     const { error: upsertError } = await supabase
       .from('video_analysis')
       .upsert({
         video_id: videoId,
         project_id: video.project_id,
-        user_id: user.id,
+        user_id: userId,
         status: 'processing',
         processing_started_at: new Date().toISOString(),
       }, {
@@ -97,4 +104,5 @@ export async function POST(
       { status: 500 }
     );
   }
+  });
 }

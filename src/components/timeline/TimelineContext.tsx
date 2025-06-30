@@ -24,10 +24,30 @@ const defaultConfig: TimelineConfig = {
   maxZoom: 20,   // Very zoomed in - can see individual frames
 };
 
-const initialHistoryState = createHistoryState([], []);
+const initialHistoryState = createHistoryState([
+  {
+    id: 'track-1',
+    name: 'Track 1',
+    height: 60,
+    items: [],
+    isVisible: true,
+    isLocked: false,
+    isMuted: false,
+  }
+], []);
 
 const initialState: TimelineState = {
-  tracks: [],
+  tracks: [
+    {
+      id: 'track-1',
+      name: 'Track 1',
+      height: 60,
+      items: [],
+      isVisible: true,
+      isLocked: false,
+      isMuted: false,
+    }
+  ],
   playheadPosition: 0,
   totalDuration: 900, // 30 seconds at 30fps (will be dynamic)
   zoom: 2,
@@ -74,6 +94,29 @@ type TimelineAction =
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'LOAD_TIMELINE'; timeline: Partial<TimelineState> };
+
+// Helper function to ensure at least one empty track exists
+function ensureEmptyTrack(tracks: Track[]): Track[] {
+  // Check if there's at least one track with no items
+  const hasEmptyTrack = tracks.some(track => track.items.length === 0);
+  
+  if (!hasEmptyTrack) {
+    // Add a new empty track
+    const newTrack: Track = {
+      id: uuidv4(),
+      name: `Track ${tracks.length + 1}`,
+      items: [],
+      transitions: [],
+      height: defaultConfig.trackHeight,
+      isVisible: true,
+      isLocked: false,
+      isMuted: false,
+    };
+    return [...tracks, newTrack];
+  }
+  
+  return tracks;
+}
 
 // Helper function to calculate optimal timeline duration
 function calculateOptimalDuration(tracks: Track[], zoom: number, fps: number): number {
@@ -205,11 +248,12 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
         };
         newItem.trackId = newTrack.id;
         const updatedTracks = [...state.tracks, newTrack];
+        const finalTracks = ensureEmptyTrack(updatedTracks);
         
         return {
           ...state,
-          tracks: updatedTracks,
-          totalDuration: calculateOptimalDuration(updatedTracks, state.zoom, state.fps),
+          tracks: finalTracks,
+          totalDuration: calculateOptimalDuration(finalTracks, state.zoom, state.fps),
         };
       }
 
@@ -219,10 +263,12 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
           : track
       );
       
+      const finalTracks = ensureEmptyTrack(updatedTracks);
+      
       return {
         ...state,
-        tracks: updatedTracks,
-        totalDuration: calculateOptimalDuration(updatedTracks, state.zoom, state.fps),
+        tracks: finalTracks,
+        totalDuration: calculateOptimalDuration(finalTracks, state.zoom, state.fps),
       };
     }
 
@@ -244,12 +290,16 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
     }
 
     case 'REMOVE_ITEM': {
+      const updatedTracks = state.tracks.map(track => ({
+        ...track,
+        items: track.items.filter(item => item.id !== action.itemId),
+      }));
+      
+      const finalTracks = ensureEmptyTrack(updatedTracks);
+      
       return {
         ...state,
-        tracks: state.tracks.map(track => ({
-          ...track,
-          items: track.items.filter(item => item.id !== action.itemId),
-        })),
+        tracks: finalTracks,
         selectedItems: state.selectedItems.filter(id => id !== action.itemId),
       };
     }
@@ -274,20 +324,20 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
         };
         updatedItem.trackId = newTrack.id;
 
-        finalTracks = [
+        finalTracks = ensureEmptyTrack([
           ...state.tracks.map(track => ({
             ...track,
             items: track.items.filter(i => i.id !== action.itemId),
           })),
           newTrack,
-        ];
+        ]);
       } else {
-        finalTracks = state.tracks.map(track => ({
+        finalTracks = ensureEmptyTrack(state.tracks.map(track => ({
           ...track,
           items: track.items
             .filter(item => item.id !== action.itemId)
             .concat(track.id === action.trackId ? [updatedItem] : []),
-        }));
+        })));
       }
 
       return {
@@ -476,13 +526,14 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
         name: track.name || `Track ${(action.timeline.tracks || []).indexOf(track) + 1}`,
       }));
 
-      const newHistory = createHistoryState(tracks, action.timeline.selectedItems || []);
+      const finalTracks = ensureEmptyTrack(tracks);
+      const newHistory = createHistoryState(finalTracks, action.timeline.selectedItems || []);
       
       return {
         ...state,
         ...action.timeline,
         // Ensure essential fields have defaults and are valid
-        tracks,
+        tracks: finalTracks,
         selectedItems: action.timeline.selectedItems || [],
         playheadPosition: typeof action.timeline.playheadPosition === 'number' ? action.timeline.playheadPosition : 0,
         totalDuration: typeof action.timeline.totalDuration === 'number' ? action.timeline.totalDuration : 900,
@@ -664,9 +715,18 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
         // No saved timeline found, initialize with default empty state
         console.log('No saved timeline found, initializing with default state');
         
-        // Reset to clean initial state
+        // Reset to clean initial state with at least one empty track
         dispatch({ type: 'LOAD_TIMELINE', timeline: {
-          tracks: [],
+          tracks: [{
+            id: uuidv4(),
+            name: 'Track 1',
+            height: 60,
+            items: [],
+            transitions: [],
+            isVisible: true,
+            isLocked: false,
+            isMuted: false,
+          }],
           selectedItems: [],
           playheadPosition: 0,
           totalDuration: 900, // 30 seconds at 30fps
@@ -676,7 +736,16 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
         }});
         
         const emptyState = {
-          tracks: [],
+          tracks: [{
+            id: uuidv4(),
+            name: 'Track 1',
+            height: 60,
+            items: [],
+            transitions: [],
+            isVisible: true,
+            isLocked: false,
+            isMuted: false,
+          }],
           selectedItems: [],
           playheadPosition: 0,
           totalDuration: 900,

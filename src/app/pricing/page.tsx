@@ -3,10 +3,94 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { FaCheck, FaTimes, FaVideo, FaArrowRight, FaQuestionCircle, FaStar, FaBolt, FaCrown, FaRocket, FaPlay, FaUsers, FaShield } from 'react-icons/fa';
+import { createClientSupabaseClient } from '../../lib/supabase/client';
+import { STRIPE_CONFIG } from '../../lib/stripe-config';
 
 export default function Pricing() {
   const [isAnnual, setIsAnnual] = useState(false);
   const [showFaq, setShowFaq] = useState<number | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const supabase = createClientSupabaseClient();
+
+  const handleSubscribe = async (plan: string, priceId: string) => {
+    setLoading(plan);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        // Redirect to auth with plan info
+        window.location.href = `/auth/signup?plan=${plan}&priceId=${priceId}`;
+        return;
+      }
+
+      const response = await fetch('/api/stripe/create-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          priceId,
+          successUrl: `${window.location.origin}/dashboard?subscription_success=true`,
+          cancelUrl: `${window.location.origin}/pricing`
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        throw new Error(data.error || 'Failed to create checkout session');
+      }
+    } catch (error) {
+      console.error('Subscription error:', error);
+      alert('Failed to start subscription. Please try again.');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleAddOnPurchase = async (credits: number, price: number) => {
+    setLoading(`addon-${credits}`);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        window.location.href = '/auth/signup';
+        return;
+      }
+
+      const response = await fetch('/api/stripe/topup-credits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          creditsAmount: credits
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else if (data.success) {
+        alert(`Successfully purchased ${credits} credits!`);
+        window.location.reload();
+      } else {
+        throw new Error(data.error || 'Failed to purchase credits');
+      }
+    } catch (error) {
+      console.error('Credit purchase error:', error);
+      alert('Failed to purchase credits. Please try again.');
+    } finally {
+      setLoading(null);
+    }
+  };
 
   const plans = [
     {
@@ -60,7 +144,7 @@ export default function Pricing() {
     {
       name: "Pro",
       icon: <FaRocket className="w-6 h-6" />,
-      price: { monthly: 35, annual: 28 },
+      price: { monthly: 100, annual: 85 },
       description: "For professionals and small teams",
       aiActions: "500 AI actions/month",
       videoMinutes: "150 minutes of AI video/month",
@@ -414,17 +498,48 @@ export default function Pricing() {
                   ))}
                 </ul>
 
-                <Link
-                  href={plan.name === 'Enterprise' ? '/contact' : '/auth/signup'}
-                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
-                    plan.popular
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white'
-                      : `${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white`
-                  }`}
-                >
-                  <span>{plan.cta}</span>
-                  <FaArrowRight className="w-4 h-4" />
-                </Link>
+{plan.name === 'Enterprise' ? (
+                  <Link
+                    href="/contact"
+                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white`}
+                  >
+                    <span>{plan.cta}</span>
+                    <FaArrowRight className="w-4 h-4" />
+                  </Link>
+                ) : plan.name === 'Pro' ? (
+                  <button
+                    onClick={() => handleSubscribe(
+                      plan.name,
+                      isAnnual ? STRIPE_CONFIG.products.subscription.prices.annual : STRIPE_CONFIG.products.subscription.prices.monthly
+                    )}
+                    disabled={loading === plan.name}
+                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
+                      plan.popular
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-50'
+                        : `${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white disabled:opacity-50`
+                    }`}
+                  >
+                    {loading === plan.name ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{plan.cta}</span>
+                        <FaArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <Link
+                    href="/auth/signup"
+                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white`}
+                  >
+                    <span>{plan.cta}</span>
+                    <FaArrowRight className="w-4 h-4" />
+                  </Link>
+                )}
               </div>
             ))}
           </div>
@@ -454,8 +569,19 @@ export default function Pricing() {
                       </div>
                       <div className="text-right">
                         <div className="text-xl font-bold text-blue-400">${pack.price}</div>
-                        <button className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded mt-1 transition-colors">
-                          Purchase
+                        <button 
+                          onClick={() => handleAddOnPurchase(parseInt(pack.amount.split(' ')[0]), pack.price)}
+                          disabled={loading === `addon-${parseInt(pack.amount.split(' ')[0])}`}
+                          className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded mt-1 transition-colors disabled:opacity-50 flex items-center space-x-1"
+                        >
+                          {loading === `addon-${parseInt(pack.amount.split(' ')[0])}` ? (
+                            <>
+                              <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
+                              <span>...</span>
+                            </>
+                          ) : (
+                            <span>Purchase</span>
+                          )}
                         </button>
                       </div>
                     </div>

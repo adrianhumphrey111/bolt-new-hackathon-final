@@ -40,6 +40,9 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // URL to redirect to after sign in process completes
-  return NextResponse.redirect(`${requestUrl.origin}${next}`)
+  // Force redirect to the correct domain for dashboard
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
+  const redirectUrl = `${siteUrl}${next}`;
+    
+  return NextResponse.redirect(redirectUrl)
 }

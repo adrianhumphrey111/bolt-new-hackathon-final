@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClientSupabaseClient } from '../../lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { FaPlus, FaVideo, FaSignOutAlt, FaCog } from 'react-icons/fa'
 import NewProjectModal from './components/NewProjectModal'
 import ProjectCard from './components/ProjectCard'
@@ -30,19 +30,58 @@ export default function DashboardClient() {
   const [projects, setProjects] = useState<Project[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
-  const { user, signOut, isAuthenticated, loading: authLoading } = useAuthContext()
+  const { user, signOut, signIn, isAuthenticated, loading: authLoading } = useAuthContext()
   
   console.log('🏠 Dashboard render:', { isAuthenticated, hasUser: !!user, authLoading, loading })
   const supabase = createClientSupabaseClient()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
-  // Redirect if not authenticated
+  // State to track demo login
+  const [isDemoLogin, setIsDemoLogin] = useState(false)
+
+  // Check for demo parameter on mount
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    const demoParam = searchParams.get('demo')
+    if (demoParam === 'bolthackathon') {
+      setIsDemoLogin(true)
+    }
+  }, [searchParams])
+
+  // Handle demo login
+  useEffect(() => {
+    if (isDemoLogin && !isAuthenticated && !authLoading) {
+      console.log('🎬 Demo login detected, attempting login...')
+      const handleDemoLogin = async () => {
+        try {
+          const result = await signIn('adrianhumphrey374@gmail.com', 'Jesus374!')
+          if (result.success) {
+            console.log('✅ Demo login successful')
+            // Remove the demo parameter from URL without reloading
+            const newUrl = new URL(window.location.href)
+            newUrl.searchParams.delete('demo')
+            window.history.replaceState({}, '', newUrl.toString())
+            setIsDemoLogin(false)
+          } else {
+            console.error('Demo login failed:', result.error)
+            setIsDemoLogin(false)
+          }
+        } catch (error) {
+          console.error('Demo login error:', error)
+          setIsDemoLogin(false)
+        }
+      }
+      handleDemoLogin()
+    }
+  }, [isDemoLogin, isAuthenticated, authLoading, signIn])
+
+  // Redirect if not authenticated (but not during demo login)
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated && !isDemoLogin) {
       console.log('🔐 Redirecting to login - not authenticated')
       router.push('/auth/login')
     }
-  }, [isAuthenticated, authLoading, router])
+  }, [isAuthenticated, authLoading, router, isDemoLogin])
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -128,12 +167,12 @@ export default function DashboardClient() {
     )
   }
 
-  if (loading) {
+  if (loading || isDemoLogin) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-400">Loading projects...</p>
+          <p className="text-gray-400">{isDemoLogin ? 'Setting up demo...' : 'Loading projects...'}</p>
         </div>
       </div>
     )

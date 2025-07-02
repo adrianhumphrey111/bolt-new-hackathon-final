@@ -251,6 +251,29 @@ export default function Features() {
               <span className="text-xs font-medium text-gray-300">Built on Bolt</span>
             </div>
           </div>
+          
+          {/* Main Navigation Links */}
+          <div className="hidden md:flex items-center space-x-8">
+            <Link
+              href="/"
+              className="text-gray-300 hover:text-white transition-colors font-medium"
+            >
+              Home
+            </Link>
+            <Link
+              href="/pricing"
+              className="text-gray-300 hover:text-white transition-colors font-medium"
+            >
+              Pricing
+            </Link>
+            <Link
+              href="/auth/signup"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105"
+            >
+              Try Editor
+            </Link>
+          </div>
+          
           <div className="flex items-center space-x-4">
             <Link href="/" className="text-gray-300 hover:text-white transition-colors">
               Home

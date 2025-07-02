@@ -160,6 +160,27 @@ export default function Signup() {
 
         </form>
 
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-600"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-gray-800 text-gray-400">Or continue with</span>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <button
+              onClick={() => handleSocialLogin('google')}
+              className="w-full inline-flex justify-center py-2 px-4 border border-gray-600 rounded-md shadow-sm bg-gray-700 text-sm font-medium text-white hover:bg-gray-600 transition-colors"
+            >
+              <FaGoogle className="h-5 w-5" />
+              <span className="ml-2">Continue with Google</span>
+            </button>
+          </div>
+        </div>
+
         <p className="text-center mt-6 text-gray-400">
           Already have an account?{' '}
           <Link href="/auth/login" className="text-blue-400 hover:underline">

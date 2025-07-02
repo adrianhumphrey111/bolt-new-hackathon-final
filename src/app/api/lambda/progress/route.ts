@@ -1,44 +1,9 @@
-import {
-  speculateFunctionName,
-  AwsRegion,
-  getRenderProgress,
-} from "@remotion/lambda/client";
-import { DISK, RAM, REGION, TIMEOUT } from "../../../../../config.mjs";
-import { ProgressResponse, ProgressRequest } from "../../../../../types/schema";
-import { executeApi } from "../../../../helpers/api-response";
+import { NextRequest, NextResponse } from 'next/server';
 
-export const POST = executeApi<ProgressResponse, typeof ProgressRequest>(
-  ProgressRequest,
-  async (req, body) => {
-    const renderProgress = await getRenderProgress({
-      bucketName: body.bucketName,
-      functionName: speculateFunctionName({
-        diskSizeInMb: DISK,
-        memorySizeInMb: RAM,
-        timeoutInSeconds: TIMEOUT,
-      }),
-      region: REGION as AwsRegion,
-      renderId: body.id,
-    });
-
-    if (renderProgress.fatalErrorEncountered) {
-      return {
-        type: "error",
-        message: renderProgress.errors[0].message,
-      };
-    }
-
-    if (renderProgress.done) {
-      return {
-        type: "done",
-        url: renderProgress.outputFile as string,
-        size: renderProgress.outputSizeInBytes as number,
-      };
-    }
-
-    return {
-      type: "progress",
-      progress: Math.max(0.03, renderProgress.overallProgress),
-    };
-  },
-);
+// DEPRECATED: This endpoint is deprecated. Use /api/render/progress/[renderId] instead.
+export async function POST(request: NextRequest) {
+  return NextResponse.json({
+    success: false,
+    error: 'This endpoint is deprecated. Please use /api/render/progress/[renderId] instead.',
+  }, { status: 410 }); // 410 Gone
+}

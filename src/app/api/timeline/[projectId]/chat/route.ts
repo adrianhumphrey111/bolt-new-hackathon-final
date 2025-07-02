@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { AI_TOOLS } from '../../../../../lib/timeline-ai-tools';
 import { withCreditsCheck, useCredits } from '../../../../../lib/credits';
-
-// Initialize OpenAI client
-function getOpenAI() {
-  if (!process.env.NEXT_OPENAI_API_KEY) {
-    throw new Error('NEXT_OPENAI_API_KEY environment variable is not set');
-  }
-  return new OpenAI({
-    apiKey: process.env.NEXT_OPENAI_API_KEY,
-  });
-}
+import { aiService } from '../../../../../lib/ai-service';
 
 export async function POST(
   request: NextRequest,
@@ -47,8 +37,7 @@ Guidelines:
 - If you can't perform an action, explain why and suggest alternatives
 - Always be concise but friendly`;
 
-    const openai = getOpenAI();
-    const completion = await openai.chat.completions.create({
+    const completion = await aiService.createCompletion({
       model: 'gpt-4',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -59,7 +48,7 @@ Guidelines:
       temperature: 0.1,
     });
 
-    const responseMessage = completion.choices[0].message;
+    const responseMessage = completion;
 
     // Use credits after successful AI call
     const creditsUsed = await useCredits(userId, 'ai_chat', {

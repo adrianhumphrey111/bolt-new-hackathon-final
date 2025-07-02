@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTimeline } from './TimelineContext';
+import { useAuthContext } from '../AuthProvider';
 
 interface RenderModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ interface RenderState {
 
 export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
   const { state } = useTimeline();
+  const { session } = useAuthContext();
   const [renderState, setRenderState] = useState<RenderState>({
     step: 'config',
     progress: 0,
@@ -35,7 +37,6 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
     quality: 'medium' as 'low' | 'medium' | 'high',
     format: 'mp4' as 'mp4' | 'mov',
     composition: 'Timeline', // This matches the ID in Root.tsx
-    renderType: 'local' as 'local' | 'lambda',
   });
 
   // Reset state when modal opens
@@ -52,10 +53,18 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
   // Poll render progress
   const pollProgress = useCallback(async (renderId: string, bucketName?: string) => {
     try {
+      if (!session?.access_token) {
+        throw new Error('Not authenticated');
+      }
+
       const url = bucketName 
         ? `/api/render/progress/${renderId}?bucket=${bucketName}`
         : `/api/render/progress/${renderId}`;
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
       const data = await response.json();
 
       if (data.success) {
@@ -82,86 +91,52 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
         error: 'Failed to check render progress',
       }));
     }
-  }, []);
+  }, [session]);
 
   const startRender = useCallback(async () => {
     try {
-      if (renderConfig.renderType === 'local') {
-        // Local rendering
-        setRenderState({
-          step: 'rendering',
-          progress: 20,
-          message: 'Starting local render...',
-        });
-
-        const renderResponse = await fetch('/api/render/local', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            composition: renderConfig.composition,
-            timelineState: state,
-            outputFormat: renderConfig.format,
-            quality: renderConfig.quality,
-            projectId,
-          }),
-        });
-
-        const renderData = await renderResponse.json();
-
-        if (!renderData.success) {
-          throw new Error(renderData.error);
-        }
-
-        setRenderState({
-          step: 'complete',
-          progress: 100,
-          message: 'Render complete!',
-          outputFile: renderData.outputFile,
-        });
-
-      } else {
-        // Lambda rendering - requires AWS setup
-        setRenderState({
-          step: 'rendering',
-          progress: 20,
-          message: 'Starting cloud render...',
-        });
-
-        // For Lambda, you'll need to ensure you have:
-        // 1. AWS credentials set up
-        // 2. A pre-deployed Remotion site
-        // 3. A pre-deployed Lambda function
-        
-        const renderResponse = await fetch('/api/render/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            composition: renderConfig.composition,
-            timelineState: state,
-            outputFormat: renderConfig.format,
-            quality: renderConfig.quality,
-            projectId,
-            // userId can be added here if you have auth
-          }),
-        });
-
-        const renderData = await renderResponse.json();
-
-        if (!renderData.success) {
-          throw new Error(renderData.error);
-        }
-
-        setRenderState(prev => ({
-          ...prev,
-          step: 'rendering',
-          progress: 40,
-          message: 'Render started, processing video...',
-          renderId: renderData.renderId,
-        }));
-
-        // Poll progress for Lambda
-        pollProgress(renderData.renderId, renderData.bucketName);
+      if (!session?.access_token) {
+        throw new Error('Not authenticated');
       }
+
+      // Lambda rendering
+      setRenderState({
+        step: 'rendering',
+        progress: 20,
+        message: 'Starting cloud render...',
+      });
+      
+      const renderResponse = await fetch('/api/render/start', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          composition: renderConfig.composition,
+          timelineState: state,
+          outputFormat: renderConfig.format,
+          quality: renderConfig.quality,
+          projectId,
+        }),
+      });
+
+      const renderData = await renderResponse.json();
+
+      if (!renderData.success) {
+        throw new Error(renderData.error);
+      }
+
+      setRenderState(prev => ({
+        ...prev,
+        step: 'rendering',
+        progress: 40,
+        message: 'Render started, processing video...',
+        renderId: renderData.renderId,
+      }));
+
+      // Poll progress for Lambda
+      pollProgress(renderData.renderId, renderData.bucketName);
 
     } catch (error) {
       console.error('Render failed:', error);
@@ -172,7 +147,7 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }, [projectId, state, renderConfig, pollProgress]);
+  }, [projectId, state, renderConfig, pollProgress, session]);
 
   const downloadVideo = useCallback(() => {
     if (renderState.outputFile) {
@@ -207,23 +182,6 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
           {/* Configuration Step */}
           {renderState.step === 'config' && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Render Type
-                </label>
-                <select
-                  value={renderConfig.renderType}
-                  onChange={(e) => setRenderConfig(prev => ({ 
-                    ...prev, 
-                    renderType: e.target.value as any 
-                  }))}
-                  className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2"
-                >
-                  <option value="local">Local (On your machine)</option>
-                  <option value="lambda">Cloud (AWS Lambda - requires setup)</option>
-                </select>
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Quality
@@ -274,16 +232,6 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
                 </div>
               </div>
 
-              {renderConfig.renderType === 'lambda' && (
-                <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-3 text-xs text-yellow-300">
-                  <p className="font-semibold mb-1">AWS Lambda Setup Required:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>AWS credentials configured</li>
-                    <li>Remotion site deployed</li>
-                    <li>Lambda function deployed</li>
-                  </ul>
-                </div>
-              )}
 
               <button
                 onClick={startRender}

@@ -15,6 +15,12 @@
   to = "/.netlify/functions/___netlify-handler"
   status = 200
 
+# Handle all other routes for Next.js SPA
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/___netlify-handler"
+  status = 200
+
 
 # Headers for better performance
 [[headers]]

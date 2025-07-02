@@ -14,10 +14,19 @@ export default function Login() {
   const router = useRouter();
   const { signIn, signInWithOAuth, isAuthenticated, loading } = useAuthContext();
 
-  // Redirect if already authenticated
+  // Check for callback errors and redirect if already authenticated
   useEffect(() => {
     if (!loading && isAuthenticated) {
       router.push('/dashboard');
+    }
+    
+    // Check for OAuth callback errors
+    const searchParams = new URLSearchParams(window.location.search);
+    const callbackError = searchParams.get('error');
+    const errorMessage = searchParams.get('message');
+    
+    if (callbackError === 'callback_error') {
+      setError(errorMessage ? decodeURIComponent(errorMessage) : 'OAuth callback failed. Please try again.');
     }
   }, [isAuthenticated, loading, router]);
 

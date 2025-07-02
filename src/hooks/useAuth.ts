@@ -158,10 +158,15 @@ export function useAuth() {
 
   const signInWithOAuth = useCallback(async (provider: 'google' | 'github') => {
     try {
+      // Force production URL for OAuth redirect
+      const redirectUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://tailorlabsai.com/auth/callback'
+        : `${window.location.origin}/auth/callback`;
+        
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: redirectUrl,
         },
       })
 

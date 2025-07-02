@@ -97,7 +97,7 @@ export default function Pricing() {
       name: "Free",
       icon: <FaPlay className="w-6 h-6" />,
       price: { monthly: 0, annual: 0 },
-      description: "Perfect for trying AI video editing",
+      description: "See the magic before you commit",
       aiActions: "15 AI actions/month",
       videoMinutes: "5 minutes of AI video/month",
       features: [
@@ -122,7 +122,7 @@ export default function Pricing() {
       name: "Creator",
       icon: <FaBolt className="w-6 h-6" />,
       price: { monthly: 15, annual: 12 },
-      description: "For content creators and freelancers",
+      description: "Replace your editor for 95% less cost",
       aiActions: "200 AI actions/month",
       videoMinutes: "50 minutes of AI video/month",
       features: [
@@ -145,7 +145,7 @@ export default function Pricing() {
       name: "Pro",
       icon: <FaRocket className="w-6 h-6" />,
       price: { monthly: 100, annual: 85 },
-      description: "For professionals and small teams",
+      description: "Scale content without hiring",
       aiActions: "500 AI actions/month",
       videoMinutes: "150 minutes of AI video/month",
       features: [
@@ -169,7 +169,7 @@ export default function Pricing() {
       name: "Enterprise",
       icon: <FaCrown className="w-6 h-6" />,
       price: { monthly: "Custom", annual: "Custom" },
-      description: "For large teams and organizations",
+      description: "Enterprise-grade video production at scale",
       aiActions: "Unlimited AI actions",
       videoMinutes: "Unlimited AI video",
       features: [
@@ -336,6 +336,29 @@ export default function Pricing() {
               Tailored Labs
             </h1>
           </Link>
+          
+          {/* Main Navigation Links */}
+          <div className="hidden md:flex items-center space-x-8">
+            <Link
+              href="/"
+              className="text-gray-300 hover:text-white transition-colors font-medium"
+            >
+              Home
+            </Link>
+            <Link
+              href="/features"
+              className="text-gray-300 hover:text-white transition-colors font-medium"
+            >
+              Features
+            </Link>
+            <Link
+              href="/auth/signup"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105"
+            >
+              Try Editor
+            </Link>
+          </div>
+          
           <div className="flex items-center space-x-4">
             <Link
               href="/auth/login"
@@ -363,15 +386,15 @@ export default function Pricing() {
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 text-center">
           <h1 className="text-5xl md:text-6xl font-bold mb-6">
-            Predictable Pricing,
+            Stop Paying for
             <span className="block bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Flexible Usage
+              Expensive Editors
             </span>
           </h1>
           
           <p className="text-xl text-gray-300 mb-8 max-w-3xl mx-auto">
-            Monthly subscription + pay-as-you-go flexibility. Start free, scale as you grow. 
-            Used by 50,000+ creators worldwide.
+            Get professional video results for less than the cost of one freelance editor. 
+            Start free, pay only for what you use.
           </p>
 
           {/* Billing Toggle */}
@@ -397,27 +420,27 @@ export default function Pricing() {
 
           {/* Industry Comparison */}
           <div className="bg-gray-800/30 backdrop-blur-sm rounded-xl p-6 max-w-4xl mx-auto mb-12">
-            <h3 className="text-lg font-semibold mb-4">How We Compare to Industry Leaders</h3>
+            <h3 className="text-lg font-semibold mb-4">Compare the Real Costs</h3>
             <div className="grid md:grid-cols-4 gap-4 text-sm">
               <div className="text-center">
-                <div className="font-semibold text-gray-400">invideo AI</div>
-                <div className="text-gray-500">$35/month</div>
-                <div className="text-gray-500">50 min AI video</div>
+                <div className="font-semibold text-gray-400">Freelance Editor</div>
+                <div className="text-gray-500">$500-2000/video</div>
+                <div className="text-gray-500">2-5 day turnaround</div>
               </div>
               <div className="text-center">
-                <div className="font-semibold text-gray-400">Descript</div>
-                <div className="text-gray-500">$12/month</div>
-                <div className="text-gray-500">Limited AI features</div>
+                <div className="font-semibold text-gray-400">Video Agency</div>
+                <div className="text-gray-500">$2000-10k/month</div>
+                <div className="text-gray-500">Limited revisions</div>
               </div>
               <div className="text-center">
-                <div className="font-semibold text-gray-400">Runway</div>
-                <div className="text-gray-500">$12/month</div>
-                <div className="text-gray-500">Credits system</div>
+                <div className="font-semibold text-gray-400">Full-time Editor</div>
+                <div className="text-gray-500">$60k+ per year</div>
+                <div className="text-gray-500">Plus benefits</div>
               </div>
               <div className="text-center border border-blue-500/30 rounded-lg p-2">
-                <div className="font-semibold text-blue-400">Our Creator Plan</div>
+                <div className="font-semibold text-blue-400">TailorLabs AI</div>
                 <div className="text-blue-300">$15/month</div>
-                <div className="text-blue-300">50 min + 200 actions</div>
+                <div className="text-blue-300">Unlimited revisions</div>
               </div>
             </div>
           </div>
@@ -550,9 +573,9 @@ export default function Pricing() {
       <section className="py-20 bg-gray-800/50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-6">Need More? Buy Add-On Packs</h2>
+            <h2 className="text-4xl font-bold mb-6">Scale Up When You Need More</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Purchase additional AI actions or video minutes that never expire. Perfect for busy months or special projects.
+              Hit your monthly limit? No problem. Add-on packs give you instant extra capacity that never expires.
             </p>
           </div>
 
@@ -603,9 +626,9 @@ export default function Pricing() {
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-6">Detailed Feature Comparison</h2>
+            <h2 className="text-4xl font-bold mb-6">What You Get at Each Level</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              See exactly what's included in each plan
+              Every plan includes our core AI editing features. Higher tiers add power-user capabilities.
             </p>
           </div>
 
@@ -645,9 +668,9 @@ export default function Pricing() {
       <section className="py-20 bg-gray-800/50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-6">Complete Usage Transparency</h2>
+            <h2 className="text-4xl font-bold mb-6">Never Get Surprised by Limits</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Track your AI actions and video minutes in real-time with our detailed dashboard
+              See exactly how much you've used and what's left. Get warnings before you hit limits.
             </p>
           </div>
 
@@ -767,17 +790,17 @@ export default function Pricing() {
       <section className="py-20 bg-gray-800/50">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-4xl font-bold mb-6">
-            Ready to Start Creating?
+            Ready to Stop Overpaying for Video?
           </h2>
           <p className="text-xl text-gray-300 mb-8">
-            Join 50,000+ creators who've made the switch to AI-powered video editing
+            Join the early creators saving thousands while 10x-ing their content output
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="/auth/signup"
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center space-x-2"
             >
-              <span>Start Free Trial</span>
+              <span>Save Thousands on Video</span>
               <FaArrowRight className="w-4 h-4" />
             </Link>
             <Link
@@ -790,7 +813,7 @@ export default function Pricing() {
           </div>
           
           <div className="mt-8 text-sm text-gray-400">
-            <p>✨ 7-day free trial • No credit card required • Cancel anytime</p>
+            <p>✨ Start free • No credit card required • Cancel anytime • Save 95% vs hiring editors</p>
           </div>
         </div>
       </section>

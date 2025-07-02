@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { createClientSupabaseClient } from '@/lib/supabase/client';
 import { FaTimes } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import { useAuthContext } from '@/components/AuthProvider';
@@ -16,8 +15,7 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuthContext();
-  const supabase = createClientSupabaseClient();
+  const { user, session } = useAuthContext();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,25 +29,28 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
         return;
       }
 
-      if (!user) {
+      if (!user || !session?.access_token) {
         setError('You must be logged in to create a project');
         return;
       }
 
-      const { data, error: createError } = await supabase
-        .from('projects')
-        .insert([
-          {
-            title: title.trim(),
-            description: description.trim() || null,
-            user_id: user.id,
-            status: 'active'
-          }
-        ])
-        .select()
-        .single();
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim() || null,
+        }),
+      });
 
-      if (createError) throw createError;
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create project');
+      }
 
       // Reset form
       setTitle('');

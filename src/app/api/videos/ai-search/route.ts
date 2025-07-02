@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '../../../../lib/supabase/server';
-import OpenAI from 'openai';
-
-function getOpenAI() {
-  if (!process.env.NEXT_OPENAI_API_KEY) {
-    throw new Error('NEXT_OPENAI_API_KEY environment variable is not set');
-  }
-  return new OpenAI({
-    apiKey: process.env.NEXT_OPENAI_API_KEY,
-  });
-}
+import { aiService } from '../../../../lib/ai-service';
 
 interface VideoSearchResult {
   videoId: string;
@@ -28,7 +19,6 @@ interface VideoSearchResult {
 
 export async function POST(request: NextRequest) {
   try {
-    const openai = getOpenAI();
     const { user, supabase } = await getUserFromRequest(request);
 
     if (!user) {
@@ -151,7 +141,7 @@ Please respond with a JSON object containing search results ranked by relevance:
 Only include videos with relevance scores above 0.3. Focus on finding the most relevant content.
 `;
 
-      const completion = await openai.chat.completions.create({
+      const completion = await aiService.createCompletion({
         model: "gpt-4o",
         messages: [
           {
@@ -167,7 +157,7 @@ Only include videos with relevance scores above 0.3. Focus on finding the most r
         max_tokens: 3000
       });
 
-      const aiResponse = completion.choices[0]?.message?.content;
+      const aiResponse = completion.content;
       
       if (!aiResponse) {
         throw new Error('No response from AI search');

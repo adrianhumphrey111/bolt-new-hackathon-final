@@ -131,22 +131,13 @@ export default function Login() {
             <div className="flex-1 h-px bg-gray-600"></div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('google')}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors flex items-center justify-center gap-2"
-            >
-              <FaGoogle /> Google
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('github')}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors flex items-center justify-center gap-2"
-            >
-              <FaGithub /> GitHub
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => handleSocialLogin('google')}
+            className="w-full bg-gray-700 hover:bg-gray-600 text-white py-2 px-4 rounded transition-colors flex items-center justify-center gap-2"
+          >
+            <FaGoogle /> Continue with Google
+          </button>
         </form>
 
         <p className="text-center mt-6 text-gray-400">

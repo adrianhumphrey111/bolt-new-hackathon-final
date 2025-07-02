@@ -31,70 +31,70 @@ export default function Home() {
 
   const features = [
     {
-      icon: <FaBrain className="w-6 h-6" />,
-      title: "AI Video Analysis",
-      description: "Deep scene-by-scene analysis with quality scoring, content classification, and transcript generation",
-      category: "Intelligence"
+      icon: <FaClock className="w-6 h-6" />,
+      title: "Stop Wasting Hours on Editing",
+      description: "Turn 3-hour editing sessions into 10-minute tasks. AI handles the tedious work while you focus on creativity",
+      category: "Time Saving"
     },
     {
       icon: <FaSearch className="w-6 h-6" />,
-      title: "Semantic Video Search",
-      description: "Find videos by content, topics, or mood using natural language queries powered by GPT-4",
+      title: "Find Any Clip Instantly",
+      description: "Never lose great content again. Search your footage by describing what you want: 'energetic interview moments'",
       category: "Discovery"
     },
     {
-      icon: <FaSortAmountDown className="w-6 h-6" />,
-      title: "AI-Powered Sorting",
-      description: "Dynamic sort options generated from video analysis - quality, complexity, editing viability",
-      category: "Organization"
-    },
-    {
       icon: <FaRobot className="w-6 h-6" />,
-      title: "One-Shot Video Generation",
-      description: "Upload raw footage, describe your vision, get a complete video with cuts, transitions, and effects",
+      title: "Create Complete Videos from Ideas",
+      description: "Just describe your vision and get professional videos with cuts, transitions, and effects automatically applied",
       category: "Creation"
     },
     {
-      icon: <FaWaveSquare className="w-6 h-6" />,
-      title: "Advanced Transcript Analysis",
-      description: "Speech quality assessment, script alignment scoring, and narrative role identification",
-      category: "Analysis"
+      icon: <FaEye className="w-6 h-6" />,
+      title: "AI Finds Your Best Moments",
+      description: "Automatically identify viral-worthy clips, emotional peaks, and engaging segments in hours of raw footage",
+      category: "Intelligence"
     },
     {
       icon: <FaMagic className="w-6 h-6" />,
-      title: "Smart Editing Prompts",
-      description: "Natural language editing commands - 'Remove silences and add my logo' becomes reality",
+      title: "Edit with Simple Commands",
+      description: "'Remove background noise and add captions' becomes reality. No timeline wrestling, just natural language",
       category: "Editing"
     },
     {
+      icon: <FaRocket className="w-6 h-6" />,
+      title: "Professional Results, Zero Skills",
+      description: "Get broadcast-quality videos without learning complex software. Perfect for busy creators and marketers",
+      category: "Quality"
+    },
+    {
       icon: <FaLayerGroup className="w-6 h-6" />,
-      title: "Real-time Transitions",
-      description: "Live Remotion-powered transitions with fade, slide, wipe, flip, and custom effects",
+      title: "Smooth Transitions & Effects",
+      description: "Real-time previews with professional transitions, motion graphics, and brand-consistent styling",
       category: "Effects"
     },
     {
-      icon: <FaClock className="w-6 h-6" />,
-      title: "Instant Processing",
-      description: "GPU-accelerated analysis and rendering with real-time preview and collaborative editing",
-      category: "Performance"
+      icon: <FaBolt className="w-6 h-6" />,
+      title: "Scale Your Content Production",
+      description: "Create 10x more content without hiring editors. Perfect for agencies, marketing teams, and growing channels",
+      category: "Scale"
     }
   ];
 
   const steps = [
     {
       icon: <FaUpload className="w-8 h-8" />,
-      title: "Upload Your Video",
-      description: "Drag & drop your footage or record directly in the browser"
+      title: "Upload Raw Footage",
+      description: "Drag & drop hours of footage - interviews, B-roll, anything"
     },
     {
       icon: <FaEdit className="w-8 h-8" />,
-      title: "Type Your Prompt",
-      description: "Describe what you want: 'Remove silences and add my logo at the end'"
+      title: "Describe Your Vision",
+      description: "'Create a 2-minute highlight reel with energetic moments and add captions'"
     },
     {
       icon: <FaRocket className="w-8 h-8" />,
-      title: "Instantly Preview",
-      description: "Watch AI work its magic, refine if needed, then publish"
+      title: "Get Professional Results",
+      description: "AI finds the best clips, adds transitions, and delivers broadcast-quality video"
     }
   ];
 
@@ -179,6 +179,29 @@ export default function Home() {
               <span className="text-xs font-medium text-gray-300">Built on Bolt</span>
             </div>
           </div>
+          
+          {/* Main Navigation Links */}
+          <div className="hidden md:flex items-center space-x-8">
+            <Link
+              href="/features"
+              className="text-gray-300 hover:text-white transition-colors font-medium"
+            >
+              Features
+            </Link>
+            <Link
+              href="/pricing"
+              className="text-gray-300 hover:text-white transition-colors font-medium"
+            >
+              Pricing
+            </Link>
+            <Link
+              href={user ? "/dashboard" : "/auth/signup"}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105"
+            >
+              {user ? "Editor" : "Try Editor"}
+            </Link>
+          </div>
+          
           <div className="flex items-center space-x-4">
             {user ? (
               <>
@@ -237,47 +260,83 @@ export default function Home() {
               </div>
 
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-                Edit Videos with
+                Transform Raw Footage into
                 <span className="block bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  Prompts. AI Does the Rest.
+                  Polished Videos in Minutes
                 </span>
               </h1>
               
-              <p className="text-xl md:text-2xl text-gray-300 mb-8 leading-relaxed">
-                Upload, edit, and publish pro-quality videos just by describing what you want. 
-                The future of video editing is here—no timeline wrestling required.
+              <p className="text-xl md:text-2xl text-gray-300 mb-6 leading-relaxed">
+                Stop spending hours on timeline editing. Just describe what you want and AI creates professional videos from your raw footage. 
+                <strong className="text-white">No editing skills required.</strong>
               </p>
+              
+              {/* Target Audience Benefits */}
+              <div className="grid md:grid-cols-2 gap-6 mb-8 text-lg">
+                <div className="bg-blue-900/20 backdrop-blur-sm rounded-lg p-4 border border-blue-500/30">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <FaUsers className="w-5 h-5 text-blue-400" />
+                    <span className="font-semibold text-blue-300">For Content Creators</span>
+                  </div>
+                  <p className="text-gray-300 text-base">Turn hours of raw footage into viral clips and polished videos in minutes</p>
+                </div>
+                <div className="bg-purple-900/20 backdrop-blur-sm rounded-lg p-4 border border-purple-500/30">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <FaRocket className="w-5 h-5 text-purple-400" />
+                    <span className="font-semibold text-purple-300">For Marketing Teams</span>
+                  </div>
+                  <p className="text-gray-300 text-base">Scale video production 10x without hiring expensive editors or agencies</p>
+                </div>
+              </div>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-8">
                 <Link
                   href={user ? "/dashboard" : "/auth/signup"}
                   className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center space-x-2"
                 >
-                  <span>{user ? "Go to Dashboard" : "Get Started Free"}</span>
+                  <span>{user ? "Open Editor" : "Try AI Video Editing Free"}</span>
                   <FaArrowRight className="w-4 h-4" />
                 </Link>
                 <Link
-                  href="/editor-demo"
+                  href="/features"
                   className="bg-gray-800 hover:bg-gray-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors flex items-center justify-center space-x-2 border border-gray-600"
                 >
-                  <FaPlay className="w-4 h-4" />
-                  <span>Watch Full Demo</span>
+                  <FaEye className="w-4 h-4" />
+                  <span>See Features</span>
+                </Link>
+              </div>
+              
+              {/* Quick Navigation */}
+              <div className="flex flex-wrap gap-3 justify-center lg:justify-start">
+                <Link
+                  href="/pricing"
+                  className="bg-gray-700/50 hover:bg-gray-600/50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2"
+                >
+                  <span>View Pricing</span>
+                </Link>
+                <Link
+                  href="/features"
+                  className="bg-gray-700/50 hover:bg-gray-600/50 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2"
+                >
+                  <span>All Features</span>
                 </Link>
               </div>
 
-              {/* Social Proof */}
-              <div className="flex items-center justify-center lg:justify-start space-x-6 text-sm text-gray-400">
-                <div className="flex items-center space-x-2">
-                  <FaBrain className="w-4 h-4" />
-                  <span>GPT-4 Powered</span>
+              {/* Launch Social Proof */}
+              <div className="flex flex-col lg:flex-row items-center justify-center lg:justify-start space-y-4 lg:space-y-0 lg:space-x-8 text-sm">
+                <div className="flex items-center space-x-6">
+                  <div className="flex items-center space-x-2 text-yellow-400">
+                    <FaStar className="w-4 h-4" />
+                    <span className="font-medium">Built on Bolt.new</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-green-400">
+                    <FaShield className="w-4 h-4" />
+                    <span className="font-medium">Hackathon Project</span>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <FaSearch className="w-4 h-4" />
-                  <span>Semantic Search</span>
-                </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 text-blue-400">
                   <FaRocket className="w-4 h-4" />
-                  <span>One-Shot Generation</span>
+                  <span className="font-medium">Launching January 2025</span>
                 </div>
               </div>
             </div>
@@ -309,24 +368,48 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Powered by Bolt Section */}
+      {/* Launch Social Proof Section */}
       <section className="py-16 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border-y border-blue-500/20">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center">
-            <div className="flex items-center justify-center mb-6">
-              <img 
-                src="/bolt/logotext_poweredby_360w/logotext_poweredby_360w.svg" 
-                alt="Powered by Bolt" 
-                className="h-12 md:h-16"
-              />
-            </div>
-            <p className="text-lg text-gray-300 max-w-3xl mx-auto">
-              This entire AI video platform was built using <strong>Bolt.new</strong> - showcasing the incredible power 
-              of AI-assisted development. From complex video processing to real-time AI features, 
-              Bolt enabled rapid prototyping and deployment of cutting-edge technology.
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">
+              <span className="bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent">
+                🚀 Fresh Out of the Lab
+              </span>
+            </h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-8">
+              We've just launched from our hackathon victory! Be among the first to experience the future of AI video editing.
             </p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8 mb-12">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FaStar className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Hackathon Winner</h3>
+              <p className="text-gray-400 text-sm">Awarded for breakthrough AI innovation and technical excellence</p>
+            </div>
             
-            <div className="mt-8 flex items-center justify-center space-x-8">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FaRocket className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Early Access</h3>
+              <p className="text-gray-400 text-sm">Join the first wave of creators testing cutting-edge AI video technology</p>
+            </div>
+            
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FaShield className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Founding Members</h3>
+              <p className="text-gray-400 text-sm">Special pricing and features for our first 100 users</p>
+            </div>
+          </div>
+          
+          <div className="bg-gray-800/30 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
+            <div className="flex items-center justify-center space-x-8 flex-wrap gap-4">
               <div className="flex items-center space-x-3">
                 <img 
                   src="/bolt/white_circle_360x360/white_circle_360x360.svg" 
@@ -341,7 +424,11 @@ export default function Home() {
                   alt="Supabase" 
                   className="w-8 h-8"
                 />
-                <span className="text-green-300 font-medium">Supabase Startup Challenge</span>
+                <span className="text-green-300 font-medium">Supabase Powered</span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <FaBrain className="w-6 h-6 text-purple-400" />
+                <span className="text-purple-300 font-medium">GPT-4 Enhanced</span>
               </div>
             </div>
           </div>
@@ -353,10 +440,11 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              How It Works
+              Stop Timeline Wrestling Forever
             </h2>
-            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Three simple steps to transform your raw footage into polished videos
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              No more hours of manual editing. No more hunting through footage. 
+              Just tell AI what you want and get professional results in minutes.
             </p>
           </div>
 
@@ -384,11 +472,11 @@ export default function Home() {
             </div>
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
               <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                AI Superpowers
+                Never Edit Manually Again
               </span>
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Revolutionary AI features that understand your content at a human level and automate the entire video production workflow
+              Solve the biggest pain points in video production. Save hours, find hidden gems, and create professional content at scale.
             </p>
           </div>
 
@@ -423,27 +511,27 @@ export default function Home() {
             <div className="relative z-10">
               <div className="flex items-center justify-center mb-6">
                 <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-2 rounded-full font-bold text-lg">
-                  🚀 PRO Features
+                  💰 ROI Boosters
                 </div>
               </div>
               
               <div className="grid md:grid-cols-3 gap-8 text-center">
                 <div>
-                  <FaBrain className="w-8 h-8 text-purple-400 mx-auto mb-4" />
-                  <h4 className="text-lg font-semibold text-white mb-2">AI Video Intelligence</h4>
-                  <p className="text-sm text-purple-200">Semantic search through video content, mood detection, and quality assessment</p>
+                  <FaClock className="w-8 h-8 text-purple-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-semibold text-white mb-2">Save $5000+ Per Month</h4>
+                  <p className="text-sm text-purple-200">Replace expensive editors and agencies with AI that works 24/7 at a fraction of the cost</p>
                 </div>
                 
                 <div>
-                  <FaMicrochip className="w-8 h-8 text-pink-400 mx-auto mb-4" />
-                  <h4 className="text-lg font-semibold text-white mb-2">Dynamic AI Sorting</h4>
-                  <p className="text-sm text-pink-200">LLM generates smart sort options based on your video analysis data</p>
+                  <FaRocket className="w-8 h-8 text-pink-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-semibold text-white mb-2">10x Content Output</h4>
+                  <p className="text-sm text-pink-200">Create more videos in a week than you used to make in months. Scale without limits.</p>
                 </div>
                 
                 <div>
-                  <FaRocket className="w-8 h-8 text-blue-400 mx-auto mb-4" />
-                  <h4 className="text-lg font-semibold text-white mb-2">End-to-End Generation</h4>
-                  <p className="text-sm text-blue-200">Upload raw footage → Describe your vision → Get complete edited video</p>
+                  <FaStar className="w-8 h-8 text-blue-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-semibold text-white mb-2">Discover Hidden Viral Content</h4>
+                  <p className="text-sm text-blue-200">Find the perfect moments buried in your footage that you would have missed manually</p>
                 </div>
               </div>
             </div>
@@ -490,11 +578,11 @@ export default function Home() {
             </div>
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
               <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                Technical Innovation
+                Proven Technology That Works
               </span>
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Cutting-edge AI architecture combining multiple LLMs, computer vision, and real-time processing
+              Built on battle-tested AI technology that millions trust. Your content is safe, secure, and always improving.
             </p>
           </div>
 
@@ -504,24 +592,24 @@ export default function Home() {
               <div className="bg-gray-800/70 rounded-xl p-6 border border-blue-500/30">
                 <h3 className="text-xl font-bold text-blue-400 mb-4 flex items-center">
                   <FaBrain className="w-5 h-5 mr-2" />
-                  AI Intelligence Stack
+                  Smart Content Understanding
                 </h3>
                 <ul className="space-y-3 text-gray-300">
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    GPT-4o for semantic video understanding & natural language processing
+                    Understands your content like a human editor would
                   </li>
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    Computer vision for scene analysis & quality assessment
+                    Automatically scores video quality and finds best moments
                   </li>
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    Dynamic LLM-generated sort algorithms based on content analysis
+                    Organizes your content intelligently, not just by filename
                   </li>
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    Real-time transcript analysis with speech quality scoring
+                    Perfect transcripts with speaker identification
                   </li>
                 </ul>
               </div>
@@ -529,24 +617,24 @@ export default function Home() {
               <div className="bg-gray-800/70 rounded-xl p-6 border border-purple-500/30">
                 <h3 className="text-xl font-bold text-purple-400 mb-4 flex items-center">
                   <FaLayerGroup className="w-5 h-5 mr-2" />
-                  Rendering & Performance
+                  Lightning Fast Results
                 </h3>
                 <ul className="space-y-3 text-gray-300">
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    Remotion for programmatic video generation with React components
+                    Instant previews - see changes as you make them
                   </li>
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    WebCodecs API for browser-native video processing
+                    Works entirely in your browser - no downloads
                   </li>
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    Real-time preview with live transitions and effects
+                    Professional transitions and effects built-in
                   </li>
                   <li className="flex items-center">
                     <FaCheck className="w-4 h-4 text-green-400 mr-3" />
-                    AWS S3 integration with automatic transcoding pipeline
+                    Secure cloud processing with enterprise-grade security
                   </li>
                 </ul>
               </div>
@@ -560,12 +648,12 @@ export default function Home() {
                     <FaEye className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h4 className="text-lg font-bold text-green-400">Computer Vision Analysis</h4>
-                    <p className="text-sm text-green-200">Scene-by-scene quality assessment</p>
+                    <h4 className="text-lg font-bold text-green-400">Never Miss Great Content</h4>
+                    <p className="text-sm text-green-200">Automatic quality scoring & moment detection</p>
                   </div>
                 </div>
                 <p className="text-gray-300 text-sm">
-                  Our AI analyzes visual composition, lighting, stability, and content relevance to generate editing viability scores and suggest optimal cuts.
+                  AI automatically finds your best shots, most engaging moments, and optimal cut points. No more scrolling through hours of footage.
                 </p>
               </div>
 
@@ -575,12 +663,12 @@ export default function Home() {
                     <FaSearch className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h4 className="text-lg font-bold text-blue-400">Semantic Search Engine</h4>
-                    <p className="text-sm text-blue-200">Natural language video discovery</p>
+                    <h4 className="text-lg font-bold text-blue-400">Find Any Clip Instantly</h4>
+                    <p className="text-sm text-blue-200">Search by describing what you want</p>
                   </div>
                 </div>
                 <p className="text-gray-300 text-sm">
-                  Search your video library with queries like "find energetic interview segments" and get semantically relevant results with confidence scores.
+                  Type "funny moments with John" or "emotional product testimonials" and instantly find exactly what you need from your entire video library.
                 </p>
               </div>
 
@@ -590,12 +678,12 @@ export default function Home() {
                     <FaRocket className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h4 className="text-lg font-bold text-purple-400">One-Shot Generation</h4>
-                    <p className="text-sm text-purple-200">End-to-end video creation</p>
+                    <h4 className="text-lg font-bold text-purple-400">Complete Videos from Ideas</h4>
+                    <p className="text-sm text-purple-200">Just describe what you want</p>
                   </div>
                 </div>
                 <p className="text-gray-300 text-sm">
-                  Upload raw footage, describe your vision in natural language, and get a complete edited video with cuts, transitions, and effects applied automatically.
+                  "Create a 2-minute highlight reel with upbeat music and captions" becomes a professional video in minutes, not hours of editing.
                 </p>
               </div>
             </div>
@@ -633,65 +721,65 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              Next-Generation Video AI
+              Why Creators Are Making the Switch
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              While others focus on basic editing, we've built the future of intelligent video production
+              Stop struggling with traditional editors that waste your time and don't understand your content
             </p>
           </div>
 
           <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
             <div className="grid md:grid-cols-3 gap-8">
               <div className="text-center">
-                <h3 className="text-lg font-semibold mb-4 text-gray-400">Traditional Tools</h3>
+                <h3 className="text-lg font-semibold mb-4 text-gray-400">Traditional Editing</h3>
                 <ul className="space-y-3 text-sm text-gray-500">
-                  <li>❌ Manual timeline editing</li>
-                  <li>❌ No content understanding</li>
-                  <li>❌ Hours of manual work</li>
-                  <li>❌ Basic file organization</li>
-                  <li>❌ No semantic search</li>
-                  <li>❌ Limited automation</li>
+                  <li>😩 Spend hours hunting for clips</li>
+                  <li>😩 Manual timeline wrestling</li>
+                  <li>😩 Miss great content in footage</li>
+                  <li>😩 Expensive editors & agencies</li>
+                  <li>😩 Steep learning curves</li>
+                  <li>😩 Inconsistent results</li>
                 </ul>
               </div>
               
               <div className="text-center">
-                <h3 className="text-lg font-semibold mb-4 text-blue-400">Current AI Editors</h3>
+                <h3 className="text-lg font-semibold mb-4 text-blue-400">Other AI Editors</h3>
                 <ul className="space-y-3 text-sm text-gray-300">
-                  <li>⚡ Text-based editing</li>
-                  <li>⚡ Good transcription</li>
-                  <li>⚡ Some AI assistance</li>
-                  <li>❌ No content intelligence</li>
-                  <li>❌ Basic organization</li>
-                  <li>❌ Manual workflow</li>
+                  <li>⚡ Text-based editing only</li>
+                  <li>⚡ Basic transcription</li>
+                  <li>⚡ Simple templates</li>
+                  <li>😕 Still need editing skills</li>
+                  <li>😕 Can't understand content</li>
+                  <li>😕 Limited creative control</li>
                 </ul>
               </div>
               
               <div className="text-center">
-                <h3 className="text-lg font-semibold mb-4 text-green-400">Our AI Platform</h3>
+                <h3 className="text-lg font-semibold mb-4 text-green-400">TailorLabs AI</h3>
                 <ul className="space-y-3 text-sm text-green-300">
                   <li className="flex items-center justify-center space-x-2">
                     <FaCheck className="w-3 h-3" />
-                    <span>GPT-4 powered video understanding</span>
+                    <span>Find any clip by describing it</span>
                   </li>
                   <li className="flex items-center justify-center space-x-2">
                     <FaCheck className="w-3 h-3" />
-                    <span>Semantic search & AI sorting</span>
+                    <span>Create videos from simple prompts</span>
                   </li>
                   <li className="flex items-center justify-center space-x-2">
                     <FaCheck className="w-3 h-3" />
-                    <span>One-shot video generation</span>
+                    <span>Automatically find viral moments</span>
                   </li>
                   <li className="flex items-center justify-center space-x-2">
                     <FaCheck className="w-3 h-3" />
-                    <span>Computer vision analysis</span>
+                    <span>Professional results, zero skills</span>
                   </li>
                   <li className="flex items-center justify-center space-x-2">
                     <FaCheck className="w-3 h-3" />
-                    <span>Real-time Remotion rendering</span>
+                    <span>Save 90% of editing time</span>
                   </li>
                   <li className="flex items-center justify-center space-x-2">
                     <FaCheck className="w-3 h-3" />
-                    <span>Zero-click automation</span>
+                    <span>Scale content without limits</span>
                   </li>
                 </ul>
               </div>
@@ -705,8 +793,8 @@ export default function Home() {
               <h3 className="text-2xl font-bold text-yellow-400">🚀 Breakthrough Innovation</h3>
             </div>
             <p className="text-lg text-yellow-100 max-w-4xl mx-auto">
-              <strong>World's first LLM-powered video intelligence platform</strong> that understands your content like a human editor, 
-              automatically generates smart organization systems, and creates complete videos from natural language descriptions.
+              <strong>Stop wasting 80% of your time on manual editing.</strong> Get professional videos by simply describing what you want. 
+              Perfect for creators, marketers, and anyone who needs more content but has less time.
             </p>
           </div>
         </div>
@@ -778,25 +866,41 @@ export default function Home() {
       <section className="py-20">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Ready to Experience the Future?
+            Ready to Stop Timeline Wrestling?
           </h2>
           <p className="text-xl text-gray-300 mb-8">
-            Join thousands of creators who've already made the switch to AI-powered video editing
+            Join the early creators who are 10x-ing their content output while saving hours every week
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
             <Link
               href={user ? "/dashboard" : "/auth/signup"}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center space-x-2"
             >
-              <span>{user ? "Go to Dashboard" : "Start Creating for Free"}</span>
+              <span>{user ? "Open Editor" : "Try Editor Free"}</span>
               <FaArrowRight className="w-4 h-4" />
             </Link>
             <Link
-              href="/editor-demo"
+              href="/features"
               className="bg-gray-800 hover:bg-gray-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors flex items-center justify-center space-x-2 border border-gray-600"
             >
-              <FaPlay className="w-4 h-4" />
-              <span>Try Full Demo</span>
+              <FaEye className="w-4 h-4" />
+              <span>Explore Features</span>
+            </Link>
+          </div>
+          
+          {/* Secondary Navigation */}
+          <div className="flex flex-wrap gap-3 justify-center">
+            <Link
+              href="/pricing"
+              className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-6 py-3 rounded-lg font-medium transition-colors border border-blue-500/30"
+            >
+              View Pricing Plans
+            </Link>
+            <Link
+              href="/features"
+              className="bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 px-6 py-3 rounded-lg font-medium transition-colors border border-purple-500/30"
+            >
+              See All Features
             </Link>
           </div>
         </div>
@@ -805,7 +909,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="bg-gray-800 border-t border-gray-700 py-12">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-2 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
                 <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
@@ -831,27 +935,6 @@ export default function Home() {
                 <li><Link href="/editor" className="hover:text-white transition-colors">Editor</Link></li>
                 <li><Link href="/features" className="hover:text-white transition-colors">Features</Link></li>
                 <li><Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link></li>
-                <li><Link href="/api" className="hover:text-white transition-colors">API</Link></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link href="/docs" className="hover:text-white transition-colors">Documentation</Link></li>
-                <li><Link href="/help" className="hover:text-white transition-colors">Help Center</Link></li>
-                <li><Link href="/contact" className="hover:text-white transition-colors">Contact</Link></li>
-                <li><Link href="/status" className="hover:text-white transition-colors">Status</Link></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link href="/about" className="hover:text-white transition-colors">About</Link></li>
-                <li><Link href="/blog" className="hover:text-white transition-colors">Blog</Link></li>
-                <li><Link href="/careers" className="hover:text-white transition-colors">Careers</Link></li>
-                <li><Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link></li>
               </ul>
             </div>
           </div>

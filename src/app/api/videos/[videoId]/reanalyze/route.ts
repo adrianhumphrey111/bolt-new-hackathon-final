@@ -30,12 +30,22 @@ export async function POST(
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
     }
 
+    // Check if storyboard content exists for this project
+    const { data: storyboardContent } = await supabase
+      .from('storyboard_content')
+      .select('text_content')
+      .eq('project_id', video.project_id)
+      .single();
+
     // Call the Lambda function directly via API Gateway
     const lambdaUrl = 'https://3jmprxblzk.execute-api.us-east-1.amazonaws.com/default/TranscribeAudio';
     
     const lambdaPayload = {
       video_id: videoId,
-      additional_context: additional_context || ''
+      project_id: video.project_id,
+      additional_context: additional_context || '',
+      storyboard_content: storyboardContent?.text_content || '',
+      has_storyboard: !!storyboardContent
     };
 
     console.log('🚀 Triggering Lambda re-analysis for video:', videoId);

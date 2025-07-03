@@ -72,6 +72,8 @@
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "deploy": "node deploy.mjs"
+    "deploy": "node deploy.mjs",
+    "email:csv": "OUTPUT_FORMAT=csv node scripts/send-personalized-emails.js",
+    "email:preview": "OUTPUT_FORMAT=console node scripts/send-personalized-emails.js"
   }
 }

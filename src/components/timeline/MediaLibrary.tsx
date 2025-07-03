@@ -45,7 +45,7 @@ interface TransitionItem {
   category: 'basic' | 'premium';
 }
 
-type TabType = 'media' | 'transitions' | 'ai-sort';
+type TabType = 'media' | 'transitions' | 'ai-sort' | 'script';
 
 // Create context for project information
 interface ProjectContextType {
@@ -146,6 +146,10 @@ export function MediaLibrary() {
   const [activeTab, setActiveTab] = useState<TabType>('media');
   const [projectVideos, setProjectVideos] = useState<MediaItem[]>([]);
   const [uploadedItems, setUploadedItems] = useState<MediaItem[]>([]);
+  const [scriptContent, setScriptContent] = useState<string>('');
+  const [isScriptSaving, setIsScriptSaving] = useState(false);
+  const [scriptLastSaved, setScriptLastSaved] = useState<string | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [conversionProgress, setConversionProgress] = useState<{[key: string]: number}>({});
   const [isConverting, setIsConverting] = useState<{[key: string]: boolean}>({});
@@ -313,6 +317,81 @@ export function MediaLibrary() {
       fetchProjectVideos();
     }
   }, [projectId, loadedProjectId, fetchProjectVideos]);
+
+  // Load script content when project changes
+  const fetchScriptContent = useCallback(async () => {
+    if (!projectId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('storyboard_content')
+        .select('text_content')
+        .eq('project_id', projectId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows found"
+        console.error('Error fetching script content:', error);
+        return;
+      }
+
+      setScriptContent(data?.text_content || '');
+    } catch (error) {
+      console.error('Error fetching script content:', error);
+    }
+  }, [projectId, supabase]);
+
+  // Save script content to database
+  const saveScriptContent = useCallback(async (content: string) => {
+    if (!projectId || isScriptSaving) return;
+
+    setIsScriptSaving(true);
+    try {
+      const { error } = await supabase
+        .from('storyboard_content')
+        .upsert({
+          project_id: projectId,
+          text_content: content,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error saving script content:', error);
+        return;
+      }
+
+      setScriptLastSaved(new Date().toLocaleTimeString());
+    } catch (error) {
+      console.error('Error saving script content:', error);
+    } finally {
+      setIsScriptSaving(false);
+    }
+  }, [projectId, supabase, isScriptSaving]);
+
+  // Load script content when project changes
+  useEffect(() => {
+    if (projectId && loadedProjectId !== projectId) {
+      fetchScriptContent();
+    }
+  }, [projectId, loadedProjectId, fetchScriptContent]);
+
+  // Debounced save function for script content
+  const debouncedSaveScript = useCallback((content: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      saveScriptContent(content);
+    }, 2000);
+  }, [saveScriptContent]);
+
+  // Handle script content change
+  const handleScriptChange = useCallback((content: string) => {
+    setScriptContent(content);
+    debouncedSaveScript(content);
+  }, [debouncedSaveScript]);
 
   const getMediaIcon = (type: MediaType) => {
     switch (type) {
@@ -612,6 +691,24 @@ export function MediaLibrary() {
       // Now upload to S3
       await uploadToS3({ file, fileName, bucketName });
       
+      // Start video analysis with proper storyboard handling
+      try {
+        const headers = await getAuthHeaders();
+        const analysisResponse = await fetch(`/api/videos/${videoId}/start-analysis`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({})
+        });
+        
+        if (!analysisResponse.ok) {
+          console.warn('Failed to start video analysis');
+        } else {
+          console.log('✅ Video analysis started successfully');
+        }
+      } catch (error) {
+        console.warn('Error starting video analysis:', error);
+      }
+      
       // Deduct 10 credits for video upload
       try {
         const headers = await getAuthHeaders();
@@ -675,8 +772,8 @@ export function MediaLibrary() {
 
       console.log('✅ Video deleted successfully:');
       
-      // Refresh the project videos list
-      fetchProjectVideos();
+      // Remove from UI immediately
+      setProjectVideos(prev => prev.filter(video => video.id !== videoId));
       
       return true;
     } catch (error) {
@@ -834,8 +931,20 @@ export function MediaLibrary() {
         const videoId = await saveVideoToProject(fileToUpload, duration);
         if (videoId) {
           console.log('✅ Video uploaded and saved to project');
-          // Refresh project videos to show the new upload with processing status
-          await fetchProjectVideos();
+          
+          // Add the new video to the list immediately
+          const newVideoItem: MediaItem = {
+            id: videoId,
+            name: finalName,
+            type: MediaType.VIDEO,
+            src: objectUrl,
+            duration,
+            isAnalyzing: true,
+            original_name: file.name,
+            file_path: `videos/${videoId}_${Date.now()}_${file.name}`
+          };
+          setProjectVideos(prev => [...prev, newVideoItem]);
+          
           // Start monitoring for processing status
           startMonitoring();
         }
@@ -1035,7 +1144,7 @@ export function MediaLibrary() {
         <div className="flex border-b border-gray-600">
           <button
             onClick={() => setActiveTab('media')}
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
               activeTab === 'media'
                 ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
@@ -1044,8 +1153,18 @@ export function MediaLibrary() {
             Media
           </button>
           <button
+            onClick={() => setActiveTab('script')}
+            className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
+              activeTab === 'script'
+                ? 'text-green-400 border-b-2 border-green-400 bg-gray-700/50'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+            }`}
+          >
+            Script
+          </button>
+          <button
             onClick={() => setActiveTab('ai-sort')}
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors relative ${
+            className={`flex-1 px-2 py-2 text-xs font-medium transition-colors relative ${
               activeTab === 'ai-sort'
                 ? 'text-purple-400 border-b-2 border-purple-400 bg-gray-700/50'
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
@@ -1055,7 +1174,7 @@ export function MediaLibrary() {
           </button>
           <button
             onClick={() => setActiveTab('transitions')}
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
               activeTab === 'transitions'
                 ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
                 : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
@@ -1454,6 +1573,58 @@ export function MediaLibrary() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Script Tab Content */}
+          {activeTab === 'script' && (
+            <div className="flex-1 flex flex-col p-3">
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-300 mb-2">Project Script / Storyboard</h4>
+                <p className="text-xs text-gray-500 mb-4">
+                  Add your script or storyboard content here. This will be used by AI to analyze and organize your videos.
+                </p>
+              </div>
+
+              <div className="flex-1 flex flex-col">
+                <textarea
+                  value={scriptContent}
+                  onChange={(e) => handleScriptChange(e.target.value)}
+                  placeholder="Enter your script, storyboard, or video outline here...
+
+Example:
+Scene 1: Introduction
+- Welcome viewers to the channel
+- Brief overview of today's topic
+
+Scene 2: Main Content
+- Demonstrate the key features
+- Show examples and benefits
+
+Scene 3: Conclusion
+- Summarize the main points
+- Call to action for subscribers"
+                  className="flex-1 w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 text-sm resize-none focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                  style={{ minHeight: '300px' }}
+                />
+                
+                <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+                  <div>
+                    {scriptContent.length} characters
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {isScriptSaving && (
+                      <>
+                        <div className="w-3 h-3 border-2 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-green-400">Saving...</span>
+                      </>
+                    )}
+                    {scriptLastSaved && !isScriptSaving && (
+                      <span className="text-green-400">Saved at {scriptLastSaved}</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

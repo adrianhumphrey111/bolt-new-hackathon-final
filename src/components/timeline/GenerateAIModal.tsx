@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useEDLGeneration } from '../../hooks/useEDLGeneration';
 import { useTimeline } from './TimelineContext';
 import { useAuthContext } from '../AuthProvider';
 import { PaywallModal } from '../PaywallModal';
+import { createClientSupabaseClient } from '../../lib/supabase/client';
 
 interface GenerateAIModalProps {
   projectId: string;
@@ -18,6 +19,38 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
   const [scriptContent, setScriptContent] = useState('');
   const { actions } = useTimeline();
   const { isAuthenticated, loading: authLoading, session } = useAuthContext();
+  const supabase = createClientSupabaseClient();
+
+  // Load script content from database when modal opens
+  const loadScriptContent = useCallback(async () => {
+    if (!projectId || !isOpen) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('storyboard_content')
+        .select('text_content')
+        .eq('project_id', projectId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows found"
+        console.error('Error loading script content:', error);
+        return;
+      }
+
+      if (data?.text_content) {
+        setScriptContent(data.text_content);
+      }
+    } catch (error) {
+      console.error('Error loading script content:', error);
+    }
+  }, [projectId, isOpen, supabase]);
+
+  // Load script content when modal opens
+  useEffect(() => {
+    if (isOpen && projectId) {
+      loadScriptContent();
+    }
+  }, [isOpen, projectId, loadScriptContent]);
 
   // Helper function to get step status display
   const getStepStatusIcon = (step: any) => {

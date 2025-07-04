@@ -22,11 +22,11 @@ export async function POST(request: NextRequest) {
 
     const { paymentInfo } = await request.json();
 
-    console.log('🔍 Processing payment:', paymentInfo);
+    console.log('🔍 Processing payment:', JSON.stringify(paymentInfo, null, 2));
 
     if (paymentInfo.type === 'subscription') {
-      // Create subscription
-      const subscription = await stripe.subscriptions.create({
+      // Create subscription with discount if applicable
+      const subscriptionParams: Stripe.SubscriptionCreateParams = {
         customer: paymentInfo.customerId,
         items: [{ price: paymentInfo.priceId }],
         default_payment_method: paymentInfo.paymentMethodId,
@@ -34,7 +34,30 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           planTier: paymentInfo.planTier
         }
-      });
+      };
+
+      // Apply discount if promotion code is present
+      if (paymentInfo.promotionCode) {
+        console.log('🔍 Applying promotion code to subscription:', paymentInfo.promotionCode);
+        const promotionCodes = await stripe.promotionCodes.list({
+          code: paymentInfo.promotionCode,
+          active: true,
+          limit: 1
+        });
+
+        console.log('🔍 Found promotion codes:', promotionCodes.data);
+
+        if (promotionCodes.data.length > 0) {
+          subscriptionParams.discounts = [{
+            promotion_code: promotionCodes.data[0].id
+          }];
+          console.log('✅ Applied promotion code to subscription:', promotionCodes.data[0].id);
+        } else {
+          console.log('❌ No valid promotion codes found for:', paymentInfo.promotionCode);
+        }
+      }
+
+      const subscription = await stripe.subscriptions.create(subscriptionParams);
 
       console.log('✅ Subscription created:', subscription.id);
 
@@ -94,9 +117,28 @@ export async function POST(request: NextRequest) {
     } else if (paymentInfo.type === 'credits') {
       // Process one-time payment for credits
       const price = await stripe.prices.retrieve(paymentInfo.priceId);
+      let finalAmount = price.unit_amount!;
+
+      // Calculate discounted amount if promotion code is present
+      if (paymentInfo.promotionCode) {
+        const promotionCodes = await stripe.promotionCodes.list({
+          code: paymentInfo.promotionCode,
+          active: true,
+          limit: 1
+        });
+
+        if (promotionCodes.data.length > 0) {
+          const coupon = promotionCodes.data[0].coupon;
+          if (coupon.percent_off) {
+            finalAmount = Math.round(finalAmount * (1 - coupon.percent_off / 100));
+          } else if (coupon.amount_off) {
+            finalAmount = Math.max(0, finalAmount - coupon.amount_off);
+          }
+        }
+      }
       
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: price.unit_amount!,
+        amount: finalAmount,
         currency: price.currency,
         customer: paymentInfo.customerId,
         payment_method: paymentInfo.paymentMethodId,
@@ -104,7 +146,8 @@ export async function POST(request: NextRequest) {
         return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/settings`,
         metadata: {
           userId: user.id,
-          creditsAmount: paymentInfo.creditsAmount.toString()
+          creditsAmount: paymentInfo.creditsAmount.toString(),
+          promotionCode: paymentInfo.promotionCode || ''
         }
       });
 

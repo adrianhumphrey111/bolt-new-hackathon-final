@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { planTier, billingPeriod, creditsAmount } = await request.json();
+    const { planTier, billingPeriod, creditsAmount, promotionCode } = await request.json();
 
     // Get user's Stripe customer ID and payment methods
     const { data: profile } = await supabase
@@ -111,6 +111,31 @@ export async function POST(request: NextRequest) {
     paymentInfo.cardBrand = paymentMethod.card?.brand;
     paymentInfo.customerId = profile.stripe_customer_id;
     paymentInfo.paymentMethodId = paymentMethod.id;
+
+    // Add discount information if promotion code is provided
+    if (promotionCode) {
+      try {
+        const promotionCodes = await stripe.promotionCodes.list({
+          code: promotionCode,
+          active: true,
+          limit: 1
+        });
+
+        if (promotionCodes.data.length > 0) {
+          const promoCode = promotionCodes.data[0];
+          const coupon = promoCode.coupon;
+          
+          paymentInfo.discount = {
+            percent_off: coupon.percent_off,
+            amount_off: coupon.amount_off,
+            promoCode: promotionCode
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching promotion code for preview:', error);
+        // Don't fail the preview if promo code lookup fails
+      }
+    }
 
     return NextResponse.json({ paymentInfo });
 

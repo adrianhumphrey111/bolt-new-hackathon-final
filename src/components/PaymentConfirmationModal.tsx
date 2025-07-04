@@ -15,6 +15,11 @@ interface PaymentConfirmationModalProps {
     cardLast4?: string;
     cardBrand?: string;
     billingPeriod?: 'monthly' | 'annual';
+    discount?: {
+      percent_off?: number;
+      amount_off?: number;
+      promoCode?: string;
+    };
   };
 }
 
@@ -45,6 +50,25 @@ export default function PaymentConfirmationModal({
       currency: 'USD',
     }).format(amount);
   };
+
+  const calculateDiscountedAmount = () => {
+    const originalAmount = paymentInfo.amount;
+    const discount = paymentInfo.discount;
+
+    if (!discount) return originalAmount;
+
+    if (discount.percent_off) {
+      return originalAmount * (1 - discount.percent_off / 100);
+    } else if (discount.amount_off) {
+      return Math.max(0, originalAmount - (discount.amount_off / 100)); // amount_off is in cents
+    }
+
+    return originalAmount;
+  };
+
+  const discountedAmount = calculateDiscountedAmount();
+  const originalAmount = paymentInfo.amount;
+  const hasDiscount = paymentInfo.discount && discountedAmount !== originalAmount;
 
   const getNextBillingDate = () => {
     const now = new Date();
@@ -92,10 +116,32 @@ export default function PaymentConfirmationModal({
             </div>
             
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Amount:</span>
-                <span className="font-semibold">{formatAmount(paymentInfo.amount)}</span>
-              </div>
+              {hasDiscount && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="text-gray-500 line-through">{formatAmount(originalAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-green-600">
+                    <span>Discount ({paymentInfo.discount?.promoCode}):</span>
+                    <span>
+                      {paymentInfo.discount?.percent_off ? `-${paymentInfo.discount.percent_off}%` : 
+                       `-${formatAmount((paymentInfo.discount?.amount_off || 0) / 100)}`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t pt-2 font-semibold text-lg">
+                    <span className="text-gray-900">Total:</span>
+                    <span className="text-green-600">{formatAmount(discountedAmount)}</span>
+                  </div>
+                </>
+              )}
+              
+              {!hasDiscount && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Amount:</span>
+                  <span className="font-semibold">{formatAmount(paymentInfo.amount)}</span>
+                </div>
+              )}
               
               {paymentInfo.type === 'subscription' && (
                 <>
@@ -173,7 +219,7 @@ export default function PaymentConfirmationModal({
                 Processing...
               </>
             ) : (
-              `Confirm ${formatAmount(paymentInfo.amount)}`
+              `Confirm ${formatAmount(discountedAmount)}`
             )}
           </button>
         </div>

@@ -4,6 +4,11 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthContext } from '../../components/AuthProvider';
 import { createClientSupabaseClient } from '../../lib/supabase/client';
+import AddPaymentMethodModal from '../../components/AddPaymentMethodModal';
+import PaymentConfirmationModal from '../../components/PaymentConfirmationModal';
+import CancelSubscriptionModal from '../../components/CancelSubscriptionModal';
+import SuccessModal from '../../components/SuccessModal';
+import { STRIPE_CONFIG } from '../../lib/stripe-config';
 import { 
   User, 
   CreditCard, 
@@ -227,6 +232,8 @@ function PaymentSection() {
   const supabase = createClientSupabaseClient();
   const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
+  const [setupClientSecret, setSetupClientSecret] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPaymentMethods();
@@ -268,12 +275,16 @@ function PaymentSection() {
 
       if (response.ok) {
         const { clientSecret } = await response.json();
-        // In a full implementation, this would redirect to Stripe Elements
-        // For now, redirect to pricing page to add payment method
-        window.location.href = '/pricing';
+        setSetupClientSecret(clientSecret);
+        setShowAddPaymentModal(true);
+      } else {
+        const errorData = await response.json();
+        console.error('Error from API:', errorData);
+        alert('Error creating payment setup. Please try again.');
       }
     } catch (error) {
       console.error('Error creating setup intent:', error);
+      alert('Error creating payment setup. Please try again.');
     }
   };
 
@@ -304,6 +315,12 @@ function PaymentSection() {
     } catch (error) {
       console.error('Error setting default payment method:', error);
     }
+  };
+
+  const handlePaymentSuccess = () => {
+    setShowAddPaymentModal(false);
+    setSetupClientSecret(null);
+    fetchPaymentMethods(); // Refresh the payment methods list
   };
 
   return (
@@ -362,6 +379,18 @@ function PaymentSection() {
       >
         Add Payment Method
       </button>
+
+      {showAddPaymentModal && setupClientSecret && (
+        <AddPaymentMethodModal
+          isOpen={showAddPaymentModal}
+          onClose={() => {
+            setShowAddPaymentModal(false);
+            setSetupClientSecret(null);
+          }}
+          onSuccess={handlePaymentSuccess}
+          clientSecret={setupClientSecret}
+        />
+      )}
     </div>
   );
 }
@@ -370,6 +399,12 @@ function SubscriptionSection() {
   const supabase = createClientSupabaseClient();
   const { user } = useAuthContext();
   const [loading, setLoading] = useState(true);
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successModalData, setSuccessModalData] = useState<any>(null);
+  const [pendingPaymentInfo, setPendingPaymentInfo] = useState<any>(null);
   const [credits, setCredits] = useState({
     total: 0,
     used: 0,
@@ -421,11 +456,18 @@ function SubscriptionSection() {
       }
 
       if (profile) {
+        console.log('🔍 Profile data:', profile);
+        const planName = profile.subscription_tier === 'free' ? 'Free' : 
+                        profile.subscription_tier === 'creator' ? 'Creator' : 'Pro';
         setSubscription({
-          plan: profile.subscription_tier === 'free' ? 'Free' : 'Pro',
+          plan: planName,
           tier: profile.subscription_tier || 'free',
           status: profile.subscription_status || 'active',
           nextBilling: null // Would need to fetch from Stripe for paid users
+        });
+        console.log('🔍 Setting subscription to:', {
+          plan: planName,
+          tier: profile.subscription_tier || 'free'
         });
       }
     } catch (error) {
@@ -440,80 +482,32 @@ function SubscriptionSection() {
       name: 'Free', 
       tier: 'free',
       price: 0, 
-      credits: 100,
-      features: [
-        '100 free credits',
-        '10 credits per video upload',
-        '35 credits per AI generation',
-        '2 credits per AI chat',
-        'Basic support'
-      ] 
+      credits: STRIPE_CONFIG.tiers.free.credits,
+      features: STRIPE_CONFIG.tiers.free.features
+    },
+    { 
+      name: 'Creator', 
+      tier: 'creator',
+      price: STRIPE_CONFIG.tiers.creator.price,
+      annualPrice: STRIPE_CONFIG.tiers.creator.annual_price,
+      credits: STRIPE_CONFIG.tiers.creator.credits,
+      features: STRIPE_CONFIG.tiers.creator.features
     },
     { 
       name: 'Pro', 
       tier: 'pro',
-      price: 29.99, 
-      credits: 1000,
-      features: [
-        '1,000 credits per month',
-        '10 credits per video upload',
-        '35 credits per AI generation', 
-        '2 credits per AI chat',
-        'Priority support',
-        'Advanced features'
-      ] 
-    },
-    { 
-      name: 'Enterprise', 
-      tier: 'enterprise',
-      price: 'Custom', 
-      credits: 'Unlimited',
-      features: [
-        'Unlimited credits',
-        'Custom pricing',
-        'Dedicated support',
-        'Custom integrations',
-        'SLA guarantee'
-      ] 
+      price: STRIPE_CONFIG.tiers.pro.price,
+      annualPrice: STRIPE_CONFIG.tiers.pro.annual_price,
+      credits: STRIPE_CONFIG.tiers.pro.credits,
+      features: STRIPE_CONFIG.tiers.pro.features
     },
   ];
 
-  const handleUpgrade = async (planTier: string) => {
-    if (planTier === 'enterprise') {
-      window.location.href = 'mailto:sales@yourapp.com?subject=Enterprise Plan Inquiry';
-      return;
+  const handleUpgrade = async (planTier: string, billingPeriod: 'monthly' | 'annual' = 'monthly') => {
+    if (planTier === 'free') {
+      return; // Already on free plan
     }
 
-    if (planTier === 'pro') {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
-
-        const response = await fetch('/api/stripe/create-checkout', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ 
-            priceId: 'price_1RfaJfCORCusVQOFCKHa1zro', // Monthly subscription price ID
-            mode: 'subscription'
-          })
-        });
-
-        const { checkoutUrl } = await response.json();
-        if (checkoutUrl) {
-          window.location.href = checkoutUrl;
-        }
-      } catch (error) {
-        console.error('Error creating checkout session:', error);
-      }
-    }
-  };
-
-  const handleBuyCredits = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const headers: Record<string, string> = {
@@ -523,18 +517,191 @@ function SubscriptionSection() {
         headers['Authorization'] = `Bearer ${session.access_token}`;
       }
 
-      const response = await fetch('/api/stripe/topup-credits', {
+      // Get payment preview first
+      const response = await fetch('/api/stripe/payment-preview', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ creditsAmount: 100 })
+        body: JSON.stringify({ 
+          planTier,
+          billingPeriod
+        })
       });
 
-      const { checkoutUrl } = await response.json();
-      if (checkoutUrl) {
-        window.location.href = checkoutUrl;
+      const { paymentInfo, error } = await response.json();
+      if (error) {
+        console.error('Payment preview error:', error);
+        // If no payment method, redirect to checkout
+        if (error.includes('No payment method')) {
+          const checkoutResponse = await fetch('/api/stripe/create-checkout', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ 
+              planTier,
+              billingPeriod,
+              mode: 'subscription'
+            })
+          });
+          const { checkoutUrl } = await checkoutResponse.json();
+          if (checkoutUrl) {
+            window.location.href = checkoutUrl;
+          }
+        } else {
+          alert('Failed to prepare payment. Please try again.');
+        }
+        return;
+      }
+      
+      // Show confirmation modal
+      setPendingPaymentInfo(paymentInfo);
+      setShowConfirmationModal(true);
+    } catch (error) {
+      console.error('Error preparing payment:', error);
+    }
+  };
+
+  const handleBuyCredits = async (creditsAmount: number) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      // Get payment preview first
+      const response = await fetch('/api/stripe/payment-preview', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ 
+          creditsAmount
+        })
+      });
+
+      const { paymentInfo, error } = await response.json();
+      if (error) {
+        console.error('Payment preview error:', error);
+        // If no payment method, redirect to checkout
+        if (error.includes('No payment method')) {
+          const checkoutResponse = await fetch('/api/stripe/create-checkout', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ 
+              creditsAmount,
+              mode: 'payment'
+            })
+          });
+          const { checkoutUrl } = await checkoutResponse.json();
+          if (checkoutUrl) {
+            window.location.href = checkoutUrl;
+          }
+        } else {
+          alert('Failed to prepare payment. Please try again.');
+        }
+        return;
+      }
+      
+      // Show confirmation modal
+      setPendingPaymentInfo(paymentInfo);
+      setShowConfirmationModal(true);
+    } catch (error) {
+      console.error('Error preparing payment:', error);
+    }
+  };
+
+  const handleDowngrade = () => {
+    setShowCancelModal(true);
+  };
+
+  const handleCancelSubscription = async (cancelImmediately: boolean) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      const response = await fetch('/api/stripe/cancel-subscription', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ 
+          cancelImmediately
+        })
+      });
+
+      const { success, message, error, cancelledImmediately, periodEndFormatted } = await response.json();
+      
+      if (success) {
+        // Close cancel modal
+        setShowCancelModal(false);
+        
+        // Show success modal
+        setSuccessModalData({
+          title: cancelledImmediately ? 'Subscription Cancelled' : 'Cancellation Scheduled',
+          message: message,
+          type: cancelledImmediately ? 'success' : 'info',
+          details: {
+            planName: cancelledImmediately ? 'Free' : subscription.plan,
+            credits: cancelledImmediately ? 100 : credits.remaining,
+            nextAction: cancelledImmediately ? 
+              'You now have access to 100 credits per month on the Free plan.' :
+              `Your subscription will end on ${periodEndFormatted || 'your next billing date'}.`
+          }
+        });
+        setShowSuccessModal(true);
+        
+        // Refresh subscription data
+        setTimeout(() => {
+          fetchSubscriptionData();
+        }, 1000);
+      } else {
+        console.error('Cancellation error:', error);
+        alert('Failed to cancel subscription. Please try again.');
       }
     } catch (error) {
-      console.error('Error buying credits:', error);
+      console.error('Error cancelling subscription:', error);
+      alert('Failed to cancel subscription. Please try again.');
+    }
+  };
+
+  const handleConfirmPayment = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      const response = await fetch('/api/stripe/process-payment', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ 
+          paymentInfo: pendingPaymentInfo
+        })
+      });
+
+      const { success, message, error } = await response.json();
+      
+      if (success) {
+        // Close modal
+        setShowConfirmationModal(false);
+        setPendingPaymentInfo(null);
+        
+        // Refresh subscription data with a small delay to ensure DB is updated
+        setTimeout(() => {
+          fetchSubscriptionData();
+        }, 1000);
+      } else {
+        console.error('Payment processing error:', error);
+        alert('Payment failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      alert('Payment failed. Please try again.');
     }
   };
 
@@ -580,12 +747,25 @@ function SubscriptionSection() {
             <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full text-center">
               {subscription.status}
             </span>
-            <button
-              onClick={handleBuyCredits}
-              className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              Buy More Credits
-            </button>
+            <div className="relative group">
+              <button className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                Buy More Credits
+              </button>
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                {Object.entries(STRIPE_CONFIG.topups).map(([amount, config]) => (
+                  <button
+                    key={amount}
+                    onClick={() => handleBuyCredits(Number(amount))}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
+                  >
+                    <div className="flex justify-between">
+                      <span>{amount} credits</span>
+                      <span className="font-semibold">${config.price}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -596,70 +776,181 @@ function SubscriptionSection() {
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-600">Video Upload:</span>
-            <span className="font-medium">10 credits</span>
+            <span className="font-medium">{STRIPE_CONFIG.credits.costs.video_upload} credits</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">AI Timeline Generation:</span>
-            <span className="font-medium">35 credits</span>
+            <span className="font-medium">{STRIPE_CONFIG.credits.costs.ai_generate} credits</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">AI Chat:</span>
-            <span className="font-medium">2 credits</span>
+            <span className="font-medium">{STRIPE_CONFIG.credits.costs.ai_chat} credits</span>
           </div>
         </div>
       </div>
 
-      <h3 className="text-lg font-semibold mb-4">Available Plans</h3>
-      <div className="grid grid-cols-3 gap-4">
-        {plans.map((plan) => (
-          <div
-            key={plan.name}
-            className={`border rounded-lg p-6 ${
-              plan.tier === subscription.tier
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200'
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-lg font-semibold">Available Plans</h3>
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setBillingPeriod('monthly')}
+            className={`px-4 py-2 text-sm rounded-md transition-colors ${
+              billingPeriod === 'monthly'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <h4 className="font-semibold text-lg">{plan.name}</h4>
-            <div className="mt-2">
-              {typeof plan.price === 'number' ? (
-                <p className="text-2xl font-bold">
-                  {plan.price === 0 ? 'Free' : `$${plan.price}`}
-                  {plan.price > 0 && <span className="text-sm text-gray-600">/month</span>}
-                </p>
-              ) : (
-                <p className="text-2xl font-bold">{plan.price}</p>
+            Monthly
+          </button>
+          <button
+            onClick={() => setBillingPeriod('annual')}
+            className={`px-4 py-2 text-sm rounded-md transition-colors relative ${
+              billingPeriod === 'annual'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Annual
+            <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs px-1 rounded-full">
+              Save 20%
+            </span>
+          </button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-3 gap-4">
+        {plans.map((plan) => {
+          const isCurrentPlan = plan.tier === subscription.tier;
+          const displayPrice = plan.tier === 'free' ? 0 : 
+            billingPeriod === 'annual' ? plan.annualPrice : plan.price;
+          const savings = plan.tier !== 'free' && billingPeriod === 'annual' ? 
+            Math.round(((plan.price - plan.annualPrice!) / plan.price) * 100) : 0;
+
+          return (
+            <div
+              key={plan.name}
+              className={`border rounded-lg p-6 relative ${
+                isCurrentPlan
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200'
+              } ${plan.tier === 'pro' ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}`}
+            >
+              {plan.tier === 'pro' && (
+                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                  <span className="bg-blue-500 text-white px-3 py-1 text-xs rounded-full">
+                    Most Popular
+                  </span>
+                </div>
               )}
-              <p className="text-sm text-gray-600 mt-1">
-                {typeof plan.credits === 'number' ? `${plan.credits} credits` : plan.credits}
-              </p>
+              
+              <h4 className="font-semibold text-lg">{plan.name}</h4>
+              <div className="mt-2">
+                <div className="flex items-baseline">
+                  <p className="text-2xl font-bold">
+                    {displayPrice === 0 ? 'Free' : `$${displayPrice}`}
+                  </p>
+                  {displayPrice > 0 && (
+                    <span className="text-sm text-gray-600 ml-1">
+                      /{billingPeriod === 'annual' ? 'month' : 'month'}
+                    </span>
+                  )}
+                </div>
+                {savings > 0 && (
+                  <p className="text-sm text-green-600">Save {savings}% annually</p>
+                )}
+                <p className="text-sm text-gray-600 mt-1">
+                  {typeof plan.credits === 'number' ? `${plan.credits.toLocaleString()} credits/month` : plan.credits}
+                </p>
+              </div>
+              <ul className="mt-4 space-y-2">
+                {plan.features.map((feature, i) => (
+                  <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span> 
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              {!isCurrentPlan && plan.tier !== 'free' && (
+                <button 
+                  onClick={() => handleUpgrade(plan.tier, billingPeriod)}
+                  className={`w-full mt-4 px-4 py-2 rounded-lg transition-colors ${
+                    plan.tier === 'pro'
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'border border-blue-600 text-blue-600 hover:bg-blue-50'
+                  }`}
+                >
+                  {`Upgrade to ${plan.name}`}
+                </button>
+              )}
+              {!isCurrentPlan && plan.tier === 'free' && subscription.tier !== 'free' && (
+                <button 
+                  onClick={() => handleDowngrade()}
+                  className="w-full mt-4 px-4 py-2 border border-orange-600 text-orange-600 rounded-lg hover:bg-orange-50 transition-colors"
+                >
+                  Downgrade to Free
+                </button>
+              )}
+              {isCurrentPlan && (
+                <div className="w-full mt-4 px-4 py-2 bg-green-100 text-green-800 text-center rounded-lg font-medium">
+                  Current Plan
+                </div>
+              )}
             </div>
-            <ul className="mt-4 space-y-2">
-              {plan.features.map((feature, i) => (
-                <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                  <span className="text-green-500 mt-0.5">✓</span> 
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-            {plan.tier !== subscription.tier && (
-              <button 
-                onClick={() => handleUpgrade(plan.tier)}
-                className="w-full mt-4 px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                {plan.tier === 'enterprise' ? 'Contact Sales' : `Upgrade to ${plan.name}`}
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {subscription.tier !== 'free' && (
         <div className="mt-8 pt-8 border-t border-gray-200">
-          <button className="text-red-600 hover:text-red-700">
+          <button 
+            onClick={() => setShowCancelModal(true)}
+            className="text-red-600 hover:text-red-700 transition-colors"
+          >
             Cancel Subscription
           </button>
         </div>
+      )}
+
+      {/* Payment Confirmation Modal */}
+      {showConfirmationModal && pendingPaymentInfo && (
+        <PaymentConfirmationModal
+          isOpen={showConfirmationModal}
+          onClose={() => {
+            setShowConfirmationModal(false);
+            setPendingPaymentInfo(null);
+          }}
+          onConfirm={handleConfirmPayment}
+          paymentInfo={pendingPaymentInfo}
+        />
+      )}
+
+      {/* Cancel Subscription Modal */}
+      {showCancelModal && (
+        <CancelSubscriptionModal
+          isOpen={showCancelModal}
+          onClose={() => setShowCancelModal(false)}
+          onConfirm={handleCancelSubscription}
+          subscriptionInfo={{
+            planName: subscription.plan,
+            nextBillingDate: subscription.nextBilling || 'your next billing date',
+            remainingCredits: credits.remaining
+          }}
+        />
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && successModalData && (
+        <SuccessModal
+          isOpen={showSuccessModal}
+          onClose={() => {
+            setShowSuccessModal(false);
+            setSuccessModalData(null);
+          }}
+          title={successModalData.title}
+          message={successModalData.message}
+          type={successModalData.type}
+          details={successModalData.details}
+        />
       )}
     </div>
   );

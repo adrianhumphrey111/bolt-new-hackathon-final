@@ -33,8 +33,8 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
     message: 'Ready to render',
   });
 
-  const [renderConfig, setRenderConfig] = useState({
-    quality: 'medium' as 'low' | 'medium' | 'high',
+  const [renderConfig] = useState({
+    quality: 'high' as 'low' | 'medium' | 'high',
     format: 'mp4' as 'mp4' | 'mov',
     composition: 'Timeline', // This matches the ID in Root.tsx
   });
@@ -99,6 +99,37 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
         throw new Error('Not authenticated');
       }
 
+      // 🔍 DETAILED LOGGING - Timeline State Before Render
+      console.log('🎬 RENDER MODAL - Starting render with state:', {
+        totalDuration: state.totalDuration,
+        fps: state.fps,
+        tracksCount: state.tracks?.length || 0,
+        playheadPosition: state.playheadPosition,
+        zoom: state.zoom,
+        selectedItems: state.selectedItems,
+        isPlaying: state.isPlaying,
+      });
+
+      // Log each track and its items
+      state.tracks?.forEach((track, index) => {
+        console.log(`🎬 RENDER MODAL - Track ${index + 1} (${track.id}):`, {
+          name: track.name,
+          itemsCount: track.items?.length || 0,
+          transitionsCount: track.transitions?.length || 0,
+          items: track.items?.map(item => ({
+            id: item.id,
+            type: item.type,
+            name: item.name,
+            startTime: item.startTime,
+            duration: item.duration,
+            hasSrc: !!item.src,
+            src: item.src ? item.src.substring(0, 50) + '...' : 'NO SRC',
+          })) || [],
+        });
+      });
+
+      console.log('🎬 RENDER MODAL - Full timeline state:', JSON.stringify(state, null, 2));
+
       // Lambda rendering
       setRenderState({
         step: 'rendering',
@@ -162,8 +193,14 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-600">
           <h2 className="text-lg font-semibold text-white">Render Video</h2>
@@ -182,62 +219,48 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
           {/* Configuration Step */}
           {renderState.step === 'config' && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Quality
-                </label>
-                <select
-                  value={renderConfig.quality}
-                  onChange={(e) => setRenderConfig(prev => ({ 
-                    ...prev, 
-                    quality: e.target.value as any 
-                  }))}
-                  className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2"
-                >
-                  <option value="low">Low (Fast, smaller file)</option>
-                  <option value="medium">Medium (Balanced)</option>
-                  <option value="high">High (Slow, best quality)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Format
-                </label>
-                <select
-                  value={renderConfig.format}
-                  onChange={(e) => setRenderConfig(prev => ({ 
-                    ...prev, 
-                    format: e.target.value as any 
-                  }))}
-                  className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-3 py-2"
-                >
-                  <option value="mp4">MP4 (H.264)</option>
-                  <option value="mov">MOV (H.265)</option>
-                </select>
-              </div>
-
-              <div className="bg-gray-700 rounded-lg p-4 text-sm text-gray-300">
-                <div className="flex justify-between">
-                  <span>Duration:</span>
-                  <span>{Math.round(state.totalDuration / state.fps)}s</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Clips:</span>
-                  <span>{state.tracks.reduce((sum, track) => sum + track.items.length, 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Transitions:</span>
-                  <span>{state.tracks.reduce((sum, track) => sum + (track.transitions?.length || 0), 0)}</span>
+              <div className="bg-gray-700 rounded-lg p-4">
+                <h3 className="text-white font-medium mb-3">Remotion Cloud Render</h3>
+                <p className="text-sm text-gray-300 mb-4">
+                  Your video will be rendered using Remotion's cloud infrastructure for fast, high-quality output.
+                </p>
+                
+                <div className="space-y-2 text-sm text-gray-300">
+                  <div className="flex justify-between">
+                    <span>Duration:</span>
+                    <span>{Math.round(state.totalDuration / state.fps)}s</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Clips:</span>
+                    <span>{state.tracks.reduce((sum, track) => sum + track.items.length, 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Transitions:</span>
+                    <span>{state.tracks.reduce((sum, track) => sum + (track.transitions?.length || 0), 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Quality:</span>
+                    <span>High (1080p)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Format:</span>
+                    <span>MP4</span>
+                  </div>
                 </div>
               </div>
-
 
               <button
                 onClick={startRender}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition-colors"
               >
-                Start Render
+                Start Cloud Render
+              </button>
+              
+              <button
+                onClick={onClose}
+                className="w-full bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition-colors"
+              >
+                Cancel
               </button>
             </div>
           )}

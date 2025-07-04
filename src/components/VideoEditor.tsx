@@ -21,6 +21,9 @@ import { TimelineItem, MediaType } from '../../types/timeline';
 import { useAuthContext } from './AuthProvider';
 import { useRouter } from 'next/navigation';
 import { useEDLGeneration } from '../hooks/useEDLGeneration';
+import { createClientSupabaseClient } from '../lib/supabase/client';
+import UpgradeModal from './UpgradeModal';
+import { SupportModal } from './SupportModal';
 import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
@@ -54,6 +57,9 @@ function VideoEditorContent() {
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showRenderModal, setShowRenderModal] = useState(false);
   const [showEDLViewer, setShowEDLViewer] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
   
   // EDL Generation hook to track job state (only check for existing jobs when modal is opened)
   const {
@@ -67,6 +73,8 @@ function VideoEditorContent() {
   const [editingTextId, setEditingTextId] = useState<string | undefined>();
   const playerRef = useRef<PlayerRef>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const supabase = createClientSupabaseClient();
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -120,6 +128,32 @@ function VideoEditorContent() {
     }
   }, []);
 
+  // Handle logout
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+      router.push('/auth/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  }, [supabase, router]);
+
+  // Handle profile actions
+  const handleProfileAction = useCallback((action: string) => {
+    setShowProfileDropdown(false);
+    
+    switch (action) {
+      case 'settings':
+        router.push('/settings');
+        break;
+      case 'logout':
+        handleLogout();
+        break;
+      default:
+        break;
+    }
+  }, [router, handleLogout]);
+
   // Keyboard shortcuts for canvas interactions
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -158,6 +192,20 @@ function VideoEditorContent() {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showExportDropdown]);
+
+  // Close profile dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setShowProfileDropdown(false);
+      }
+    };
+
+    if (showProfileDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showProfileDropdown]);
 
   // Collect all transitions from all tracks
   const allTransitions = state.tracks.flatMap(track => track.transitions || []);
@@ -384,179 +432,317 @@ function VideoEditorContent() {
       <PlayerControlsContext.Provider value={playerControlsValue}>
         <div className="h-screen w-screen flex flex-col bg-gray-900 overflow-hidden">
         {/* Top Bar */}
-        <header className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-600 flex-shrink-0">
-        <div className="flex items-center space-x-4 min-w-0">
-          <div className="flex items-center space-x-2">
-            <h1 className="text-lg font-bold text-white truncate">Remotion Video Editor</h1>
-            <div className="flex items-center space-x-1 bg-gray-700 rounded-full px-2 py-1">
+        <header className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-600 flex-shrink-0">
+          {/* Left Side - Dashboard & Project Info */}
+          <div className="flex items-center space-x-3 min-w-0">
+            {/* Dashboard Button */}
+            <button
+              onClick={() => window.location.href = '/dashboard'}
+              className="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 transition-colors group"
+              title="Back to Dashboard"
+            >
+              <svg className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+
+            <div className="w-px h-6 bg-gray-600"></div>
+
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1">
+                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                <h1 className="text-sm font-semibold text-white truncate">Timeline Project</h1>
+              </div>
+              <div className="text-xs text-gray-400 hidden md:block">
+                {state.tracks.length} track{state.tracks.length !== 1 ? 's' : ''} • {Math.round(state.totalDuration / state.fps)}s
+              </div>
+            </div>
+            
+            {/* Save Status - More subtle */}
+            <div className="hidden sm:block">
+              <SaveStatusIndicator />
+            </div>
+
+            {/* Built on Bolt - Moved to subtle indicator */}
+            <div className="flex items-center space-x-1 bg-gray-700/50 rounded px-2 py-0.5 hidden lg:flex">
               <img 
                 src="/bolt/white_circle_360x360/white_circle_360x360.svg" 
                 alt="Built with Bolt" 
-                className="w-4 h-4"
+                className="w-3 h-3 opacity-60"
               />
-              <span className="text-xs text-gray-300 hidden sm:block">Built on Bolt</span>
-            </div>
-            <div className="text-sm text-gray-400 hidden sm:block">
-              {state.tracks.length} track{state.tracks.length !== 1 ? 's' : ''} • {Math.round(state.totalDuration / state.fps)}s
+              <span className="text-xs text-gray-400">Built on Bolt</span>
             </div>
           </div>
           
-          {/* Save Status Indicator */}
-          <SaveStatusIndicator />
-        </div>
-        
-        <div className="flex items-center space-x-2 flex-shrink-0">
-          {/* View toggles */}
-          <div className="flex items-center space-x-1">
-            <button
-              onClick={() => setShowMediaLibrary(!showMediaLibrary)}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                showMediaLibrary 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              Media
-            </button>
-            
-            <button
-              onClick={() => setShowPropertyPanel(!showPropertyPanel)}
-              className={`px-3 py-1 rounded text-sm transition-colors ${
-                showPropertyPanel 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              Properties
-            </button>
-          </div>
-
-          {/* Edit by Chat button */}
-          <button 
-            onClick={() => setShowChatPanel(true)}
-            disabled={!projectId}
-            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
-            title="Edit timeline with AI chat"
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-            </svg>
-            <span className="hidden sm:inline">Edit by Chat</span>
-            <span className="sm:hidden">Chat</span>
-          </button>
-
-          {/* Generate with AI button */}
-          <button 
-            onClick={() => setShowGenerateModal(true)}
-            disabled={!projectId}
-            className={`px-3 py-2 ${
-              isComplete && currentJob
-                ? 'bg-green-600 hover:bg-green-700'
-                : isGenerating || currentJob
-                ? 'bg-orange-600 hover:bg-orange-700' 
-                : 'bg-purple-600 hover:bg-purple-700'
-            } disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2`}
-            title={
-              isComplete && currentJob
-                ? "Timeline ready! Click to apply to timeline"
-                : isGenerating || currentJob 
-                ? "AI generation in progress - click to view progress" 
-                : "Generate video timeline with AI"
-            }
-          >
-            {isComplete && currentJob ? (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            ) : isGenerating || currentJob ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49zM10 18.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5z" clipRule="evenodd" />
-              </svg>
-            )}
-            <span className="hidden sm:inline">
-              {isComplete && currentJob 
-                ? 'Timeline Ready!' 
-                : isGenerating || currentJob 
-                ? 'Generating with AI' 
-                : 'Generate with AI'}
-            </span>
-            <span className="sm:hidden">
-              {isComplete && currentJob 
-                ? 'Ready!' 
-                : isGenerating || currentJob 
-                ? 'Generating' 
-                : 'Generate'}
-            </span>
-          </button>
-
-          {/* View EDL button */}
-          <button 
-            onClick={() => setShowEDLViewer(true)}
-            disabled={!projectId}
-            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
-            title="View AI-generated Edit Decision List"
-          >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 3a1 1 0 000 2h8a1 1 0 100-2H6zm0 4a1 1 0 100 2h6a1 1 0 100-2H6z" />
-            </svg>
-            <span className="hidden sm:inline">View EDL</span>
-            <span className="sm:hidden">EDL</span>
-          </button>
-
-          {/* Export dropdown */}
-          <div ref={exportDropdownRef} className="relative">
-            <button 
-              onClick={() => setShowExportDropdown(!showExportDropdown)}
-              className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
-            >
-              <span className="hidden sm:inline">Render & Export</span>
-              <span className="sm:hidden">Render</span>
-              <svg 
-                className={`w-4 h-4 transition-transform ${showExportDropdown ? 'rotate-180' : ''}`} 
-                fill="currentColor" 
-                viewBox="0 0 20 20"
+          {/* Right Side - Action Groups */}
+          <div className="flex items-center space-x-1 flex-shrink-0">
+            {/* Media Tools Group */}
+            <div className="flex items-center space-x-0.5 bg-gray-700/30 rounded-lg p-0.5">
+              <button
+                onClick={() => setShowMediaLibrary(!showMediaLibrary)}
+                className={`px-2.5 py-1.5 rounded text-xs font-medium transition-all duration-200 ${
+                  showMediaLibrary 
+                    ? 'bg-blue-500 text-white shadow-sm' 
+                    : 'text-gray-300 hover:bg-gray-600/50 hover:text-white'
+                }`}
+                title="Toggle Media Library"
               >
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                <svg className="w-4 h-4 sm:mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                </svg>
+                <span className="hidden sm:inline">Media</span>
+              </button>
+              
+              <button
+                onClick={() => setShowPropertyPanel(!showPropertyPanel)}
+                className={`px-2.5 py-1.5 rounded text-xs font-medium transition-all duration-200 ${
+                  showPropertyPanel 
+                    ? 'bg-blue-500 text-white shadow-sm' 
+                    : 'text-gray-300 hover:bg-gray-600/50 hover:text-white'
+                }`}
+                title="Toggle Properties Panel"
+              >
+                <svg className="w-4 h-4 sm:mr-1.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-2.49-1.16-2.87 0a1.5 1.5 0 01-2.226 1.31c-1.06-.61-2.43.72-1.82 1.78a1.5 1.5 0 010 2.59c-.61 1.06.76 2.39 1.82 1.78a1.5 1.5 0 012.226 1.31c.38 1.16 2.49 1.16 2.87 0a1.5 1.5 0 012.226-1.31c1.06.61 2.43-.72 1.82-1.78a1.5 1.5 0 010-2.59c.61-1.06-.76-2.39-1.82-1.78a1.5 1.5 0 01-2.226-1.31zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                </svg>
+                <span className="hidden sm:inline">Properties</span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-gray-600 mx-1"></div>
+
+            {/* AI Tools Group */}
+            <div className="flex items-center space-x-0.5 bg-purple-900/20 rounded-lg p-0.5 border border-purple-800/30">
+              <button 
+                onClick={() => setShowChatPanel(true)}
+                disabled={!projectId}
+                className="px-2.5 py-1.5 bg-purple-600/80 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-xs font-medium transition-all duration-200 flex items-center space-x-1.5"
+                title="Edit timeline with AI chat"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                </svg>
+                <span className="hidden sm:inline">Edit by Chat</span>
+                <span className="sm:hidden">Chat</span>
+              </button>
+
+              <button 
+                onClick={() => setShowGenerateModal(true)}
+                disabled={!projectId}
+                className={`px-2.5 py-1.5 ${
+                  isComplete && currentJob
+                    ? 'bg-emerald-600/80 hover:bg-emerald-600'
+                    : isGenerating || currentJob
+                    ? 'bg-amber-600/80 hover:bg-amber-600' 
+                    : 'bg-purple-600/80 hover:bg-purple-600'
+                } disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-xs font-medium transition-all duration-200 flex items-center space-x-1.5`}
+                title={
+                  isComplete && currentJob
+                    ? "Timeline ready! Click to apply to timeline"
+                    : isGenerating || currentJob 
+                    ? "AI generation in progress - click to view progress" 
+                    : "Generate video timeline with AI"
+                }
+              >
+                {isComplete && currentJob ? (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                ) : isGenerating || currentJob ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z" />
+                  </svg>
+                )}
+                <span className="hidden sm:inline">
+                  {isComplete && currentJob 
+                    ? 'Timeline Ready!' 
+                    : isGenerating || currentJob 
+                    ? 'Generating...' 
+                    : 'Generate with AI'}
+                </span>
+                <span className="sm:hidden">
+                  {isComplete && currentJob 
+                    ? 'Ready!' 
+                    : isGenerating || currentJob 
+                    ? 'Gen...' 
+                    : 'Generate'}
+                </span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-gray-600 mx-1"></div>
+
+            {/* Utility Tools */}
+            <button 
+              onClick={() => setShowEDLViewer(true)}
+              disabled={!projectId}
+              className="px-2.5 py-1.5 bg-slate-600/80 hover:bg-slate-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-xs font-medium transition-all duration-200 flex items-center space-x-1.5"
+              title="View AI-generated Edit Decision List"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 3a1 1 0 000 2h8a1 1 0 100-2H6zm0 4a1 1 0 100 2h6a1 1 0 100-2H6z" />
               </svg>
+              <span className="hidden sm:inline">View EDL</span>
+              <span className="sm:hidden">EDL</span>
             </button>
 
-            {/* Dropdown menu */}
-            {showExportDropdown && (
-              <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
-                <div className="py-1">
-                  <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-600">
-                    Render & Export Options
+            {/* Divider */}
+            <div className="w-px h-6 bg-gray-600 mx-1"></div>
+
+            {/* Primary Export Action */}
+            <div ref={exportDropdownRef} className="relative">
+              <button 
+                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-emerald-600/25"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+                <span className="hidden sm:inline">Render & Export</span>
+                <span className="sm:hidden">Export</span>
+                <svg 
+                  className={`w-4 h-4 transition-transform ${showExportDropdown ? 'rotate-180' : ''}`} 
+                  fill="currentColor" 
+                  viewBox="0 0 20 20"
+                >
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+
+              {/* Dropdown menu */}
+              {showExportDropdown && (
+                <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                  <div className="py-1">
+                    <div className="px-4 py-2 text-xs text-gray-400 border-b border-gray-600">
+                      Render & Export Options
+                    </div>
+                    {exportOptions.map((option, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleExportOption(option)}
+                        className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center space-x-3 ${
+                          option.primary 
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-b border-gray-600' 
+                            : 'text-white hover:bg-gray-700'
+                        }`}
+                      >
+                        <span className="text-lg">{option.icon}</span>
+                        <div className="flex-1">
+                          <div className="font-medium">{option.name}</div>
+                          <div className={`text-xs ${option.primary ? 'text-emerald-200' : 'text-gray-400'}`}>
+                            {option.format}
+                          </div>
+                        </div>
+                        {option.primary && (
+                          <span className="text-xs bg-emerald-500 px-2 py-1 rounded">
+                            NEW
+                          </span>
+                        )}
+                      </button>
+                    ))}
                   </div>
-                  {exportOptions.map((option, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleExportOption(option)}
-                      className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center space-x-3 ${
-                        option.primary 
-                          ? 'bg-purple-600 hover:bg-purple-700 text-white border-b border-gray-600' 
-                          : 'text-white hover:bg-gray-700'
-                      }`}
-                    >
-                      <span className="text-lg">{option.icon}</span>
-                      <div className="flex-1">
-                        <div className="font-medium">{option.name}</div>
-                        <div className={`text-xs ${option.primary ? 'text-purple-200' : 'text-gray-400'}`}>
-                          {option.format}
+                </div>
+              )}
+            </div>
+
+            {/* Profile Dropdown */}
+            <div ref={profileDropdownRef} className="relative ml-2">
+              <button 
+                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                className="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 transition-colors group flex items-center space-x-2"
+                title="Profile & Settings"
+              >
+                <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                  {session?.user?.email?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <svg 
+                  className={`w-3 h-3 text-gray-400 group-hover:text-white transition-all duration-200 ${showProfileDropdown ? 'rotate-180' : ''}`} 
+                  fill="currentColor" 
+                  viewBox="0 0 20 20"
+                >
+                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+
+              {/* Profile Dropdown menu */}
+              {showProfileDropdown && (
+                <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-xl z-50">
+                  <div className="py-1">
+                    {/* User Info Header */}
+                    <div className="px-4 py-3 border-b border-gray-600">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                          {session?.user?.email?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-white truncate">
+                            {session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'User'}
+                          </div>
+                          <div className="text-xs text-gray-400 truncate">
+                            {session?.user?.email}
+                          </div>
                         </div>
                       </div>
-                      {option.primary && (
-                        <span className="text-xs bg-purple-500 px-2 py-1 rounded">
-                          NEW
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                    </div>
+
+                    {/* Menu Items */}
+                    <div className="py-1">
+                      <button
+                        onClick={() => handleProfileAction('settings')}
+                        className="w-full px-4 py-2 text-left text-sm text-white hover:bg-gray-700 transition-colors flex items-center space-x-3"
+                      >
+                        <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-2.49-1.16-2.87 0a1.5 1.5 0 01-2.226 1.31c-1.06-.61-2.43.72-1.82 1.78a1.5 1.5 0 010 2.59c-.61 1.06.76 2.39 1.82 1.78a1.5 1.5 0 012.226 1.31c.38 1.16 2.49 1.16 2.87 0a1.5 1.5 0 012.226-1.31c1.06.61 2.43-.72 1.82-1.78a1.5 1.5 0 010-2.59c.61-1.06-.76-2.39-1.82-1.78a1.5 1.5 0 01-2.226-1.31zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                        </svg>
+                        <span>Settings & Billing</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowUpgradeModal(true);
+                          setShowProfileDropdown(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-white hover:bg-gray-700 transition-colors flex items-center space-x-3"
+                      >
+                        <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zM14 6a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2h6zM4 14a2 2 0 002 2h8a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2z" />
+                        </svg>
+                        <span>Upgrade Plan</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowSupportModal(true);
+                          setShowProfileDropdown(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-white hover:bg-gray-700 transition-colors flex items-center space-x-3"
+                      >
+                        <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        <span>Help & Support</span>
+                      </button>
+
+                      <div className="border-t border-gray-600 my-1"></div>
+
+                      <button
+                        onClick={() => handleProfileAction('logout')}
+                        className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-gray-700 hover:text-red-300 transition-colors flex items-center space-x-3"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 01-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
+                        </svg>
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
         </div>
       </header>
 
@@ -673,6 +859,22 @@ function VideoEditorContent() {
           onClose={() => setShowEDLViewer(false)}
         />
       )}
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onSuccess={(data) => {
+          console.log('Upgrade successful:', data);
+          // Could add toast notification here
+        }}
+      />
+
+      {/* Support Modal */}
+      <SupportModal
+        isOpen={showSupportModal}
+        onClose={() => setShowSupportModal(false)}
+      />
         </div>
       </PlayerControlsContext.Provider>
     </DragProvider>

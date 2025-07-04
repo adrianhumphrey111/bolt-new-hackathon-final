@@ -20,6 +20,7 @@ import { flip } from '@remotion/transitions/flip';
 import { clockWipe } from '@remotion/transitions/clock-wipe';
 import { iris } from '@remotion/transitions/iris';
 import { none } from '@remotion/transitions/none';
+import { UploadQueueStatus } from './UploadQueueStatus';
 
 interface MediaItem {
   id: string;
@@ -644,7 +645,7 @@ export function MediaLibrary() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   };
 
-  const saveVideoToProject = useCallback(async (file: File, duration: number): Promise<string | null> => {
+  const saveVideoToProject = useCallback(async (file: File, duration: number, startAnalysis: boolean = true): Promise<string | null> => {
     if (!projectId) {
       console.error('No project ID available for video upload');
       return null;
@@ -691,22 +692,23 @@ export function MediaLibrary() {
       // Now upload to S3
       await uploadToS3({ file, fileName, bucketName });
       
-      // Start video analysis with proper storyboard handling
+      // Queue video for analysis instead of starting immediately
       try {
         const headers = await getAuthHeaders();
-        const analysisResponse = await fetch(`/api/videos/${videoId}/start-analysis`, {
+        const analysisResponse = await fetch(`/api/videos/${videoId}/queue-analysis`, {
           method: 'POST',
           headers,
           body: JSON.stringify({})
         });
         
         if (!analysisResponse.ok) {
-          console.warn('Failed to start video analysis');
+          console.warn('Failed to queue video analysis');
         } else {
-          console.log('✅ Video analysis started successfully');
+          const result = await analysisResponse.json();
+          console.log('✅ Video queued for analysis:', result);
         }
       } catch (error) {
-        console.warn('Error starting video analysis:', error);
+        console.warn('Error queuing video analysis:', error);
       }
       
       // Deduct 10 credits for video upload
@@ -870,8 +872,21 @@ export function MediaLibrary() {
   const handleFileUpload = useCallback(async (files: FileList) => {
     setUploading(true);
     
+    // Support bulk upload - process up to 20 files
+    const filesToProcess = Array.from(files).slice(0, 20);
+    
+    if (filesToProcess.length > 1) {
+      console.log(`🎬 Bulk upload: Processing ${filesToProcess.length} files`);
+    }
+    
+    // Track upload progress for each file
+    const uploadProgress: Record<string, number> = {};
+    const uploadStatuses: Record<string, 'uploading' | 'queued' | 'failed'> = {};
+    
     try {
-      const file = files[0];
+      // Process each file
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const file = filesToProcess[i];
       console.log('DEBUG: handleFileUpload - Initial file:', file);
       
       // Check upload limits before proceeding
@@ -928,7 +943,7 @@ export function MediaLibrary() {
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject:', fileToUpload);
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject size:', fileToUpload.size, 'bytes');
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject type:', fileToUpload.type);
-        const videoId = await saveVideoToProject(fileToUpload, duration);
+        const videoId = await saveVideoToProject(fileToUpload, duration, i === 0); // Only trigger analysis for first file
         if (videoId) {
           console.log('✅ Video uploaded and saved to project');
           
@@ -961,6 +976,7 @@ export function MediaLibrary() {
         };
         setUploadedItems(prev => [...prev, newItem]);
       }
+      } // End of for loop
     } catch (error) {
       console.error('Error during file upload:', error);
     } finally {
@@ -1197,7 +1213,7 @@ export function MediaLibrary() {
             <input
               ref={fileInputRef}
               type="file"
-              
+              multiple
               accept="video/mp4,video/quicktime,.mov,.mp4,audio/*,image/*"
               onChange={handleFileInputChange}
               className="hidden"
@@ -1230,7 +1246,7 @@ export function MediaLibrary() {
                     ? 'Uploading videos...' 
                     : isDragOver 
                       ? 'Drop files here' 
-                      : 'Drop files or click to upload'
+                      : 'Drop files or click to upload (up to 20)'
                   }
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
@@ -1238,7 +1254,7 @@ export function MediaLibrary() {
                     ? projectId 
                       ? 'Processing and saving to project...' 
                       : 'Processing files...'
-                    : 'Videos: MP4, MOV (≤1GB converts to MP4) • Audio: MP3, WAV, M4A • Images: JPG, PNG, GIF'
+                    : 'Videos: MP4, MOV (≤1GB converts to MP4) • Audio: MP3, WAV, M4A • Images: JPG, PNG, GIF • Max 20 files'
                   }
                 </div>
               </div>
@@ -1248,6 +1264,9 @@ export function MediaLibrary() {
 
               {/* Scrollable Content Area */}
               <div className="flex-1 overflow-y-auto px-3 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+            {/* Upload Queue Status */}
+            {projectId && <UploadQueueStatus projectId={projectId} />}
+            
             {/* Processing Status Banner */}
             {isProcessing && (
               <div className="mb-4 p-3 bg-purple-900/30 border border-purple-600/50 rounded">

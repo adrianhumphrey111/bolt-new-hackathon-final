@@ -67,6 +67,49 @@ export async function POST(request: NextRequest) {
             await resetMonthlyCredits(userId);
           }
         }
+        
+        // Handle payment link completion for annual subscriptions
+        if (session.mode === 'payment' && session.metadata) {
+          const { plan, user_id, discount, discounted_price, original_price } = session.metadata;
+          
+          if (user_id && plan) {
+            try {
+              // Determine subscription tier based on plan
+              let subscriptionTier = 'pro';
+              let monthlyCredits = 5000; // Default for pro_annual
+              
+              if (plan.includes('creator')) {
+                subscriptionTier = 'creator';
+                monthlyCredits = 1000;
+              }
+              
+              // Update user profile with subscription details
+              await supabase
+                .from('profiles')
+                .update({
+                  stripe_customer_id: session.customer as string,
+                  subscription_status: 'active',
+                  subscription_tier: subscriptionTier
+                })
+                .eq('id', user_id);
+
+              // Initialize credits for the annual subscription
+              await resetMonthlyCredits(user_id, monthlyCredits);
+              
+              // Log the payment details
+              console.log(`Payment link completed for user ${user_id}:`, {
+                plan,
+                originalPrice: original_price,
+                discountedPrice: discounted_price,
+                discount,
+                sessionId: session.id
+              });
+              
+            } catch (error) {
+              console.error('Error processing payment link completion:', error);
+            }
+          }
+        }
         break;
       }
 

@@ -62,7 +62,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, error: authError } = await getUserFromRequest(request);
+    const stripe = getStripe();
+    const { user, supabase } = await getUserFromRequest(request);
     
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -71,10 +72,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { paymentMethodId } = body;
 
-    // TODO: Implement Stripe payment method attachment
-    // await stripe.paymentMethods.attach(paymentMethodId, {
-    //   customer: customerId,
-    // });
+    // Get user's Stripe customer ID
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile?.stripe_customer_id) {
+      return NextResponse.json(
+        { error: 'No Stripe customer found' },
+        { status: 400 }
+      );
+    }
+
+    // Attach payment method to customer
+    await stripe.paymentMethods.attach(paymentMethodId, {
+      customer: profile.stripe_customer_id,
+    });
+
+    // Optionally set as default payment method
+    await stripe.customers.update(profile.stripe_customer_id, {
+      invoice_settings: {
+        default_payment_method: paymentMethodId,
+      },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -85,6 +107,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const stripe = getStripe();
     const { user,  supabase } = await getUserFromRequest(request);
     
     if (!user) {

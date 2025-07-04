@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getUserFromRequest } from '../../../../lib/supabase/server';
+import { STRIPE_CONFIG } from '../../../../lib/stripe-config';
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -20,12 +21,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { creditsAmount = 100 } = await request.json();
+    const { creditsAmount = 100, priceId } = await request.json();
 
-    // Validate credits amount (must be in increments of 100)
-    if (creditsAmount % 100 !== 0 || creditsAmount < 100) {
+    // Validate credits amount against available topup packages
+    const validCreditsAmounts = Object.keys(STRIPE_CONFIG.topups).map(Number);
+    if (!validCreditsAmounts.includes(creditsAmount)) {
       return NextResponse.json({ 
-        error: 'Credits must be purchased in increments of 100' 
+        error: `Credits must be one of: ${validCreditsAmounts.join(', ')}` 
+      }, { status: 400 });
+    }
+
+    // Get pricing info from config
+    const topupConfig = STRIPE_CONFIG.topups[creditsAmount as keyof typeof STRIPE_CONFIG.topups];
+    if (!topupConfig) {
+      return NextResponse.json({ 
+        error: 'Invalid credits amount' 
       }, { status: 400 });
     }
 
@@ -62,26 +72,26 @@ export async function POST(request: NextRequest) {
     });
 
     if (paymentMethods.data.length === 0) {
+      // Get base URL for redirects
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 
+                      process.env.NEXT_PUBLIC_APP_URL || 
+                      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+                      request.headers.get('origin') || 
+                      'https://your-domain.com';
+
       // No payment method on file, create checkout session for one-time payment
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         payment_method_types: ['card'],
         line_items: [
           {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: `${creditsAmount} Credits`,
-                description: 'AI Timeline Credits'
-              },
-              unit_amount: (creditsAmount / 100) * 1000, // $10 per 100 credits
-            },
+            price: priceId || topupConfig.priceId,
             quantity: 1,
           },
         ],
         mode: 'payment',
-        success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?credits_purchased=${creditsAmount}`,
-        cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+        success_url: `${baseUrl}/dashboard?credits_purchased=${creditsAmount}`,
+        cancel_url: `${baseUrl}/dashboard`,
         metadata: {
           userId: user.id,
           creditsPurchased: creditsAmount.toString()
@@ -93,7 +103,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Has payment method, charge immediately
-      const amount = (creditsAmount / 100) * 1000; // $10 per 100 credits, in cents
+      const amount = topupConfig.price * 100; // Convert to cents
 
       const paymentIntent = await stripe.paymentIntents.create({
         amount,

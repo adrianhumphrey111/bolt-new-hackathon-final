@@ -185,14 +185,28 @@ export async function addCredits(
 }
 
 // Reset monthly credits (for subscription renewal)
-export async function resetMonthlyCredits(userId: string) {
+export async function resetMonthlyCredits(userId: string, creditsAmount?: number) {
   const supabase = createServerSupabaseClient();
   
   try {
+    // If credits amount not provided, determine it from user's subscription tier
+    let monthlyCredits = creditsAmount;
+    
+    if (!monthlyCredits) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('subscription_tier')
+        .eq('id', userId)
+        .single();
+      
+      const tier = profile?.subscription_tier || 'free';
+      monthlyCredits = STRIPE_CONFIG.tiers[tier as keyof typeof STRIPE_CONFIG.tiers]?.credits || STRIPE_CONFIG.credits.free_tier;
+    }
+
     const { error } = await supabase
       .rpc('reset_monthly_credits', {
         p_user_id: userId,
-        p_credits_amount: STRIPE_CONFIG.credits.included_monthly
+        p_credits_amount: monthlyCredits
       });
 
     if (error) {

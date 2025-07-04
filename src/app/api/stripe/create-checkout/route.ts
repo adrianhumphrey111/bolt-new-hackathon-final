@@ -21,9 +21,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { priceId, planTier, billingPeriod, creditsAmount, successUrl, cancelUrl, mode } = await request.json();
+    const { priceId, planTier, billingPeriod, creditsAmount, successUrl, cancelUrl, mode, promotionCode } = await request.json();
 
-    console.log('🔍 Checkout request:', { priceId, planTier, billingPeriod, creditsAmount, mode });
+    console.log('🔍 Checkout request:', { priceId, planTier, billingPeriod, creditsAmount, mode, promotionCode });
 
     // Get base URL for redirects
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 
@@ -207,8 +207,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create checkout session
-    const session = await stripe.checkout.sessions.create({
+    // Build checkout session params
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
       payment_method_types: ['card'],
       line_items: [
@@ -223,7 +223,26 @@ export async function POST(request: NextRequest) {
       metadata: {
         userId: user.id
       }
-    });
+    };
+
+    // Add promotion code if provided
+    if (promotionCode) {
+      // First validate the promotion code
+      const promotionCodes = await stripe.promotionCodes.list({
+        code: promotionCode,
+        active: true,
+        limit: 1
+      });
+
+      if (promotionCodes.data.length > 0) {
+        sessionParams.discounts = [{
+          promotion_code: promotionCodes.data[0].id
+        }];
+      }
+    }
+
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return NextResponse.json({ 
       checkoutUrl: session.url 

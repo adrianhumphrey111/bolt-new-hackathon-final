@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createClientSupabaseClient } from '../lib/supabase/client';
 import { STRIPE_CONFIG } from '../lib/stripe-config';
 import AddPaymentMethodModal from './AddPaymentMethodModal';
+import PaymentConfirmationModal from './PaymentConfirmationModal';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -23,6 +24,10 @@ interface UserData {
     remaining: number;
   };
   hasPaymentMethod: boolean;
+  paymentMethod?: {
+    brand: string;
+    last4: string;
+  };
 }
 
 export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) {
@@ -32,6 +37,12 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
   const [setupClientSecret, setSetupClientSecret] = useState<string | null>(null);
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<any>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoCodeError, setPromoCodeError] = useState('');
+  const [validatedPromo, setValidatedPromo] = useState<any>(null);
+  const [showPromoInput, setShowPromoInput] = useState(false);
   const supabase = createClientSupabaseClient();
 
   useEffect(() => {
@@ -66,6 +77,11 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
       const paymentResponse = await fetch('/api/user/payment-methods', { headers });
       const paymentData = await paymentResponse.json();
 
+      // The API returns payment methods as a direct array, not wrapped in paymentMethods property
+      const paymentMethods = Array.isArray(paymentData) ? paymentData : [];
+      const hasPaymentMethod = paymentMethods.length > 0;
+      const defaultPaymentMethod = hasPaymentMethod ? paymentMethods[0] : null;
+
       setUserData({
         subscription: {
           tier: profile?.subscription_tier || 'free',
@@ -78,7 +94,11 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
           used: creditsData.used_credits || 0,
           remaining: Math.max(0, (creditsData.total_credits || 0) - (creditsData.used_credits || 0))
         },
-        hasPaymentMethod: paymentData.paymentMethods && paymentData.paymentMethods.length > 0
+        hasPaymentMethod,
+        paymentMethod: defaultPaymentMethod ? {
+          brand: defaultPaymentMethod.brand || defaultPaymentMethod.card?.brand || 'Card',
+          last4: defaultPaymentMethod.last4 || defaultPaymentMethod.card?.last4 || '****'
+        } : undefined
       });
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -134,7 +154,8 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
         headers,
         body: JSON.stringify({
           planTier,
-          billingPeriod
+          billingPeriod,
+          promotionCode: validatedPromo ? promoCode : undefined
         })
       });
 
@@ -149,7 +170,8 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
             body: JSON.stringify({
               planTier,
               billingPeriod,
-              mode: 'subscription'
+              mode: 'subscription',
+              promotionCode: validatedPromo ? promoCode : undefined
             })
           });
           const checkoutData = await checkoutResponse.json();
@@ -161,25 +183,27 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
         throw new Error(previewData.error);
       }
 
-      // Process the payment directly
-      const paymentResponse = await fetch('/api/stripe/process-payment', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          paymentInfo: previewData.paymentInfo
-        })
-      });
-
-      const paymentData = await paymentResponse.json();
+      // Set up confirmation modal
+      const plan = plans.find(p => p.tier === planTier);
+      const displayPrice = billingPeriod === 'annual' ? plan?.annualPrice : plan?.price;
       
-      if (paymentData.success) {
-        // Payment succeeded, refresh user data and close modal
-        await fetchUserData(); // Refresh all user data including credits and subscription
-        onSuccess?.({ type: 'subscription', planTier, billingPeriod });
-        onClose();
-      } else {
-        throw new Error(paymentData.error || 'Failed to upgrade plan');
-      }
+      setPendingPayment({
+        type: 'subscription',
+        paymentInfo: previewData.paymentInfo,
+        amount: displayPrice,
+        planName: plan?.name,
+        credits: plan?.credits,
+        cardLast4: userData.paymentMethod?.last4,
+        cardBrand: userData.paymentMethod?.brand,
+        billingPeriod,
+        promotionCode: validatedPromo ? promoCode : undefined,
+        discount: previewData.paymentInfo?.discount || (validatedPromo ? {
+          percent_off: validatedPromo.percent_off,
+          amount_off: validatedPromo.amount_off,
+          promoCode: promoCode
+        } : undefined)
+      });
+      setShowConfirmationModal(true);
     } catch (error) {
       console.error('Error upgrading plan:', error);
       alert('Failed to upgrade plan. Please try again.');
@@ -209,7 +233,8 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
         method: 'POST',
         headers,
         body: JSON.stringify({
-          creditsAmount: amount
+          creditsAmount: amount,
+          promotionCode: validatedPromo ? promoCode : undefined
         })
       });
 
@@ -223,7 +248,8 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
             headers,
             body: JSON.stringify({
               creditsAmount: amount,
-              mode: 'payment'
+              mode: 'payment',
+              promotionCode: validatedPromo ? promoCode : undefined
             })
           });
           const checkoutData = await checkoutResponse.json();
@@ -235,25 +261,24 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
         throw new Error(previewData.error);
       }
 
-      // Process the payment directly
-      const paymentResponse = await fetch('/api/stripe/process-payment', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          paymentInfo: previewData.paymentInfo
-        })
-      });
-
-      const paymentData = await paymentResponse.json();
+      // Set up confirmation modal
+      const pkg = creditPackages.find(p => p.amount === amount);
       
-      if (paymentData.success) {
-        // Payment succeeded, refresh user data and close modal
-        await fetchUserData(); // Refresh all user data including credits
-        onSuccess?.({ type: 'credits', amount });
-        onClose();
-      } else {
-        throw new Error(paymentData.error || 'Failed to purchase credits');
-      }
+      setPendingPayment({
+        type: 'credits',
+        paymentInfo: previewData.paymentInfo,
+        amount: pkg?.price,
+        credits: amount,
+        cardLast4: userData.paymentMethod?.last4,
+        cardBrand: userData.paymentMethod?.brand,
+        promotionCode: validatedPromo ? promoCode : undefined,
+        discount: previewData.paymentInfo?.discount || (validatedPromo ? {
+          percent_off: validatedPromo.percent_off,
+          amount_off: validatedPromo.amount_off,
+          promoCode: promoCode
+        } : undefined)
+      });
+      setShowConfirmationModal(true);
     } catch (error) {
       console.error('Error buying credits:', error);
       alert('Failed to purchase credits. Please try again.');
@@ -292,10 +317,66 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
     }
   };
 
-  const handlePaymentMethodAdded = () => {
+  const handlePaymentMethodAdded = async () => {
+    console.log('Payment method added, refreshing user data...');
     setShowAddPaymentModal(false);
     setSetupClientSecret(null);
-    fetchUserData(); // Refresh user data to update hasPaymentMethod
+    // Refresh user data to update hasPaymentMethod and card info
+    await fetchUserData();
+    console.log('User data refreshed after adding payment method');
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!pendingPayment) return;
+
+    setProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      // Process the payment
+      const paymentResponse = await fetch('/api/stripe/process-payment', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          paymentInfo: {
+            ...pendingPayment.paymentInfo,
+            promotionCode: pendingPayment.promotionCode
+          }
+        })
+      });
+
+      const paymentData = await paymentResponse.json();
+      
+      if (paymentData.success) {
+        // Payment succeeded, refresh user data and close modals
+        await fetchUserData();
+        setShowConfirmationModal(false);
+        setPendingPayment(null);
+        onSuccess?.({
+          type: pendingPayment.type,
+          ...(pendingPayment.type === 'subscription' ? {
+            planTier: pendingPayment.paymentInfo?.planTier,
+            billingPeriod: pendingPayment.billingPeriod
+          } : {
+            amount: pendingPayment.credits
+          })
+        });
+        onClose();
+      } else {
+        throw new Error(paymentData.error || 'Payment failed');
+      }
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      alert('Payment failed. Please try again.');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const refreshCredits = async () => {
@@ -323,6 +404,38 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
       }
     } catch (error) {
       console.error('Error refreshing credits:', error);
+    }
+  };
+
+  const validatePromoCode = async () => {
+    if (!promoCode.trim()) {
+      setPromoCodeError('Please enter a promo code');
+      return;
+    }
+
+    setPromoCodeError('');
+    try {
+      const response = await fetch('/api/stripe/validate-promo-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: promoCode.trim() })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.valid) {
+        setPromoCodeError(data.error || 'Invalid promo code');
+        setValidatedPromo(null);
+        return;
+      }
+
+      setValidatedPromo(data);
+      setPromoCodeError('');
+    } catch (error) {
+      console.error('Error validating promo code:', error);
+      setPromoCodeError('Failed to validate promo code');
     }
   };
 
@@ -375,6 +488,71 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
                     <p className="text-xs text-gray-500 mt-1">Credit Usage</p>
                   </div>
                 </div>
+              </div>
+
+              {/* Promo Code Section */}
+              <div className="mb-6">
+                {!showPromoInput ? (
+                  <button
+                    onClick={() => setShowPromoInput(true)}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Have a promo code?
+                  </button>
+                ) : (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                      <h4 className="font-medium text-gray-900">Enter Promo Code</h4>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={promoCode}
+                        onChange={(e) => {
+                          setPromoCode(e.target.value.toUpperCase());
+                          setPromoCodeError('');
+                          setValidatedPromo(null);
+                        }}
+                        placeholder="Enter code"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <button
+                        onClick={validatePromoCode}
+                        disabled={!promoCode.trim()}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowPromoInput(false);
+                          setPromoCode('');
+                          setPromoCodeError('');
+                          setValidatedPromo(null);
+                        }}
+                        className="px-3 py-2 text-gray-600 hover:text-gray-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {promoCodeError && (
+                      <p className="text-sm text-red-600 mt-2">{promoCodeError}</p>
+                    )}
+                    {validatedPromo && (
+                      <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span>
+                          Promo applied: {validatedPromo.percent_off ? `${validatedPromo.percent_off}% off` : `$${validatedPromo.amount_off / 100} off`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Subscription Plans */}
@@ -477,7 +655,7 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
                                 <span>
                                   {!userData?.hasPaymentMethod 
                                     ? `Add Card & Upgrade to ${plan.name}`
-                                    : `Upgrade to ${plan.name}`
+                                    : `Buy ${plan.name} Plan`
                                   }
                                 </span>
                               </>
@@ -513,9 +691,9 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
                         <div className="text-lg font-bold text-gray-900">{pkg.amount}</div>
                         <div className="text-sm text-gray-600 mb-2">credits</div>
                         <div className="text-sm font-semibold text-blue-600">${pkg.price}</div>
-                        {!userData?.hasPaymentMethod && (
-                          <div className="mt-2 text-xs text-gray-500">Add card first</div>
-                        )}
+                        <div className="mt-2 text-xs text-gray-500">
+                          {userData?.hasPaymentMethod ? 'Buy Now' : 'Add Card First'}
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -536,6 +714,19 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
           }}
           onSuccess={handlePaymentMethodAdded}
           clientSecret={setupClientSecret}
+        />
+      )}
+
+      {/* Payment Confirmation Modal */}
+      {showConfirmationModal && pendingPayment && (
+        <PaymentConfirmationModal
+          isOpen={showConfirmationModal}
+          onClose={() => {
+            setShowConfirmationModal(false);
+            setPendingPayment(null);
+          }}
+          onConfirm={handleConfirmPayment}
+          paymentInfo={pendingPayment}
         />
       )}
     </>

@@ -47,6 +47,10 @@ export function PaywallModal({
   const [setupClientSecret, setSetupClientSecret] = useState<string | null>(null);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<any>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoCodeError, setPromoCodeError] = useState('');
+  const [validatedPromo, setValidatedPromo] = useState<any>(null);
+  const [showPromoInput, setShowPromoInput] = useState(false);
   const supabase = createClientSupabaseClient();
 
   useEffect(() => {
@@ -144,7 +148,34 @@ export function PaywallModal({
 
   const handleUpgrade = async (planTier: string) => {
     if (!userData?.hasPaymentMethod) {
-      await handleAddPaymentMethod();
+      // Redirect to checkout with promo code
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const checkoutResponse = await fetch('/api/stripe/create-checkout', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            planTier,
+            billingPeriod,
+            mode: 'subscription',
+            promotionCode: validatedPromo ? promoCode : undefined
+          })
+        });
+        const checkoutData = await checkoutResponse.json();
+        if (checkoutData.checkoutUrl) {
+          window.location.href = checkoutData.checkoutUrl;
+        }
+      } catch (error) {
+        console.error('Error creating checkout:', error);
+        alert('Failed to create checkout. Please try again.');
+      }
       return;
     }
 
@@ -163,7 +194,8 @@ export function PaywallModal({
         headers,
         body: JSON.stringify({
           planTier,
-          billingPeriod
+          billingPeriod,
+          promotionCode: validatedPromo ? promoCode : undefined
         })
       });
 
@@ -185,7 +217,13 @@ export function PaywallModal({
         credits: plan?.credits,
         cardLast4: userData.paymentMethod?.last4,
         cardBrand: userData.paymentMethod?.brand,
-        billingPeriod
+        billingPeriod,
+        promotionCode: validatedPromo ? promoCode : undefined,
+        discount: previewData.paymentInfo?.discount || (validatedPromo ? {
+          percent_off: validatedPromo.percent_off,
+          amount_off: validatedPromo.amount_off,
+          promoCode: promoCode
+        } : undefined)
       });
       setShowConfirmationModal(true);
     } catch (error) {
@@ -196,7 +234,33 @@ export function PaywallModal({
 
   const handleBuyCredits = async (amount: number) => {
     if (!userData?.hasPaymentMethod) {
-      await handleAddPaymentMethod();
+      // Redirect to checkout with promo code
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const checkoutResponse = await fetch('/api/stripe/create-checkout', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            creditsAmount: amount,
+            mode: 'payment',
+            promotionCode: validatedPromo ? promoCode : undefined
+          })
+        });
+        const checkoutData = await checkoutResponse.json();
+        if (checkoutData.checkoutUrl) {
+          window.location.href = checkoutData.checkoutUrl;
+        }
+      } catch (error) {
+        console.error('Error creating checkout:', error);
+        alert('Failed to create checkout. Please try again.');
+      }
       return;
     }
 
@@ -214,7 +278,8 @@ export function PaywallModal({
         method: 'POST',
         headers,
         body: JSON.stringify({
-          creditsAmount: amount
+          creditsAmount: amount,
+          promotionCode: validatedPromo ? promoCode : undefined
         })
       });
 
@@ -233,7 +298,13 @@ export function PaywallModal({
         amount: pkg?.price,
         credits: amount,
         cardLast4: userData.paymentMethod?.last4,
-        cardBrand: userData.paymentMethod?.brand
+        cardBrand: userData.paymentMethod?.brand,
+        promotionCode: validatedPromo ? promoCode : undefined,
+        discount: previewData.paymentInfo?.discount || (validatedPromo ? {
+          percent_off: validatedPromo.percent_off,
+          amount_off: validatedPromo.amount_off,
+          promoCode: promoCode
+        } : undefined)
       });
       setShowConfirmationModal(true);
     } catch (error) {
@@ -299,7 +370,10 @@ export function PaywallModal({
         method: 'POST',
         headers,
         body: JSON.stringify({
-          paymentInfo: pendingPayment.paymentInfo
+          paymentInfo: {
+            ...pendingPayment.paymentInfo,
+            promotionCode: pendingPayment.promotionCode
+          }
         })
       });
 
@@ -348,6 +422,38 @@ export function PaywallModal({
       }
     } catch (error) {
       console.error('Error refreshing credits:', error);
+    }
+  };
+
+  const validatePromoCode = async () => {
+    if (!promoCode.trim()) {
+      setPromoCodeError('Please enter a promo code');
+      return;
+    }
+
+    setPromoCodeError('');
+    try {
+      const response = await fetch('/api/stripe/validate-promo-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: promoCode.trim() })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.valid) {
+        setPromoCodeError(data.error || 'Invalid promo code');
+        setValidatedPromo(null);
+        return;
+      }
+
+      setValidatedPromo(data);
+      setPromoCodeError('');
+    } catch (error) {
+      console.error('Error validating promo code:', error);
+      setPromoCodeError('Failed to validate promo code');
     }
   };
 
@@ -418,6 +524,71 @@ export function PaywallModal({
                     <p className="text-xs text-red-600 mt-1">Credit Usage</p>
                   </div>
                 </div>
+              </div>
+
+              {/* Promo Code Section */}
+              <div className="mb-6">
+                {!showPromoInput ? (
+                  <button
+                    onClick={() => setShowPromoInput(true)}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Have a promo code?
+                  </button>
+                ) : (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                      <h4 className="font-medium text-gray-900">Enter Promo Code</h4>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={promoCode}
+                        onChange={(e) => {
+                          setPromoCode(e.target.value.toUpperCase());
+                          setPromoCodeError('');
+                          setValidatedPromo(null);
+                        }}
+                        placeholder="Enter code"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <button
+                        onClick={validatePromoCode}
+                        disabled={!promoCode.trim()}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowPromoInput(false);
+                          setPromoCode('');
+                          setPromoCodeError('');
+                          setValidatedPromo(null);
+                        }}
+                        className="px-3 py-2 text-gray-600 hover:text-gray-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {promoCodeError && (
+                      <p className="text-sm text-red-600 mt-2">{promoCodeError}</p>
+                    )}
+                    {validatedPromo && (
+                      <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span>
+                          Promo applied: {validatedPromo.percent_off ? `${validatedPromo.percent_off}% off` : `$${validatedPromo.amount_off / 100} off`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Quick Credit Purchase */}

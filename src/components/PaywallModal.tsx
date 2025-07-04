@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createClientSupabaseClient } from '../lib/supabase/client';
 import { STRIPE_CONFIG } from '../lib/stripe-config';
 import AddPaymentMethodModal from './AddPaymentMethodModal';
+import PaymentConfirmationModal from './PaymentConfirmationModal';
 
 interface PaywallModalProps {
   isOpen: boolean;
@@ -25,6 +26,10 @@ interface UserData {
     remaining: number;
   };
   hasPaymentMethod: boolean;
+  paymentMethod?: {
+    brand: string;
+    last4: string;
+  };
 }
 
 export function PaywallModal({
@@ -40,6 +45,8 @@ export function PaywallModal({
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly');
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
   const [setupClientSecret, setSetupClientSecret] = useState<string | null>(null);
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<any>(null);
   const supabase = createClientSupabaseClient();
 
   useEffect(() => {
@@ -74,6 +81,17 @@ export function PaywallModal({
       const paymentResponse = await fetch('/api/user/payment-methods', { headers });
       const paymentData = await paymentResponse.json();
 
+      console.log('Full payment response:', paymentData);
+      
+      // The API returns payment methods as a direct array, not wrapped in paymentMethods property
+      const paymentMethods = Array.isArray(paymentData) ? paymentData : [];
+      const hasPaymentMethod = paymentMethods.length > 0;
+      const defaultPaymentMethod = hasPaymentMethod ? paymentMethods[0] : null;
+
+      console.log('Payment methods array:', paymentMethods);
+      console.log('Has payment method:', hasPaymentMethod);
+      console.log('Default payment method:', defaultPaymentMethod);
+
       setUserData({
         subscription: {
           tier: profile?.subscription_tier || 'free',
@@ -86,7 +104,11 @@ export function PaywallModal({
           used: creditsData.used_credits || 0,
           remaining: Math.max(0, (creditsData.total_credits || 0) - (creditsData.used_credits || 0))
         },
-        hasPaymentMethod: paymentData.paymentMethods && paymentData.paymentMethods.length > 0
+        hasPaymentMethod,
+        paymentMethod: defaultPaymentMethod ? {
+          brand: defaultPaymentMethod.brand || defaultPaymentMethod.card?.brand || 'Card',
+          last4: defaultPaymentMethod.last4 || defaultPaymentMethod.card?.last4 || '****'
+        } : undefined
       });
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -126,7 +148,7 @@ export function PaywallModal({
       return;
     }
 
-    setProcessing(true);
+    // Get payment preview and show confirmation
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const headers: Record<string, string> = {
@@ -136,7 +158,6 @@ export function PaywallModal({
         headers['Authorization'] = `Bearer ${session.access_token}`;
       }
 
-      // First, get payment preview
       const previewResponse = await fetch('/api/stripe/payment-preview', {
         method: 'POST',
         headers,
@@ -149,50 +170,27 @@ export function PaywallModal({
       const previewData = await previewResponse.json();
       
       if (previewData.error) {
-        if (previewData.error.includes('No payment method')) {
-          // Fallback to checkout flow
-          const checkoutResponse = await fetch('/api/stripe/create-checkout', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              planTier,
-              billingPeriod,
-              mode: 'subscription'
-            })
-          });
-          const checkoutData = await checkoutResponse.json();
-          if (checkoutData.checkoutUrl) {
-            window.location.href = checkoutData.checkoutUrl;
-          }
-          return;
-        }
         throw new Error(previewData.error);
       }
 
-      // Process the payment directly
-      const paymentResponse = await fetch('/api/stripe/process-payment', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          paymentInfo: previewData.paymentInfo
-        })
-      });
-
-      const paymentData = await paymentResponse.json();
+      // Set up confirmation modal
+      const plan = plans.find(p => p.tier === planTier);
+      const displayPrice = billingPeriod === 'annual' ? plan?.annualPrice : plan?.price;
       
-      if (paymentData.success) {
-        // Payment succeeded, refresh user data and close modal
-        await fetchUserData(); // Refresh all user data including credits and subscription
-        onClose();
-        // Could show success message here
-      } else {
-        throw new Error(paymentData.error || 'Failed to upgrade plan');
-      }
+      setPendingPayment({
+        type: 'subscription',
+        paymentInfo: previewData.paymentInfo,
+        amount: displayPrice,
+        planName: plan?.name,
+        credits: plan?.credits,
+        cardLast4: userData.paymentMethod?.last4,
+        cardBrand: userData.paymentMethod?.brand,
+        billingPeriod
+      });
+      setShowConfirmationModal(true);
     } catch (error) {
-      console.error('Error upgrading plan:', error);
-      alert('Failed to upgrade plan. Please try again.');
-    } finally {
-      setProcessing(false);
+      console.error('Error getting payment preview:', error);
+      alert('Failed to get payment preview. Please try again.');
     }
   };
 
@@ -202,7 +200,7 @@ export function PaywallModal({
       return;
     }
 
-    setProcessing(true);
+    // Get payment preview and show confirmation
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const headers: Record<string, string> = {
@@ -212,7 +210,6 @@ export function PaywallModal({
         headers['Authorization'] = `Bearer ${session.access_token}`;
       }
 
-      // First, get payment preview
       const previewResponse = await fetch('/api/stripe/payment-preview', {
         method: 'POST',
         headers,
@@ -224,49 +221,24 @@ export function PaywallModal({
       const previewData = await previewResponse.json();
       
       if (previewData.error) {
-        if (previewData.error.includes('No payment method')) {
-          // Fallback to checkout flow
-          const checkoutResponse = await fetch('/api/stripe/create-checkout', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              creditsAmount: amount,
-              mode: 'payment'
-            })
-          });
-          const checkoutData = await checkoutResponse.json();
-          if (checkoutData.checkoutUrl) {
-            window.location.href = checkoutData.checkoutUrl;
-          }
-          return;
-        }
         throw new Error(previewData.error);
       }
 
-      // Process the payment directly
-      const paymentResponse = await fetch('/api/stripe/process-payment', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          paymentInfo: previewData.paymentInfo
-        })
-      });
-
-      const paymentData = await paymentResponse.json();
+      // Set up confirmation modal
+      const pkg = creditPackages.find(p => p.amount === amount);
       
-      if (paymentData.success) {
-        // Payment succeeded, refresh credits and close modal
-        await fetchUserData(); // Refresh all user data including credits
-        onClose();
-        // Could show success message here
-      } else {
-        throw new Error(paymentData.error || 'Failed to purchase credits');
-      }
+      setPendingPayment({
+        type: 'credits',
+        paymentInfo: previewData.paymentInfo,
+        amount: pkg?.price,
+        credits: amount,
+        cardLast4: userData.paymentMethod?.last4,
+        cardBrand: userData.paymentMethod?.brand
+      });
+      setShowConfirmationModal(true);
     } catch (error) {
-      console.error('Error buying credits:', error);
-      alert('Failed to purchase credits. Please try again.');
-    } finally {
-      setProcessing(false);
+      console.error('Error getting payment preview:', error);
+      alert('Failed to get payment preview. Please try again.');
     }
   };
 
@@ -300,10 +272,55 @@ export function PaywallModal({
     }
   };
 
-  const handlePaymentMethodAdded = () => {
+  const handlePaymentMethodAdded = async () => {
+    console.log('Payment method added, refreshing user data...');
     setShowAddPaymentModal(false);
     setSetupClientSecret(null);
-    fetchUserData(); // Refresh user data to update hasPaymentMethod
+    // Refresh user data to update hasPaymentMethod and card info
+    await fetchUserData();
+    console.log('User data refreshed after adding payment method');
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!pendingPayment) return;
+
+    setProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      // Process the payment
+      const paymentResponse = await fetch('/api/stripe/process-payment', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          paymentInfo: pendingPayment.paymentInfo
+        })
+      });
+
+      const paymentData = await paymentResponse.json();
+      
+      if (paymentData.success) {
+        // Payment succeeded, refresh user data and close modals
+        await fetchUserData();
+        setShowConfirmationModal(false);
+        setPendingPayment(null);
+        onClose();
+        // Show success message or toast here if needed
+      } else {
+        throw new Error(paymentData.error || 'Payment failed');
+      }
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      alert('Payment failed. Please try again.');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const refreshCredits = async () => {
@@ -335,6 +352,8 @@ export function PaywallModal({
   };
 
   if (!isOpen) return null;
+
+  console.log('Current userData:', userData);
 
   const actionLabels: Record<string, string> = {
     video_upload: 'upload and analyze this video',
@@ -427,9 +446,9 @@ export function PaywallModal({
                           <div className="text-lg font-bold text-gray-900">{pkg.amount}</div>
                           <div className="text-sm text-gray-600 mb-2">credits</div>
                           <div className="text-sm font-semibold text-blue-600">${pkg.price}</div>
-                          {!userData?.hasPaymentMethod && (
-                            <div className="mt-2 text-xs text-gray-500">Add card first</div>
-                          )}
+                          <div className="mt-2 text-xs text-gray-500">
+                            {userData?.hasPaymentMethod ? 'Buy Now' : 'Add Card First'}
+                          </div>
                         </div>
                       </button>
                     );
@@ -537,7 +556,7 @@ export function PaywallModal({
                                 <span>
                                   {!userData?.hasPaymentMethod 
                                     ? `Add Card & Upgrade to ${plan.name}`
-                                    : `Upgrade to ${plan.name}`
+                                    : `Buy ${plan.name} Plan`
                                   }
                                 </span>
                               </>
@@ -589,6 +608,19 @@ export function PaywallModal({
           }}
           onSuccess={handlePaymentMethodAdded}
           clientSecret={setupClientSecret}
+        />
+      )}
+
+      {/* Payment Confirmation Modal */}
+      {showConfirmationModal && pendingPayment && (
+        <PaymentConfirmationModal
+          isOpen={showConfirmationModal}
+          onClose={() => {
+            setShowConfirmationModal(false);
+            setPendingPayment(null);
+          }}
+          onConfirm={handleConfirmPayment}
+          paymentInfo={pendingPayment}
         />
       )}
     </>

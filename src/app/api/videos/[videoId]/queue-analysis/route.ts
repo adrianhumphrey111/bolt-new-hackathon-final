@@ -37,28 +37,61 @@ export async function POST(
         return NextResponse.json({ error: 'Failed to queue video' }, { status: 500 });
       }
 
-      // Create video analysis record with queued status
-      const { data: analysis, error: upsertError } = await supabase
+      // Check if analysis record already exists
+      const { data: existingAnalysis } = await supabase
         .from('video_analysis')
-        .upsert({
-          video_id: videoId,
-          project_id: video.project_id,
-          user_id: userId,
-          status: 'queued',
-          queue_position: queuePosition,
-          queued_at: new Date().toISOString(),
-          retry_count: 0,
-          max_retries: 3
-        }, {
-          onConflict: 'video_id'
-        })
-        .select()
+        .select('id, status')
+        .eq('video_id', videoId)
         .single();
 
-      if (upsertError) {
-        console.error('Error creating analysis record:', upsertError);
-        return NextResponse.json({ error: 'Failed to queue video analysis' }, { status: 500 });
+      let analysis;
+      if (existingAnalysis) {
+        // Update existing record
+        const { data: updatedAnalysis, error: updateError } = await supabase
+          .from('video_analysis')
+          .update({
+            status: 'queued',
+            queue_position: queuePosition,
+            queued_at: new Date().toISOString(),
+            retry_count: 0,
+            max_retries: 3,
+            error_message: null,
+            processing_started_at: null,
+            processing_completed_at: null
+          })
+          .eq('video_id', videoId)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error('Error updating analysis record:', updateError);
+          return NextResponse.json({ error: 'Failed to queue video analysis' }, { status: 500 });
+        }
+        analysis = updatedAnalysis;
+      } else {
+        // Create new record
+        const { data: newAnalysis, error: insertError } = await supabase
+          .from('video_analysis')
+          .insert({
+            video_id: videoId,
+            project_id: video.project_id,
+            user_id: userId,
+            status: 'queued',
+            queue_position: queuePosition,
+            queued_at: new Date().toISOString(),
+            retry_count: 0,
+            max_retries: 3
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error creating analysis record:', insertError);
+          return NextResponse.json({ error: 'Failed to queue video analysis' }, { status: 500 });
+        }
+        analysis = newAnalysis;
       }
+
 
       // Get queue statistics
       const { data: queueStats } = await supabase

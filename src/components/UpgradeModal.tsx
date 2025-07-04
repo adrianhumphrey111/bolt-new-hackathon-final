@@ -5,12 +5,10 @@ import { createClientSupabaseClient } from '../lib/supabase/client';
 import { STRIPE_CONFIG } from '../lib/stripe-config';
 import AddPaymentMethodModal from './AddPaymentMethodModal';
 
-interface PaywallModalProps {
+interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  requiredCredits: number;
-  availableCredits: number;
-  action: string;
+  onSuccess?: (data: any) => void;
 }
 
 interface UserData {
@@ -27,13 +25,7 @@ interface UserData {
   hasPaymentMethod: boolean;
 }
 
-export function PaywallModal({
-  isOpen,
-  onClose,
-  requiredCredits,
-  availableCredits,
-  action
-}: PaywallModalProps) {
+export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
@@ -183,8 +175,8 @@ export function PaywallModal({
       if (paymentData.success) {
         // Payment succeeded, refresh user data and close modal
         await fetchUserData(); // Refresh all user data including credits and subscription
+        onSuccess?.({ type: 'subscription', planTier, billingPeriod });
         onClose();
-        // Could show success message here
       } else {
         throw new Error(paymentData.error || 'Failed to upgrade plan');
       }
@@ -255,10 +247,10 @@ export function PaywallModal({
       const paymentData = await paymentResponse.json();
       
       if (paymentData.success) {
-        // Payment succeeded, refresh credits and close modal
+        // Payment succeeded, refresh user data and close modal
         await fetchUserData(); // Refresh all user data including credits
+        onSuccess?.({ type: 'credits', amount });
         onClose();
-        // Could show success message here
       } else {
         throw new Error(paymentData.error || 'Failed to purchase credits');
       }
@@ -336,12 +328,6 @@ export function PaywallModal({
 
   if (!isOpen) return null;
 
-  const actionLabels: Record<string, string> = {
-    video_upload: 'upload and analyze this video',
-    ai_generate: 'generate AI timeline',
-    ai_chat: 'use AI chat'
-  };
-
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -349,15 +335,8 @@ export function PaywallModal({
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <svg className="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-                </svg>
-                Insufficient Credits
-              </h2>
-              <p className="text-gray-600 mt-1">
-                You need {requiredCredits} credits to {actionLabels[action] || action}
-              </p>
+              <h2 className="text-2xl font-bold text-gray-900">Upgrade Your Plan</h2>
+              <p className="text-gray-600 mt-1">Get more credits and unlock powerful features</p>
             </div>
             <button
               onClick={onClose}
@@ -376,71 +355,32 @@ export function PaywallModal({
           ) : (
             <div className="p-6">
               {/* Current Status */}
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-semibold text-red-900">Current Plan: {userData?.subscription.plan}</h3>
-                    <p className="text-red-700">
+                    <h3 className="font-semibold text-gray-900">Current Plan: {userData?.subscription.plan}</h3>
+                    <p className="text-gray-600">
                       {userData?.credits.remaining} of {userData?.credits.total} credits remaining
-                    </p>
-                    <p className="text-sm text-red-600 mt-1">
-                      You need {requiredCredits - (userData?.credits.remaining || 0)} more credits
                     </p>
                   </div>
                   <div className="text-right">
-                    <div className="w-32 bg-red-200 rounded-full h-2">
+                    <div className="w-32 bg-gray-200 rounded-full h-2">
                       <div 
-                        className="bg-red-500 h-2 rounded-full transition-all duration-300"
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
                         style={{ 
                           width: `${userData?.credits.total ? (userData.credits.remaining / userData.credits.total) * 100 : 0}%` 
                         }}
                       ></div>
                     </div>
-                    <p className="text-xs text-red-600 mt-1">Credit Usage</p>
+                    <p className="text-xs text-gray-500 mt-1">Credit Usage</p>
                   </div>
-                </div>
-              </div>
-
-              {/* Quick Credit Purchase */}
-              <div className="mb-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Credit Purchase</h3>
-                <p className="text-gray-600 mb-4">Buy credits instantly to continue with your current action.</p>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {creditPackages.map((pkg) => {
-                    const isRecommended = pkg.amount >= requiredCredits - (userData?.credits.remaining || 0);
-                    return (
-                      <button
-                        key={pkg.amount}
-                        onClick={() => handleBuyCredits(pkg.amount)}
-                        disabled={processing}
-                        className={`border rounded-lg p-4 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                          isRecommended 
-                            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-opacity-30' 
-                            : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                        }`}
-                      >
-                        <div className="text-center">
-                          {isRecommended && (
-                            <div className="text-xs text-blue-600 font-medium mb-1">RECOMMENDED</div>
-                          )}
-                          <div className="text-lg font-bold text-gray-900">{pkg.amount}</div>
-                          <div className="text-sm text-gray-600 mb-2">credits</div>
-                          <div className="text-sm font-semibold text-blue-600">${pkg.price}</div>
-                          {!userData?.hasPaymentMethod && (
-                            <div className="mt-2 text-xs text-gray-500">Add card first</div>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
 
               {/* Subscription Plans */}
               <div className="mb-8">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Or Upgrade to a Plan</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Subscription Plans</h3>
                   <div className="flex bg-gray-100 rounded-lg p-1">
                     <button
                       onClick={() => setBillingPeriod('monthly')}
@@ -556,22 +496,29 @@ export function PaywallModal({
                 </div>
               </div>
 
-              {/* Credit Costs Reference */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-900 mb-2">Credit Costs Reference</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Video upload & analysis:</span>
-                    <span className="font-medium">{STRIPE_CONFIG.credits.costs.video_upload} credits</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">AI timeline generation:</span>
-                    <span className="font-medium">{STRIPE_CONFIG.credits.costs.ai_generate} credits</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">AI chat message:</span>
-                    <span className="font-medium">{STRIPE_CONFIG.credits.costs.ai_chat} credits</span>
-                  </div>
+              {/* Credit Top-ups */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Buy Additional Credits</h3>
+                <p className="text-gray-600 mb-4">Need more credits this month? Purchase additional credits that never expire.</p>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {creditPackages.map((pkg) => (
+                    <button
+                      key={pkg.amount}
+                      onClick={() => handleBuyCredits(pkg.amount)}
+                      disabled={processing}
+                      className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-gray-900">{pkg.amount}</div>
+                        <div className="text-sm text-gray-600 mb-2">credits</div>
+                        <div className="text-sm font-semibold text-blue-600">${pkg.price}</div>
+                        {!userData?.hasPaymentMethod && (
+                          <div className="mt-2 text-xs text-gray-500">Add card first</div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

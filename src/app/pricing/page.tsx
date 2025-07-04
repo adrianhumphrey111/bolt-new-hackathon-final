@@ -63,6 +63,9 @@ export default function Pricing() {
         return;
       }
 
+      // Get the correct price ID from our config
+      const topupConfig = STRIPE_CONFIG.topups[credits as keyof typeof STRIPE_CONFIG.topups];
+      
       const response = await fetch('/api/stripe/topup-credits', {
         method: 'POST',
         headers: {
@@ -70,7 +73,8 @@ export default function Pricing() {
           'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
-          creditsAmount: credits
+          creditsAmount: credits,
+          priceId: topupConfig.priceId
         })
       });
 
@@ -193,21 +197,12 @@ export default function Pricing() {
 
   const addOnPacks = [
     {
-      type: "AI Actions",
+      type: "Credit Top-ups",
       packs: [
-        { amount: "100 actions", price: 5, description: "Perfect for occasional heavy use" },
-        { amount: "250 actions", price: 10, description: "Great for busy content months" },
-        { amount: "500 actions", price: 18, description: "Best value for power users" },
-        { amount: "1000 actions", price: 30, description: "For teams and agencies" }
-      ]
-    },
-    {
-      type: "AI Video Minutes",
-      packs: [
-        { amount: "25 minutes", price: 8, description: "Extra video generation time" },
-        { amount: "50 minutes", price: 15, description: "Double your video output" },
-        { amount: "100 minutes", price: 25, description: "For large projects" },
-        { amount: "200 minutes", price: 45, description: "Maximum flexibility" }
+        { amount: "100 credits", credits: 100, price: 8, description: "Perfect for occasional heavy use" },
+        { amount: "500 credits", credits: 500, price: 35, description: "Great for busy content months" },
+        { amount: "1000 credits", credits: 1000, price: 60, description: "Best value for power users" },
+        { amount: "2500 credits", credits: 2500, price: 125, description: "For teams and agencies" }
       ]
     }
   ];
@@ -529,11 +524,36 @@ export default function Pricing() {
                     <span>{plan.cta}</span>
                     <FaArrowRight className="w-4 h-4" />
                   </Link>
+                ) : plan.name === 'Creator' ? (
+                  <button
+                    onClick={() => handleSubscribe(
+                      plan.name,
+                      isAnnual ? STRIPE_CONFIG.products.creator.prices.annual : STRIPE_CONFIG.products.creator.prices.monthly
+                    )}
+                    disabled={loading === plan.name}
+                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
+                      plan.popular
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-50'
+                        : `${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white disabled:opacity-50`
+                    }`}
+                  >
+                    {loading === plan.name ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{plan.cta}</span>
+                        <FaArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
                 ) : plan.name === 'Pro' ? (
                   <button
                     onClick={() => handleSubscribe(
                       plan.name,
-                      isAnnual ? STRIPE_CONFIG.products.subscription.prices.annual : STRIPE_CONFIG.products.subscription.prices.monthly
+                      isAnnual ? STRIPE_CONFIG.products.pro.prices.annual : STRIPE_CONFIG.products.pro.prices.monthly
                     )}
                     disabled={loading === plan.name}
                     className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
@@ -593,11 +613,11 @@ export default function Pricing() {
                       <div className="text-right">
                         <div className="text-xl font-bold text-blue-400">${pack.price}</div>
                         <button 
-                          onClick={() => handleAddOnPurchase(parseInt(pack.amount.split(' ')[0]), pack.price)}
-                          disabled={loading === `addon-${parseInt(pack.amount.split(' ')[0])}`}
+                          onClick={() => handleAddOnPurchase(pack.credits, pack.price)}
+                          disabled={loading === `addon-${pack.credits}`}
                           className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded mt-1 transition-colors disabled:opacity-50 flex items-center space-x-1"
                         >
-                          {loading === `addon-${parseInt(pack.amount.split(' ')[0])}` ? (
+                          {loading === `addon-${pack.credits}` ? (
                             <>
                               <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
                               <span>...</span>
@@ -681,15 +701,15 @@ export default function Pricing() {
                 <div className="flex items-start space-x-3">
                   <div className="w-2 h-2 bg-blue-400 rounded-full mt-2"></div>
                   <div>
-                    <div className="font-semibold">AI Actions (Per Command)</div>
-                    <div className="text-gray-400 text-sm">"Remove silences", "Add captions", "Create highlights", "Apply brand style"</div>
+                    <div className="font-semibold">Credit System</div>
+                    <div className="text-gray-400 text-sm">Video upload (10 credits), AI generation (35 credits), AI chat (2 credits)</div>
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
                   <div className="w-2 h-2 bg-purple-400 rounded-full mt-2"></div>
                   <div>
-                    <div className="font-semibold">AI Video Minutes (Processing Time)</div>
-                    <div className="text-gray-400 text-sm">Total minutes of video content processed by AI features</div>
+                    <div className="font-semibold">Monthly Allowances</div>
+                    <div className="text-gray-400 text-sm">Free: 100 credits, Creator: 1,000 credits, Pro: 5,000 credits</div>
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
@@ -705,43 +725,31 @@ export default function Pricing() {
             <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
               <h4 className="text-lg font-semibold mb-6">Live Usage Dashboard</h4>
               
-              {/* AI Actions Usage */}
+              {/* Credits Usage */}
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-300">AI Actions Used</span>
-                  <span className="font-semibold">147 / 200</span>
+                  <span className="text-gray-300">Credits Used</span>
+                  <span className="font-semibold">735 / 1,000</span>
                 </div>
                 <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
                   <div className="bg-blue-500 h-2 rounded-full" style={{ width: '73.5%' }}></div>
                 </div>
-                <div className="text-sm text-gray-400">53 actions remaining this month</div>
-              </div>
-
-              {/* AI Video Minutes Usage */}
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-300">AI Video Minutes</span>
-                  <span className="font-semibold">32 / 50</span>
-                </div>
-                <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
-                  <div className="bg-purple-500 h-2 rounded-full" style={{ width: '64%' }}></div>
-                </div>
-                <div className="text-sm text-gray-400">18 minutes remaining this month</div>
+                <div className="text-sm text-gray-400">265 credits remaining this month</div>
               </div>
 
               <div className="pt-4 border-t border-gray-700">
                 <div className="text-sm text-gray-400 mb-2">Recent Activity:</div>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
-                    <span>"Remove background noise" (3 min)</span>
+                    <span>AI timeline generation (35 credits)</span>
                     <span className="text-gray-500">2 min ago</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>"Add captions" (8 min)</span>
+                    <span>Video upload & analysis (10 credits)</span>
                     <span className="text-gray-500">1 hour ago</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>"Create highlight reel" (5 min)</span>
+                    <span>AI chat messages (6 credits)</span>
                     <span className="text-gray-500">3 hours ago</span>
                   </div>
                 </div>

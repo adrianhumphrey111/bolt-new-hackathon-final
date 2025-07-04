@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { renderMediaOnLambda } from '@remotion/lambda/client';
 import { TimelineState } from '../../../../../types/timeline';
 import { getUserFromRequest } from '@/lib/supabase/server';
+import { DURATION_IN_FRAMES } from '../../../../../types/constants';
 
 // AWS Configuration
 const LAMBDA_FUNCTION_NAME = process.env.REMOTION_LAMBDA_FUNCTION_NAME!;
@@ -13,6 +14,36 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { composition, timelineState, outputFormat, quality, projectId } = body;
+
+    // 🔍 DETAILED LOGGING - Timeline State Analysis
+    console.log('🎬 RENDER START - Full Request Body:', JSON.stringify(body, null, 2));
+    console.log('🎬 RENDER START - Timeline State Details:', {
+      totalDuration: timelineState?.totalDuration,
+      fps: timelineState?.fps,
+      tracksCount: timelineState?.tracks?.length || 0,
+      playheadPosition: timelineState?.playheadPosition,
+      zoom: timelineState?.zoom,
+      selectedItems: timelineState?.selectedItems,
+      isPlaying: timelineState?.isPlaying,
+    });
+
+    // Log each track and its items
+    timelineState?.tracks?.forEach((track, index) => {
+      console.log(`🎬 RENDER START - Track ${index + 1} (${track.id}):`, {
+        name: track.name,
+        itemsCount: track.items?.length || 0,
+        transitionsCount: track.transitions?.length || 0,
+        items: track.items?.map(item => ({
+          id: item.id,
+          type: item.type,
+          name: item.name,
+          startTime: item.startTime,
+          duration: item.duration,
+          hasSrc: !!item.src,
+          src: item.src ? item.src.substring(0, 50) + '...' : 'NO SRC',
+        })) || [],
+      });
+    });
 
     // Auth check
     const { user, supabase } = await getUserFromRequest(request);
@@ -54,8 +85,19 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    // Calculate duration in milliseconds
-    const durationMs = Math.round((timelineState.totalDuration / timelineState.fps) * 1000);
+    // Calculate actual duration from timeline items (like the composition does)
+    const allItems = timelineState.tracks.flatMap(track => track.items);
+    const actualDuration = allItems.length > 0 ? Math.max(...allItems.map(item => item.startTime + item.duration)) : timelineState.totalDuration;
+    const durationMs = Math.round((actualDuration / timelineState.fps) * 1000);
+    
+    console.log('🎬 RENDER START - Duration Calculation:', {
+      originalTotalDuration: timelineState.totalDuration,
+      calculatedActualDuration: actualDuration,
+      itemsCount: allItems.length,
+      fps: timelineState.fps,
+      durationSeconds: actualDuration / timelineState.fps,
+      durationMs: durationMs,
+    });
 
     // Store render job in database
     const renderRecord = await supabase
@@ -79,6 +121,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Start Lambda render
+    console.log('🎬 RENDER START - Starting Lambda render with inputProps:', {
+      timelineState: {
+        totalDuration: timelineState.totalDuration,
+        fps: timelineState.fps,
+        tracksCount: timelineState.tracks?.length || 0,
+        itemsCount: timelineState.tracks?.reduce((sum, track) => sum + (track.items?.length || 0), 0) || 0,
+      },
+      projectId,
+      userId: user.id,
+      renderJobId: renderRecord.data.id,
+    });
+
+    console.log('🎬 RENDER START - Lambda parameters:', {
+      composition,
+      actualDuration,
+      timelineStateKeys: Object.keys(timelineState),
+    });
+
     const { renderId, bucketName } = await renderMediaOnLambda({
       region: AWS_REGION as any,
       functionName: LAMBDA_FUNCTION_NAME,
@@ -86,7 +146,10 @@ export async function POST(request: NextRequest) {
       serveUrl: REMOTION_SERVE_URL,
       codec: outputFormat === 'mp4' ? 'h264' : 'h265',
       inputProps: {
-        timelineState,
+        timelineState: {
+          ...timelineState,
+          calculatedDuration: actualDuration, // Add the calculated duration to props
+        },
         projectId,
         userId: user.id,
         renderJobId: renderRecord.data.id,
@@ -94,11 +157,12 @@ export async function POST(request: NextRequest) {
       imageFormat: 'jpeg',
       crf: settings.crf,
       scale: settings.scale,
-      maxRetries: 1, // Reduce retries due to low concurrency limit
+      maxRetries: 0, // Reduce retries due to low concurrency limit
       privacy: 'public',
       outName: `${user.id}/${projectId}-${Date.now()}.${outputFormat}`,
       // Set concurrency for current Lambda limits
       concurrencyPerLambda: 1,
+      framesPerLambda:500,
       downloadBehavior: {
         type: 'download',
         fileName: `${projectId}-render.${outputFormat}`

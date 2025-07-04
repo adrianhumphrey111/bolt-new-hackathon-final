@@ -38,14 +38,53 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="Timeline"
         component={TimelineComposition}
-        durationInFrames={DURATION_IN_FRAMES}
+        durationInFrames={30000} // Large enough duration for any timeline
         fps={VIDEO_FPS}
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
         defaultProps={{
-          items: [],
-          transitions: [],
-          fps: VIDEO_FPS,
+          timelineState: {
+            tracks: [],
+            playheadPosition: 0,
+            totalDuration: DURATION_IN_FRAMES,
+            zoom: 1,
+            fps: VIDEO_FPS,
+            selectedItems: [],
+            isPlaying: false,
+          },
+        }}
+        calculateMetadata={({ props }) => {
+          // Use calculated duration from API if available, otherwise calculate from items
+          let actualDuration = DURATION_IN_FRAMES;
+          
+          if (props.timelineState?.calculatedDuration) {
+            actualDuration = props.timelineState.calculatedDuration;
+          } else if (props.timelineState?.tracks) {
+            // Fallback: calculate from items
+            const allItems = props.timelineState.tracks.flatMap(track => track.items || []);
+            actualDuration = allItems.length > 0 
+              ? Math.max(...allItems.map(item => item.startTime + item.duration))
+              : props.timelineState.totalDuration || DURATION_IN_FRAMES;
+          }
+          
+          const actualFps = props.timelineState?.fps || VIDEO_FPS;
+          
+          console.log('🎬 ROOT CALCULATE METADATA - Called with props:', {
+            hasProp: !!props.timelineState,
+            hasCalculatedDuration: !!props.timelineState?.calculatedDuration,
+            calculatedDuration: props.timelineState?.calculatedDuration,
+            totalDuration: props.timelineState?.totalDuration,
+            fps: props.timelineState?.fps,
+            finalActualDuration: actualDuration,
+            actualFps,
+            defaultDuration: DURATION_IN_FRAMES,
+            defaultFps: VIDEO_FPS,
+          });
+          
+          return {
+            durationInFrames: actualDuration,
+            fps: actualFps,
+          };
         }}
       />
       <Composition

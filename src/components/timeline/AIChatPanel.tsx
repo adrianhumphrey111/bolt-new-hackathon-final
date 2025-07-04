@@ -25,7 +25,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     {
       id: '1',
       role: 'assistant',
-      content: 'Hi! I can help you edit your timeline with natural language. Try saying things like:\n\n• "Add text that says Hello World"\n• "Add a fade transition between the first and second clips"\n• "Change the duration of the first clip to 5 seconds"\n• "Add a new track"\n• "Remove the second clip"',
+      content: 'Hi! I can help you edit your timeline with natural language. Try saying things like:\n\n• "Add text that says Hello World"\n• "Add a fade transition between the first and second clips"\n• "Change the duration of the first clip to 5 seconds"\n• "Remove silences from the first video"\n• "Cut out filler words from the second clip"\n• "Remove everywhere I say \'password\' from the first video"\n• "Add a new track"\n• "Remove the second clip"',
       timestamp: new Date(),
     }
   ]);
@@ -88,8 +88,8 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
       const result = await response.json();
 
       if (result.action === 'executeTool') {
-        // Execute the tool locally
-        const toolResult = executeAITool(result.tool, result.args, state);
+        // Execute the tool locally (now async)
+        const toolResult = await executeAITool(result.tool, result.args, state);
         
         if (toolResult.success && toolResult.action) {
           // Apply the action to the timeline
@@ -108,6 +108,11 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
               break;
             case 'ADD_TRACK':
               actions.addTrack();
+              break;
+            case 'REMOVE_SILENCES':
+              // Apply cuts to the video timeline
+              // For now, we'll just show the message - timeline cuts would need more complex implementation
+              console.log('Silence cuts detected:', toolResult.action.payload.cuts);
               break;
           }
         }

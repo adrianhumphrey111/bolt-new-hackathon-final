@@ -104,6 +104,33 @@ export function useAuth() {
         throw error
       }
 
+      // Add user to Mailchimp for email signups
+      if (data.user?.email) {
+        try {
+          console.log('🔍 Adding new email signup to Mailchimp:', data.user.email);
+          const response = await fetch('/api/mailchimp/subscribe', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: data.user.email,
+              tags: ['New User', 'Email Signup']
+            })
+          });
+
+          if (response.ok) {
+            console.log('✅ Successfully added email signup to Mailchimp');
+          } else {
+            const errorData = await response.json();
+            console.error('❌ Failed to add email signup to Mailchimp:', errorData);
+          }
+        } catch (mailchimpError) {
+          console.error('❌ Mailchimp integration error during email signup:', mailchimpError);
+          // Don't fail the signup process if Mailchimp fails
+        }
+      }
+
       setAuthState({
         user: data.user,
         session: data.session,

@@ -53,32 +53,31 @@ export const RemotionRoot: React.FC = () => {
             isPlaying: false,
           },
         }}
-        calculateMetadata={({ props }) => {
+        calculateMetadata={({ props, defaultProps }) => {
           // Use calculated duration from API if available, otherwise calculate from items
           let actualDuration = DURATION_IN_FRAMES;
           
-          if (props.timelineState?.calculatedDuration) {
-            actualDuration = props.timelineState.calculatedDuration;
-          } else if (props.timelineState?.tracks) {
+          // Check both props (from Lambda inputProps) and defaultProps (component defaults)
+          const timelineState = props.timelineState || defaultProps.timelineState;
+          
+          if (timelineState?.calculatedDuration) {
+            actualDuration = timelineState.calculatedDuration;
+          } else if (timelineState?.tracks) {
             // Fallback: calculate from items
-            const allItems = props.timelineState.tracks.flatMap(track => track.items || []);
+            const allItems = timelineState.tracks.flatMap(track => track.items || []);
             actualDuration = allItems.length > 0 
               ? Math.max(...allItems.map(item => item.startTime + item.duration))
-              : props.timelineState.totalDuration || DURATION_IN_FRAMES;
+              : timelineState.totalDuration || DURATION_IN_FRAMES;
           }
           
-          const actualFps = props.timelineState?.fps || VIDEO_FPS;
+          const actualFps = timelineState?.fps || VIDEO_FPS;
           
-          console.log('🎬 ROOT CALCULATE METADATA - Called with props:', {
-            hasProp: !!props.timelineState,
-            hasCalculatedDuration: !!props.timelineState?.calculatedDuration,
-            calculatedDuration: props.timelineState?.calculatedDuration,
-            totalDuration: props.timelineState?.totalDuration,
-            fps: props.timelineState?.fps,
+          console.log('🎬 TIMELINE COMPOSITION METADATA - Called with:', {
+            hasInputProps: !!props.timelineState,
+            hasDefaultProps: !!defaultProps.timelineState,
+            calculatedDuration: timelineState?.calculatedDuration,
             finalActualDuration: actualDuration,
             actualFps,
-            defaultDuration: DURATION_IN_FRAMES,
-            defaultFps: VIDEO_FPS,
           });
           
           return {

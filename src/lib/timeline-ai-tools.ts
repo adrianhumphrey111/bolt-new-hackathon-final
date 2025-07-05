@@ -208,8 +208,8 @@ export function addTrack(state: TimelineState): AIToolResult {
 }
 
 // Helper functions for silence detection
-function findSilenceGaps(utterances: any[], threshold: number = 1.0) {
-  const cuts = [];
+function findSilenceGaps(utterances: any[], threshold: number = 1.0): Array<{ start: number; end: number; type: string; reason: string }> {
+  const cuts: Array<{ start: number; end: number; type: string; reason: string }> = [];
   for (let i = 0; i < utterances.length - 1; i++) {
     const currentEnd = utterances[i].end;
     const nextStart = utterances[i + 1].start;
@@ -227,9 +227,9 @@ function findSilenceGaps(utterances: any[], threshold: number = 1.0) {
   return cuts;
 }
 
-function findFillerWords(utterances: any[]) {
+function findFillerWords(utterances: any[]): Array<{ start: number; end: number; type: string; reason: string }> {
   const fillers = ['um', 'uh', 'like', 'you know', 'basically', 'actually', 'so', 'right', 'okay'];
-  const cuts = [];
+  const cuts: Array<{ start: number; end: number; type: string; reason: string }> = [];
   
   utterances.forEach((utterance: any) => {
     utterance.words?.forEach((word: any) => {
@@ -247,8 +247,8 @@ function findFillerWords(utterances: any[]) {
   return cuts;
 }
 
-function findSpecificWords(utterances: any[], targetWords: string[]) {
-  const cuts = [];
+function findSpecificWords(utterances: any[], targetWords: string[]): Array<{ start: number; end: number; type: string; reason: string }> {
+  const cuts: Array<{ start: number; end: number; type: string; reason: string }> = [];
   
   utterances.forEach((utterance: any) => {
     utterance.words?.forEach((word: any) => {
@@ -266,8 +266,8 @@ function findSpecificWords(utterances: any[], targetWords: string[]) {
   return cuts;
 }
 
-function findStammers(utterances: any[]) {
-  const cuts = [];
+function findStammers(utterances: any[]): Array<{ start: number; end: number; type: string; reason: string }> {
+  const cuts: Array<{ start: number; end: number; type: string; reason: string }> = [];
   
   utterances.forEach((utterance: any) => {
     const words = utterance.words || [];
@@ -287,6 +287,126 @@ function findStammers(utterances: any[]) {
     }
   });
   return cuts;
+}
+
+// Content structure analysis result type
+export interface ContentStructureResult {
+  success: boolean;
+  message: string;
+  clips?: Array<{
+    id: string;
+    name: string;
+    type: 'hook' | 'intro' | 'main_point' | 'conclusion' | 'transition' | 'highlight';
+    startTime: number;
+    endTime: number;
+    confidence: number;
+    reason: string;
+    transcript: string;
+    videoUrl?: string;
+  }>;
+}
+
+// Find the best hook/highlight moments across ALL user videos
+export async function findContentHooks(
+  userId: string,
+  query: string = "best hook",
+  topicFilter?: string
+): Promise<ContentStructureResult> {
+  try {
+    // Get Supabase client
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    // Get ALL user videos with completed analysis
+    const { data: userVideos, error: videosError } = await supabase
+      .from('videos')
+      .select(`
+        id,
+        original_name,
+        file_path,
+        created_at,
+        video_analysis!inner (
+          transcription,
+          video_analysis,
+          llm_analysis,
+          created_at
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('status', 'processed')
+      .not('video_analysis.transcription', 'is', null);
+
+    if (videosError) {
+      throw new Error(`Failed to fetch videos: ${videosError.message}`);
+    }
+
+    if (!userVideos || userVideos.length === 0) {
+      return {
+        success: false,
+        message: "No analyzed videos found. Please upload and wait for analysis to complete.",
+      };
+    }
+
+    console.log(`🔍 Searching through ${userVideos.length} analyzed videos for: "${query}"`);
+
+    // Prepare data for batch analysis
+    const videosForAnalysis = userVideos.map(video => {
+      const analysis = Array.isArray(video.video_analysis) ? video.video_analysis[0] : video.video_analysis;
+      const utterances = analysis?.transcription?.utterances || [];
+      const fullTranscript = utterances.map((u: any) => u.text).join(' ');
+      
+      return {
+        videoId: video.id,
+        videoName: video.original_name,
+        videoUrl: video.file_path,
+        transcript: fullTranscript,
+        utterances: utterances,
+        videoAnalysis: analysis?.video_analysis,
+        finalAnalysis: analysis?.llm_analysis,
+        createdAt: video.created_at
+      };
+    }).filter(v => v.transcript.length > 0); // Only include videos with transcripts
+
+    if (videosForAnalysis.length === 0) {
+      return {
+        success: false,
+        message: "No videos with transcripts found. Please wait for analysis to complete.",
+      };
+    }
+
+    // Use Claude to analyze all content at once for better cross-video insights
+    const response = await fetch('/api/ai/analyze-content-library', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        videos: videosForAnalysis,
+        query: query,
+        topicFilter: topicFilter,
+        userId: userId
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Content library analysis failed: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    
+    return {
+      success: true,
+      message: `Found ${result.clips?.length || 0} compelling moments across ${videosForAnalysis.length} videos`,
+      clips: result.clips || []
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Failed to analyze content library: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
 }
 
 // Remove silences and unwanted audio from video clips
@@ -506,6 +626,27 @@ export const AI_TOOLS = [
         required: ["clipIndex", "silenceType"]
       }
     }
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "findContentHooks",
+      description: "Search through ALL user videos to find the best hooks, highlights, or key moments. This searches the entire content library, not just timeline clips.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "What to look for: 'best hooks', 'most engaging moments', 'good intros', 'strong conclusions', 'content about [topic]', 'funny moments', etc."
+          },
+          topicFilter: {
+            type: "string",
+            description: "Optional topic to filter content by: 'marketing', 'productivity', 'AI', 'business', etc. Leave empty to search all content."
+          }
+        },
+        required: ["query"]
+      }
+    }
   }
 ];
 
@@ -513,7 +654,8 @@ export const AI_TOOLS = [
 export async function executeAITool(
   toolName: string,
   args: Record<string, unknown>,
-  state: TimelineState
+  state: TimelineState,
+  userId?: string
 ): Promise<AIToolResult> {
   switch (toolName) {
     case 'addTextLayer':
@@ -534,6 +676,24 @@ export async function executeAITool(
         args.threshold as number,
         args.specificWords as string[]
       );
+    case 'findContentHooks':
+      if (!userId) {
+        return {
+          success: false,
+          message: 'User ID required for content library search',
+        };
+      }
+      const result = await findContentHooks(userId, args.query as string, args.topicFilter as string);
+      return {
+        success: result.success,
+        message: result.message,
+        action: result.success ? {
+          type: 'SHOW_CONTENT_CLIPS',
+          payload: {
+            clips: result.clips
+          }
+        } : undefined
+      };
     default:
       return {
         success: false,

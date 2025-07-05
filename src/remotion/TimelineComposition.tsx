@@ -1,5 +1,5 @@
 import React from 'react';
-import { useCurrentFrame, useVideoConfig, Img, Video, Audio, Sequence, AbsoluteFill } from 'remotion';
+import { useCurrentFrame, useVideoConfig, Img, Video, Audio, Sequence, AbsoluteFill, getInputProps } from 'remotion';
 import { TransitionSeries, springTiming } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 import { TimelineItem, MediaType, Transition } from '../../types/timeline';
@@ -74,11 +74,11 @@ function TimelineItemRenderer({
       // Extract trim points from item properties (from AI analysis)
       const originalStartTime = item.properties?.originalStartTime || item.properties?.trim_start || 0;
       const originalEndTime = item.properties?.originalEndTime || item.properties?.trim_end || 0;
-      // Use passed fps parameter
       
-      // Convert seconds to frames for Remotion
-      const startFromFrame = Math.floor(originalStartTime * fps);
-      const endAtFrame = originalEndTime > 0 ? Math.floor(originalEndTime * fps) : undefined;
+      // Convert seconds to frames for Remotion - use Math.round for better precision
+      // Use timeline fps for consistent timing
+      const startFromFrame = Math.round(originalStartTime * fps);
+      const endAtFrame = originalEndTime > 0 ? Math.round(originalEndTime * fps) : undefined;
       
       // Log for debugging
       console.log(`🎬 VIDEO COMPONENT - Rendering video ${item.name}:`, {
@@ -100,14 +100,37 @@ function TimelineItemRenderer({
           endAt={endAtFrame}          // End trim point in frames
           pauseWhenBuffering={true}   // Pause player when video is loading
           style={style}
+          // Use default playback rate (1.0) for consistent timing
+          volume={1}
+          muted={false}
         />
       );
 
     case MediaType.AUDIO:
       if (!item.src) return null;
+      
+      // Apply same trim logic as video for consistency
+      const audioStartTime = item.properties?.originalStartTime || item.properties?.trim_start || 0;
+      const audioEndTime = item.properties?.originalEndTime || item.properties?.trim_end || 0;
+      const audioStartFromFrame = Math.round(audioStartTime * fps);
+      const audioEndAtFrame = audioEndTime > 0 ? Math.round(audioEndTime * fps) : undefined;
+      
+      console.log(`🎬 AUDIO COMPONENT - Rendering audio ${item.name}:`, {
+        src: item.src,
+        audioStartFromFrame,
+        audioEndAtFrame,
+        audioStartTime,
+        audioEndTime,
+        fps,
+        itemId: item.id,
+      });
+      
       return (
         <Audio
           src={item.src}
+          startFrom={audioStartFromFrame}
+          endAt={audioEndAtFrame}
+          volume={1}
         />
       );
 
@@ -138,13 +161,21 @@ function TimelineItemRenderer({
 export function TimelineComposition(props: TimelineCompositionProps) {
   const { width, height, durationInFrames } = useVideoConfig();
   const currentFrame = useCurrentFrame();
-
+  
+  // 🔍 Get input props from Lambda render (this is the dynamic data from the API)
+  const inputProps = getInputProps() as any;
+  
   // 🔍 DEBUG: Log ALL props received by composition
-  console.log('🎬 TIMELINE COMPOSITION - ALL PROPS RECEIVED:', JSON.stringify(props, null, 2));
+  console.log('🎬 TIMELINE COMPOSITION - COMPONENT PROPS:', JSON.stringify(props, null, 2));
+  console.log('🎬 TIMELINE COMPOSITION - INPUT PROPS (from Lambda):', JSON.stringify(inputProps, null, 2));
   console.log('🎬 TIMELINE COMPOSITION - Props keys:', Object.keys(props));
+  console.log('🎬 TIMELINE COMPOSITION - Input props keys:', Object.keys(inputProps || {}));
+  
+  // Prioritize inputProps from Lambda render over component props
+  const dynamicTimelineState = inputProps?.timelineState;
   
   const { 
-    timelineState,
+    timelineState: componentTimelineState,
     items: legacyItems,
     transitions: legacyTransitions,
     fps: legacyFps,
@@ -155,6 +186,9 @@ export function TimelineComposition(props: TimelineCompositionProps) {
     onTextEdit, 
     onCanvasClick 
   } = props;
+  
+  // Use dynamic timeline state from Lambda render if available, otherwise fall back to component props
+  const timelineState = dynamicTimelineState || componentTimelineState;
 
   // Handle both new timelineState format and legacy items/transitions format
   let actualTimelineState;
@@ -245,7 +279,7 @@ export function TimelineComposition(props: TimelineCompositionProps) {
         case MediaType.VIDEO:
           return 60; // 2 seconds at 30fps for videos
         case MediaType.AUDIO:
-          return 30; // 1 second at 30fps for audio
+          return 60; // Same as video for sync consistency
         default:
           return 0; // No premounting for images/text
       }
@@ -342,8 +376,9 @@ export function TimelineComposition(props: TimelineCompositionProps) {
 
   // Group video items by track and then by transitions
   const videoItemsByTrack = videoItems.reduce((acc, item) => {
-    if (!acc[item.trackId]) acc[item.trackId] = [];
-    acc[item.trackId].push(item);
+    const trackId = item.trackId || 'default';
+    if (!acc[trackId]) acc[trackId] = [];
+    acc[trackId].push(item);
     return acc;
   }, {} as Record<string, TimelineItem[]>);
 
@@ -352,7 +387,7 @@ export function TimelineComposition(props: TimelineCompositionProps) {
     .sort((a, b) => getTrackPriority(b) - getTrackPriority(a))[0];
 
   const primaryVideoItems = highestPriorityTrackId ? videoItemsByTrack[highestPriorityTrackId] : [];
-  const primaryTrackTransitions = transitions.filter(t => t.trackId === highestPriorityTrackId);
+  const primaryTrackTransitions = transitions.filter(t => t?.trackId === highestPriorityTrackId);
 
   // Group primary video items with their transitions
   const videoGroups = groupItemsWithTransitions(primaryVideoItems, primaryTrackTransitions);
@@ -364,8 +399,8 @@ export function TimelineComposition(props: TimelineCompositionProps) {
 
   // Sort non-video items for proper layering
   const sortedNonVideoItems = activeNonVideoItems.sort((a, b) => {
-    const trackPriorityA = getTrackPriority(a.trackId);
-    const trackPriorityB = getTrackPriority(b.trackId);
+    const trackPriorityA = getTrackPriority(a.trackId || 'default');
+    const trackPriorityB = getTrackPriority(b.trackId || 'default');
     if (trackPriorityA !== trackPriorityB) {
       return trackPriorityA - trackPriorityB;
     }

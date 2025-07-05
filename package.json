@@ -11,6 +11,8 @@
     "@aws-sdk/client-bedrock-runtime": "^3.840.0",
     "@aws-sdk/client-s3": "^3.839.0",
     "@aws-sdk/lib-storage": "^3.839.0",
+    "@remotion/compositor-darwin-x64": "^4.0.321",
+    "@remotion/compositor-linux-x64-gnu": "^4.0.321",
     "@remotion/google-fonts": "4.0.321",
     "@remotion/lambda": "4.0.321",
     "@remotion/paths": "4.0.321",

@@ -13,7 +13,7 @@ const S3_BUCKET_NAME = process.env.REMOTION_S3_BUCKET_NAME!;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { composition, timelineState, outputFormat, quality, projectId } = body;
+    const { composition, timelineState, outputFormat, quality, projectId, serveUrl: customServeUrl } = body;
 
     // 🔍 DETAILED LOGGING - Timeline State Analysis
     console.log('🎬 RENDER START - Full Request Body:', JSON.stringify(body, null, 2));
@@ -55,18 +55,24 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
-    if (!LAMBDA_FUNCTION_NAME || !REMOTION_SERVE_URL) {
+    // Use custom serve URL if provided, otherwise fallback to default
+    const serveUrl = customServeUrl || REMOTION_SERVE_URL;
+    
+    if (!LAMBDA_FUNCTION_NAME || !serveUrl) {
       return NextResponse.json({
         success: false,
         error: 'Lambda configuration missing. Please contact support.',
       });
     }
+    
+    console.log('🎬 RENDER START - Using serve URL:', serveUrl);
 
     // Map quality to codec settings
     const codecSettings = {
       low: { crf: 28, scale: 0.75 },
       medium: { crf: 23, scale: 1 },
-      high: { crf: 18, scale: 1 },
+      high: { crf: 15, scale: 1 }, // Lower CRF = higher quality (15 is very high quality)
+      ultra: { crf: 8, scale: 1 }, // Maximum quality - near lossless (CRF 8 is extremely high quality)
     };
 
     const settings = codecSettings[quality as keyof typeof codecSettings];
@@ -143,7 +149,7 @@ export async function POST(request: NextRequest) {
       region: AWS_REGION as any,
       functionName: LAMBDA_FUNCTION_NAME,
       composition,
-      serveUrl: REMOTION_SERVE_URL,
+      serveUrl,
       codec: outputFormat === 'mp4' ? 'h264' : 'h265',
       inputProps: {
         timelineState: {

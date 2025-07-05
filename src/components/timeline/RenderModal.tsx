@@ -18,9 +18,9 @@ interface RenderState {
   outputFile?: string;
   error?: string;
   deploymentInfo?: {
-    siteId: string;
-    functionName: string;
-    bucketName: string;
+    compositionName: string;
+    serveUrl: string;
+    deploymentId: string;
   };
 }
 
@@ -34,9 +34,9 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
   });
 
   const [renderConfig] = useState({
-    quality: 'high' as 'low' | 'medium' | 'high',
+    quality: 'ultra' as 'low' | 'medium' | 'high' | 'ultra',
     format: 'mp4' as 'mp4' | 'mov',
-    composition: 'Timeline', // This matches the ID in Root.tsx
+    composition: 'Timeline', // This matches the Timeline composition in Root.tsx
   });
 
   // Reset state when modal opens
@@ -130,12 +130,51 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
 
       console.log('🎬 RENDER MODAL - Full timeline state:', JSON.stringify(state, null, 2));
 
-      // Lambda rendering
+      // Step 1: Deploy composition with user's timeline data
       setRenderState({
-        step: 'rendering',
-        progress: 20,
-        message: 'Starting cloud render...',
+        step: 'deploying',
+        progress: 10,
+        message: 'Deploying your timeline composition...',
       });
+
+      const deployResponse = await fetch('/api/render/deploy-composition', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          timelineState: state,
+          projectId,
+        }),
+      });
+
+      const deployData = await deployResponse.json();
+
+      if (!deployData.success) {
+        throw new Error(deployData.error);
+      }
+
+      console.log('🎬 RENDER MODAL - Composition deployed:', deployData);
+
+      setRenderState(prev => ({
+        ...prev,
+        progress: 30,
+        message: 'Composition deployed, starting render...',
+        deploymentInfo: {
+          compositionName: deployData.compositionName,
+          serveUrl: deployData.serveUrl,
+          deploymentId: deployData.deploymentId,
+        },
+      }));
+
+      // Step 2: Start Lambda rendering with the deployed composition
+      setRenderState(prev => ({
+        ...prev,
+        step: 'rendering',
+        progress: 40,
+        message: 'Starting cloud render...',
+      }));
       
       const renderResponse = await fetch('/api/render/start', {
         method: 'POST',
@@ -144,7 +183,8 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          composition: renderConfig.composition,
+          composition: deployData.compositionName, // Use the deployed composition name
+          serveUrl: deployData.serveUrl, // Use the deployed serve URL
           timelineState: state,
           outputFormat: renderConfig.format,
           quality: renderConfig.quality,
@@ -161,7 +201,7 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
       setRenderState(prev => ({
         ...prev,
         step: 'rendering',
-        progress: 40,
+        progress: 60,
         message: 'Render started, processing video...',
         renderId: renderData.renderId,
       }));
@@ -240,7 +280,7 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
                   </div>
                   <div className="flex justify-between">
                     <span>Quality:</span>
-                    <span>High (1080p)</span>
+                    <span>Ultra (1080p)</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Format:</span>

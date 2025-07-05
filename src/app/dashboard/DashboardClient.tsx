@@ -39,12 +39,22 @@ export default function DashboardClient() {
 
   // State to track demo login
   const [isDemoLogin, setIsDemoLogin] = useState(false)
+  
+  // State to track impersonation
+  const [isImpersonating, setIsImpersonating] = useState(false)
 
-  // Check for demo parameter on mount
+  // Check for demo parameter and impersonation flag on mount
   useEffect(() => {
     const demoParam = searchParams.get('demo')
     if (demoParam === 'bolthackathon') {
       setIsDemoLogin(true)
+    }
+    
+    // Check if we're impersonating
+    const impersonatingFlag = sessionStorage.getItem('isImpersonating')
+    if (impersonatingFlag === 'true') {
+      setIsImpersonating(true)
+      console.log('🎭 Impersonation mode detected')
     }
   }, [searchParams])
 
@@ -75,13 +85,13 @@ export default function DashboardClient() {
     }
   }, [isDemoLogin, isAuthenticated, authLoading, signIn])
 
-  // Redirect if not authenticated (but not during demo login)
+  // Redirect if not authenticated (but not during demo login or impersonation)
   useEffect(() => {
-    if (!authLoading && !isAuthenticated && !isDemoLogin) {
+    if (!authLoading && !isAuthenticated && !isDemoLogin && !isImpersonating) {
       console.log('🔐 Redirecting to login - not authenticated')
       router.push('/auth/login')
     }
-  }, [isAuthenticated, authLoading, router, isDemoLogin])
+  }, [isAuthenticated, authLoading, router, isDemoLogin, isImpersonating])
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -139,6 +149,9 @@ export default function DashboardClient() {
 
   const handleSignOut = async () => {
     try {
+      // Clear impersonation flag
+      sessionStorage.removeItem('isImpersonating')
+      
       const result = await signOut()
       if (result.success) {
         router.push('/auth/login')
@@ -149,12 +162,18 @@ export default function DashboardClient() {
       console.error('Error during logout:', error)
     }
   }
+  
+  const handleStopImpersonating = () => {
+    sessionStorage.removeItem('isImpersonating')
+    setIsImpersonating(false)
+    window.location.href = '/auth/login'
+  }
 
   const openEditor = () => {
     router.push('/editor')
   }
 
-  if (authLoading || (!isAuthenticated || !user)) {
+  if (authLoading || (!isAuthenticated || !user) && !isImpersonating) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -167,12 +186,16 @@ export default function DashboardClient() {
     )
   }
 
-  if (loading || isDemoLogin) {
+  if (loading || isDemoLogin || (isImpersonating && !isAuthenticated)) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-400">{isDemoLogin ? 'Setting up demo...' : 'Loading projects...'}</p>
+          <p className="text-gray-400">
+            {isDemoLogin ? 'Setting up demo...' : 
+             isImpersonating ? 'Setting up impersonation...' : 
+             'Loading projects...'}
+          </p>
         </div>
       </div>
     )
@@ -180,6 +203,19 @@ export default function DashboardClient() {
 
   return (
     <div className="min-h-screen bg-gray-900">
+      {/* Impersonation Banner */}
+      {isImpersonating && (
+        <div className="bg-orange-600 text-white px-4 py-2 text-center text-sm font-medium">
+          🎭 Impersonation Mode - You are viewing as {user?.email}
+          <button
+            onClick={handleStopImpersonating}
+            className="ml-4 bg-orange-700 hover:bg-orange-800 px-3 py-1 rounded text-xs"
+          >
+            Stop Impersonating
+          </button>
+        </div>
+      )}
+      
       {/* Top Navigation */}
       <nav className="bg-gray-800 shadow-lg border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

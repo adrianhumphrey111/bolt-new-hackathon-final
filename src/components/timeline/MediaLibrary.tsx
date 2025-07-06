@@ -21,7 +21,7 @@ import { flip } from '@remotion/transitions/flip';
 import { clockWipe } from '@remotion/transitions/clock-wipe';
 import { iris } from '@remotion/transitions/iris';
 import { none } from '@remotion/transitions/none';
-import { UploadQueueStatus } from './UploadQueueStatus';
+import { VideoProcessingFlow, VideoProcessingFlowMethods } from './VideoProcessingFlow';
 
 interface MediaItem {
   id: string;
@@ -217,6 +217,7 @@ export function MediaLibrary() {
     action: '',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoProcessingFlowRef = useRef<VideoProcessingFlowMethods>(null);
   const supabase = createClientSupabaseClient();
   
   // Use video processing hook for real-time status tracking
@@ -702,15 +703,30 @@ export function MediaLibrary() {
       return null;
     }
 
+    const videoId = uuidv4(); // Generate a unique ID for the video
+
     try {
+      // Add to uploading videos in processing flow
+      if (videoProcessingFlowRef.current) {
+        videoProcessingFlowRef.current.addUploadingVideo({
+          id: videoId,
+          name: file.name,
+          size: file.size,
+          progress: 0,
+          status: 'uploading'
+        });
+      }
+
       // Get current user session
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         console.error('No user session available');
+        if (videoProcessingFlowRef.current) {
+          videoProcessingFlowRef.current.markUploadFailed(videoId);
+        }
         return null;
       }
 
-      const videoId = uuidv4(); // Generate a unique ID for the video
       const userId = session.user.id;
       const timestamp = Date.now();
       const originalName = file.name;
@@ -733,22 +749,37 @@ export function MediaLibrary() {
         .select()
         .single();
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        if (videoProcessingFlowRef.current) {
+          videoProcessingFlowRef.current.markUploadFailed(videoId);
+        }
+        throw dbError;
+      }
 
       console.log('✅ Video saved to project:', videoData);
       
       console.log('DEBUG: saveVideoToProject - File to upload to S3:', file);
       console.log('DEBUG: saveVideoToProject - File to upload to S3 size:', file.size, 'bytes');
       console.log('DEBUG: saveVideoToProject - File to upload to S3 type:', file.type);
-      // Now upload to S3 with progress tracking for large files
+      
+      // Now upload to S3 with progress tracking
       await uploadToS3({ 
         file, 
         fileName, 
         bucketName,
-        onProgress: file.size > LARGE_FILE_THRESHOLD ? (progress) => {
+        onProgress: (progress) => {
+          // Update progress in both old and new systems for now
           setUploadProgress(prev => ({ ...prev, [videoId]: progress }));
-        } : undefined
+          if (videoProcessingFlowRef.current) {
+            videoProcessingFlowRef.current.updateUploadProgress(videoId, progress);
+          }
+        }
       });
+
+      // Mark upload complete
+      if (videoProcessingFlowRef.current) {
+        videoProcessingFlowRef.current.markUploadComplete(videoId);
+      }
       
       // Start video analysis immediately
       try {
@@ -793,12 +824,15 @@ export function MediaLibrary() {
         console.warn('Error deducting credits:', error);
       }
       
-      return fileName
+      return videoId; // Return video ID instead of fileName
     } catch (error) {
       console.error('Error saving video to project:', error);
+      if (videoProcessingFlowRef.current) {
+        videoProcessingFlowRef.current.markUploadFailed(videoId);
+      }
       return null;
     }
-  }, [projectId, supabase, state.fps, fetchProjectVideos]);
+  }, [projectId, supabase, state.fps, getAuthHeaders]);
 
   const deleteVideoFromProject = useCallback(async (videoId: string, s3Key: string): Promise<boolean> => {
     setDeleting(prev => ({ ...prev, [videoId]: true }));
@@ -1028,27 +1062,17 @@ export function MediaLibrary() {
         objectUrl = URL.createObjectURL(file);
       }
       
-      // If we have a project, save to database; otherwise, add to temporary uploaded items
+      // If we have a project, save to database (video will be managed by processing flow)
       if (projectId && mediaType === MediaType.VIDEO) {
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject:', fileToUpload);
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject size:', fileToUpload.size, 'bytes');
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject type:', fileToUpload.type);
         const videoId = await saveVideoToProject(fileToUpload, duration, i === 0, analysisType || 'full'); // Only trigger analysis for first file
         if (videoId) {
-          console.log('✅ Video uploaded and saved to project');
+          console.log('✅ Video uploaded and saved to project - now being tracked by processing flow');
           
-          // Add the new video to the list immediately
-          const newVideoItem: MediaItem = {
-            id: videoId,
-            name: finalName,
-            type: MediaType.VIDEO,
-            src: objectUrl,
-            duration,
-            isAnalyzing: true,
-            original_name: file.name,
-            file_path: `videos/${videoId}_${Date.now()}_${file.name}`
-          };
-          setProjectVideos(prev => [...prev, newVideoItem]);
+          // Don't add to projectVideos immediately - let the processing flow handle it
+          // The video will appear in "Being Analyzed" section and move to "Ready to Use" when complete
           
           // Start monitoring for processing status
           startMonitoring();
@@ -1178,6 +1202,41 @@ export function MediaLibrary() {
 
   const handleCloseAnalysisPanel = useCallback(() => {
     setAnalysisPanel({ isOpen: false, videoId: '', videoName: '', videoSrc: undefined });
+  }, []);
+
+  // Handle when a video completes analysis and should be added to the main videos list
+  const handleVideoCompleted = useCallback((completedVideo: { id: string; original_name: string; file_path: string; duration?: number; }) => {
+    console.log('✅ Video analysis completed, adding to videos list:', completedVideo);
+    
+    // Create URL for the video
+    let videoUrl = completedVideo.file_path;
+    if (completedVideo.file_path && !completedVideo.file_path.startsWith('http')) {
+      const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET;
+      if (bucketName) {
+        videoUrl = `https://${bucketName}.s3.amazonaws.com/${completedVideo.file_path}`;
+      }
+    }
+    
+    const newVideoItem: MediaItem = {
+      id: completedVideo.id,
+      name: completedVideo.original_name,
+      type: MediaType.VIDEO,
+      src: videoUrl,
+      duration: completedVideo.duration || 150,
+      thumbnail: undefined,
+      file_path: completedVideo.file_path,
+      original_name: completedVideo.original_name,
+      isAnalyzing: false,
+    };
+    
+    setProjectVideos(prev => {
+      // Check if video already exists to avoid duplicates
+      const exists = prev.some(video => video.id === completedVideo.id);
+      if (exists) {
+        return prev;
+      }
+      return [...prev, newVideoItem];
+    });
   }, []);
 
   // Combine project videos and uploaded items
@@ -1394,8 +1453,14 @@ export function MediaLibrary() {
 
               {/* Scrollable Content Area */}
               <div className="flex-1 overflow-y-auto px-3 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-            {/* Upload Queue Status */}
-            {projectId && <UploadQueueStatus projectId={projectId} />}
+            {/* Video Processing Flow */}
+            {projectId && (
+              <VideoProcessingFlow
+                ref={videoProcessingFlowRef}
+                projectId={projectId}
+                onVideoCompleted={handleVideoCompleted}
+              />
+            )}
             
             {/* Processing Status Banner */}
             {isProcessing && (

@@ -3,7 +3,7 @@ import os
 import json
 import time
 
-API_KEY = "AIzaSyAOwHdC67BiwbTv9M-lrHVSxfNVS1mJTGQ"
+API_KEY = "YOUR_API_KEY_HERE"
 VIDEO_PATH = "./test.MOV"
 
 def upload_large_video(file_path):

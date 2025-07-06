@@ -2,7 +2,7 @@ import google.generativeai as genai
 import time
 
 # Configure API key
-genai.configure(api_key="AIzaSyAOwHdC67BiwbTv9M-lrHVSxfNVS1mJTGQ")
+genai.configure(api_key="YOUR_API_KEY_HERE")
 
 # Upload video file
 print("Uploading video...")

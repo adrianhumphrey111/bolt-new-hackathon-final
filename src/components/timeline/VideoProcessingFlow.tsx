@@ -91,26 +91,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
           ? video.video_analysis[0] 
           : video.video_analysis
 
-        if (!analysis || analysis.status === 'processing' || analysis.status === 'converting' || analysis.status === 'analyzing') {
-          // Video is still processing
-          let status: ProcessingVideo['status'] = 'processing'
-          if (analysis?.is_converting) {
-            status = 'converting'
-          } else if (analysis?.status === 'processing') {
-            status = 'analyzing'
-          }
-
-          processing.push({
-            id: video.id,
-            name: video.original_name,
-            original_name: video.original_name,
-            file_path: video.file_path,
-            status,
-            created_at: video.created_at,
-            is_converting: analysis?.is_converting,
-            error_message: analysis?.error_message
-          })
-        } else if (analysis.status === 'completed') {
+        if (analysis?.status === 'completed') {
           // Video is completed
           const completedVideo: CompletedVideo = {
             id: video.id,
@@ -131,17 +112,41 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
           
           // Don't show completed videos in the processing flow once they're in main list
           // This keeps the UI clean - videos only appear here briefly during transition
-        } else if (analysis.status === 'failed') {
-          // Video failed processing
-          processing.push({
-            id: video.id,
-            name: video.original_name,
-            original_name: video.original_name,
-            file_path: video.file_path,
-            status: 'failed',
-            created_at: video.created_at,
-            error_message: analysis.error_message
-          })
+        } else if (analysis?.status === 'failed') {
+          // Video failed processing - only show if not already handled
+          if (!notifiedVideoIds.has(video.id)) {
+            processing.push({
+              id: video.id,
+              name: video.original_name,
+              original_name: video.original_name,
+              file_path: video.file_path,
+              status: 'failed',
+              created_at: video.created_at,
+              error_message: analysis.error_message
+            })
+          }
+        } else {
+          // Video is still processing (not completed or failed)
+          let status: ProcessingVideo['status'] = 'processing'
+          if (analysis?.is_converting) {
+            status = 'converting'
+          } else if (analysis?.status === 'analyzing') {
+            status = 'analyzing'
+          }
+
+          // Only show in processing if not already notified as completed
+          if (!notifiedVideoIds.has(video.id)) {
+            processing.push({
+              id: video.id,
+              name: video.original_name,
+              original_name: video.original_name,
+              file_path: video.file_path,
+              status,
+              created_at: video.created_at,
+              is_converting: analysis?.is_converting,
+              error_message: analysis?.error_message
+            })
+          }
         }
       })
 

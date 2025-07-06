@@ -91,6 +91,17 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
           ? video.video_analysis[0] 
           : video.video_analysis
 
+        // Debug logging to understand the issue
+        if (video.original_name === 'IMG_1461.mp4') {
+          console.log('🔍 Debug IMG_1461.mp4:', {
+            videoId: video.id,
+            analysisStatus: analysis?.status,
+            hasAnalysis: !!analysis,
+            isNotified: notifiedVideoIds.has(video.id),
+            analysis: analysis
+          })
+        }
+
         if (analysis?.status === 'completed') {
           // Video is completed
           const completedVideo: CompletedVideo = {
@@ -125,16 +136,18 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
               error_message: analysis.error_message
             })
           }
-        } else {
+        } else if (!analysis || (analysis.status !== 'completed' && analysis.status !== 'failed')) {
           // Video is still processing (not completed or failed)
           let status: ProcessingVideo['status'] = 'processing'
           if (analysis?.is_converting) {
             status = 'converting'
           } else if (analysis?.status === 'analyzing') {
             status = 'analyzing'
+          } else if (analysis?.status === 'processing') {
+            status = 'analyzing'
           }
 
-          // Only show in processing if not already notified as completed
+          // Only show in processing if not already completed and added to main list
           if (!notifiedVideoIds.has(video.id)) {
             processing.push({
               id: video.id,

@@ -13,6 +13,7 @@ import { AIVideoSorter } from './AIVideoSorter';
 import { useDrag } from './DragContext';
 import { StoragePaywallModal } from '../StoragePaywallModal';
 import { PaywallModal } from '../PaywallModal';
+import { VideoAnalysisModal } from './VideoAnalysisModal';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
 import { wipe } from '@remotion/transitions/wipe';
@@ -70,7 +71,8 @@ export function ProjectProvider({ projectId, children }: { projectId: string | n
 // Sample media items removed - now fetching from project videos
 
 // File size constants
-const MAX_TRANSCODE_SIZE = 1024 * 1024 * 1024; // 1GB in bytes
+const MAX_TRANSCODE_SIZE = 300 * 1024 * 1024; // 300MB in bytes - MOV files above this skip frontend conversion
+const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB - files above this use multipart upload
 
 interface DeleteConfirmationModalProps {
   isOpen: boolean;
@@ -192,6 +194,17 @@ export function MediaLibrary() {
     storageLimit: 2,
     fileSize: 0,
   });
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
+  const [analysisModal, setAnalysisModal] = useState<{
+    isOpen: boolean;
+    file: File | null;
+    analysisType: 'full' | 'sample' | null;
+  }>({
+    isOpen: false,
+    file: null,
+    analysisType: null,
+  });
   const [creditsPaywall, setCreditsPaywall] = useState<{
     isOpen: boolean;
     requiredCredits: number;
@@ -263,16 +276,29 @@ export function MediaLibrary() {
       const mediaItems: MediaItem[] = videos.map(video => {
         let videoUrl = video.file_path;
         
+        console.log('🎥 Processing video from DB:', {
+          id: video.id,
+          name: video.original_name,
+          file_path: video.file_path,
+          file_name: video.file_name
+        });
+        
         if (video.file_path && video.file_path.startsWith('http')) {
           videoUrl = video.file_path;
-        } else if (video.file_name) {
+          console.log('✅ Using existing HTTP URL:', videoUrl);
+        } else if (video.file_path) {
           const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET;
+          console.log('🔧 S3 Bucket Name:', bucketName);
           if (bucketName) {
             videoUrl = `https://${bucketName}.s3.amazonaws.com/${video.file_path}`;
+            console.log('🔗 Constructed S3 URL:', videoUrl);
           } else {
-            console.warn('NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET is not set. Cannot construct S3 URL.');
+            console.warn('❌ NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET is not set. Cannot construct S3 URL.');
             videoUrl = undefined;
           }
+        } else {
+          console.warn('❌ No file_path found for video:', video.id);
+          videoUrl = undefined;
         }
         
         // Determine if video is still analyzing using the processing hook
@@ -562,22 +588,47 @@ export function MediaLibrary() {
 
   const estimateDurationFromFile = (file: File): Promise<number> => {
     return new Promise((resolve) => {
+      // Skip duration estimation for large files (> 500MB) to avoid browser decoder errors
+      const LARGE_FILE_SIZE_LIMIT = 500 * 1024 * 1024; // 500MB
+      
+      if (file.size > LARGE_FILE_SIZE_LIMIT) {
+        console.log(`Skipping duration estimation for large file (${formatFileSize(file.size)}):`, file.name);
+        resolve(3000); // Default 100 seconds (3000 frames at 30fps) for large videos
+        return;
+      }
+      
       if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
         const media = document.createElement(file.type.startsWith('video/') ? 'video' : 'audio');
         media.preload = 'metadata';
         
+        // Set timeout to prevent hanging on problematic files
+        const timeout = setTimeout(() => {
+          console.log('Duration estimation timeout for:', file.name);
+          resolve(90); // Default 3 seconds
+          URL.revokeObjectURL(media.src);
+        }, 10000); // 10 second timeout
+        
         media.onloadedmetadata = () => {
+          clearTimeout(timeout);
           const durationInFrames = Math.round(media.duration * state.fps);
           resolve(durationInFrames);
           URL.revokeObjectURL(media.src);
         };
         
-        media.onerror = () => {
+        media.onerror = (error) => {
+          clearTimeout(timeout);
+          console.log('Error estimating duration for:', file.name, error);
           resolve(90); // Default 3 seconds
           URL.revokeObjectURL(media.src);
         };
         
-        media.src = URL.createObjectURL(file);
+        try {
+          media.src = URL.createObjectURL(file);
+        } catch (error) {
+          clearTimeout(timeout);
+          console.log('Error creating object URL for:', file.name, error);
+          resolve(90); // Default 3 seconds
+        }
       } else {
         resolve(90); // Default 3 seconds for images and other files
       }
@@ -645,7 +696,7 @@ export function MediaLibrary() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   };
 
-  const saveVideoToProject = useCallback(async (file: File, duration: number, startAnalysis: boolean = true): Promise<string | null> => {
+  const saveVideoToProject = useCallback(async (file: File, duration: number, startAnalysis: boolean = true, analysisType: 'full' | 'sample' = 'full'): Promise<string | null> => {
     if (!projectId) {
       console.error('No project ID available for video upload');
       return null;
@@ -689,26 +740,36 @@ export function MediaLibrary() {
       console.log('DEBUG: saveVideoToProject - File to upload to S3:', file);
       console.log('DEBUG: saveVideoToProject - File to upload to S3 size:', file.size, 'bytes');
       console.log('DEBUG: saveVideoToProject - File to upload to S3 type:', file.type);
-      // Now upload to S3
-      await uploadToS3({ file, fileName, bucketName });
+      // Now upload to S3 with progress tracking for large files
+      await uploadToS3({ 
+        file, 
+        fileName, 
+        bucketName,
+        onProgress: file.size > LARGE_FILE_THRESHOLD ? (progress) => {
+          setUploadProgress(prev => ({ ...prev, [videoId]: progress }));
+        } : undefined
+      });
       
-      // Queue video for analysis instead of starting immediately
+      // Start video analysis immediately
       try {
         const headers = await getAuthHeaders();
-        const analysisResponse = await fetch(`/api/videos/${videoId}/queue-analysis`, {
+        const analysisResponse = await fetch(`/api/videos/${videoId}/analyze`, {
           method: 'POST',
           headers,
-          body: JSON.stringify({})
+          body: JSON.stringify({
+            analysisType: analysisType,
+            fileSize: file.size
+          })
         });
         
         if (!analysisResponse.ok) {
-          console.warn('Failed to queue video analysis');
+          console.warn('Failed to start video analysis');
         } else {
           const result = await analysisResponse.json();
-          console.log('✅ Video queued for analysis:', result);
+          console.log('✅ Video analysis started:', result);
         }
       } catch (error) {
-        console.warn('Error queuing video analysis:', error);
+        console.warn('Error starting video analysis:', error);
       }
       
       // Deduct 10 credits for video upload
@@ -869,11 +930,31 @@ export function MediaLibrary() {
     }
   };
 
-  const handleFileUpload = useCallback(async (files: FileList) => {
-    setUploading(true);
+  const handleFileUpload = useCallback(async (files: FileList, analysisType?: 'full' | 'sample') => {
+    console.log('🚀 UPLOAD DEBUG: handleFileUpload started with', files.length, 'files');
     
     // Support bulk upload - process up to 20 files
     const filesToProcess = Array.from(files).slice(0, 20);
+    console.log('🚀 UPLOAD DEBUG: Processing', filesToProcess.length, 'files');
+    
+    // Check if we have video files and need to show analysis modal
+    const videoFiles = filesToProcess.filter(file => file.type.startsWith('video/'));
+    console.log('🚀 UPLOAD DEBUG: Found', videoFiles.length, 'video files');
+    
+    if (videoFiles.length > 0 && !analysisType) {
+      console.log('🚀 UPLOAD DEBUG: Showing analysis modal for first video');
+      // Show analysis modal for the first video file
+      const firstVideoFile = videoFiles[0];
+      setAnalysisModal({
+        isOpen: true,
+        file: firstVideoFile,
+        analysisType: null,
+      });
+      return;
+    }
+    
+    console.log('🚀 UPLOAD DEBUG: Setting uploading state to true');
+    setUploading(true);
     
     if (filesToProcess.length > 1) {
       console.log(`🎬 Bulk upload: Processing ${filesToProcess.length} files`);
@@ -893,6 +974,8 @@ export function MediaLibrary() {
       const { canUpload, reason } = await checkUploadLimits(file);
       if (!canUpload) {
         console.log('Upload blocked:', reason);
+        // Store the pending files for re-upload after upgrade
+        setPendingUploadFiles(filesToProcess);
         setUploading(false);
         return;
       }
@@ -922,17 +1005,24 @@ export function MediaLibrary() {
         const fileSize = formatFileSize(file.size);
         
         if (shouldTranscodeFile(file)) {
-          console.log(`🔄 MOV file (${fileSize}) detected, transcoding to MP4:`, file.name);
-          const transcodedFile = await convertMovToMp4(file, itemId);
-          console.log('DEBUG: handleFileUpload - Transcoded file returned from convertMovToMp4:', transcodedFile);
-          console.log('DEBUG: handleFileUpload - Transcoded file size from convertMovToMp4:', transcodedFile.size, 'bytes');
-          objectUrl = URL.createObjectURL(transcodedFile);
-          finalName = transcodedFile.name;
-          fileToUpload = transcodedFile;
+          console.log(`🔄 Small MOV file (${fileSize}) detected, transcoding to MP4 on frontend:`, file.name);
+          try {
+            const transcodedFile = await convertMovToMp4(file, itemId);
+            console.log('DEBUG: handleFileUpload - Transcoded file returned from convertMovToMp4:', transcodedFile);
+            console.log('DEBUG: handleFileUpload - Transcoded file size from convertMovToMp4:', transcodedFile.size, 'bytes');
+            objectUrl = URL.createObjectURL(transcodedFile);
+            finalName = transcodedFile.name;
+            fileToUpload = transcodedFile;
+          } catch (error) {
+            console.error('❌ Frontend conversion failed, uploading original MOV for backend conversion:', error);
+            // If frontend conversion fails, upload original and let backend handle it
+            objectUrl = URL.createObjectURL(file);
+            fileToUpload = file;
+          }
         } else {
-          console.log(`📁 Large MOV file (${fileSize}) detected, uploading directly without transcoding:`, file.name);
+          console.log(`📁 Large MOV file (${fileSize}) detected, skipping frontend conversion - will convert on backend:`, file.name);
           objectUrl = URL.createObjectURL(file);
-          // Keep original filename and file for upload
+          // Keep original filename and file for upload - backend will handle conversion
         }
       } else {
         objectUrl = URL.createObjectURL(file);
@@ -943,7 +1033,7 @@ export function MediaLibrary() {
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject:', fileToUpload);
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject size:', fileToUpload.size, 'bytes');
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject type:', fileToUpload.type);
-        const videoId = await saveVideoToProject(fileToUpload, duration, i === 0); // Only trigger analysis for first file
+        const videoId = await saveVideoToProject(fileToUpload, duration, i === 0, analysisType || 'full'); // Only trigger analysis for first file
         if (videoId) {
           console.log('✅ Video uploaded and saved to project');
           
@@ -981,6 +1071,7 @@ export function MediaLibrary() {
       console.error('Error during file upload:', error);
     } finally {
       setUploading(false);
+      setUploadProgress({}); // Clear upload progress
     }
   }, [state.fps, projectId, saveVideoToProject, startMonitoring]);
 
@@ -994,6 +1085,31 @@ export function MediaLibrary() {
       handleFileUpload(files);
     }
   }, [handleFileUpload]);
+
+  const handleAnalysisConfirm = useCallback((analysisType: 'full' | 'sample') => {
+    if (analysisModal.file) {
+      // Create a FileList-like object with the single file
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(analysisModal.file);
+      
+      // Process the file with the selected analysis type
+      handleFileUpload(dataTransfer.files, analysisType);
+    }
+    
+    setAnalysisModal({
+      isOpen: false,
+      file: null,
+      analysisType: null,
+    });
+  }, [analysisModal.file, handleFileUpload]);
+
+  const handleAnalysisClose = useCallback(() => {
+    setAnalysisModal({
+      isOpen: false,
+      file: null,
+      analysisType: null,
+    });
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1212,6 +1328,7 @@ export function MediaLibrary() {
                   <h4 className="text-sm font-medium text-gray-300 mb-3">Upload Media</h4>
             <input
               ref={fileInputRef}
+              id="video-upload-input"
               type="file"
               multiple
               accept="video/mp4,video/quicktime,.mov,.mp4,audio/*,image/*"
@@ -1254,9 +1371,22 @@ export function MediaLibrary() {
                     ? projectId 
                       ? 'Processing and saving to project...' 
                       : 'Processing files...'
-                    : 'Videos: MP4, MOV (≤1GB converts to MP4) • Audio: MP3, WAV, M4A • Images: JPG, PNG, GIF • Max 20 files'
+                    : 'Videos: MP4, MOV (≤300MB converts to MP4) • Audio: MP3, WAV, M4A • Images: JPG, PNG, GIF • Max 20 files'
                   }
                 </div>
+                {/* Show upload progress for large files */}
+                {uploading && Object.keys(uploadProgress).length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {Object.entries(uploadProgress).map(([videoId, progress]) => (
+                      <div key={videoId} className="bg-gray-700 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="bg-green-500 h-full transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1675,6 +1805,23 @@ Scene 3: Conclusion
         currentStorageGB={storagePaywall.currentStorageGB}
         storageLimit={storagePaywall.storageLimit}
         fileSize={storagePaywall.fileSize}
+        onSuccess={() => {
+          // Close the modal
+          setStoragePaywall(prev => ({ ...prev, isOpen: false }));
+          
+          // Re-upload the pending files after successful upgrade
+          if (pendingUploadFiles.length > 0) {
+            // Convert File[] to FileList-like object
+            const dataTransfer = new DataTransfer();
+            pendingUploadFiles.forEach(file => dataTransfer.items.add(file));
+            
+            // Re-trigger the file upload handler
+            handleFileUpload(dataTransfer.files);
+            
+            // Clear pending files
+            setPendingUploadFiles([]);
+          }
+        }}
       />
 
       {/* Credits Paywall Modal */}
@@ -1685,6 +1832,18 @@ Scene 3: Conclusion
         availableCredits={creditsPaywall.availableCredits}
         action={creditsPaywall.action}
       />
+
+      {/* Video Analysis Modal */}
+      {analysisModal.file && (
+        <VideoAnalysisModal
+          isOpen={analysisModal.isOpen}
+          onClose={handleAnalysisClose}
+          onConfirm={handleAnalysisConfirm}
+          fileName={analysisModal.file.name}
+          fileSize={formatFileSize(analysisModal.file.size)}
+          duration={`${Math.ceil(analysisModal.file.size / (1024 * 1024))} min`}
+        />
+      )}
     </div>
   );
 }

@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get next videos from queue
+    // Get next videos from queue (excluding videos being converted)
     const { data: queuedVideos, error: queueError } = await supabase
       .from('video_analysis')
       .select(`
@@ -53,12 +53,14 @@ export async function GET(request: NextRequest) {
         user_id,
         queue_position,
         retry_count,
+        is_converting,
         videos!inner(
           file_path,
           original_name
         )
       `)
       .eq('status', 'queued')
+      .eq('is_converting', false)  // Skip videos being converted
       .order('queue_position', { ascending: true })
       .limit(slotsAvailable);
 

@@ -32,12 +32,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch usage data' }, { status: 500 });
     }
 
+    // Get user's subscription tier to determine storage limit
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('subscription_tier')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.error('Error fetching profile:', profileError);
+    }
+
+    // Determine storage limit based on subscription tier
+    const subscriptionTier = profile?.subscription_tier || 'free';
+    let storageLimit = 2; // Default for free tier (2GB)
+    
+    if (subscriptionTier === 'creator') {
+      storageLimit = 10; // 10GB for Creator tier
+    } else if (subscriptionTier === 'pro') {
+      storageLimit = 50; // 50GB for Pro tier
+    }
+
     // Use real data from the view, with fallbacks
     const usage = {
       videosCreated: usageStats?.videos_this_month || 0,
-      videosLimit: 100, // Based on subscription plan - TODO: get from user's subscription
+      videosLimit: 100, // Based on subscription plan
       storageUsed: usageStats?.total_storage_gb || 0,
-      storageLimit: 2, // Based on subscription plan - TODO: get from user's subscription
+      storageLimit, // Now dynamically set based on subscription
       exportsThisMonth: usageStats?.exports_this_month || 0,
       minutesRendered: Math.round((usageStats?.minutes_rendered_this_month || 0) * 100) / 100, // Round to 2 decimal places
       totalProjects: projects?.length || 0,

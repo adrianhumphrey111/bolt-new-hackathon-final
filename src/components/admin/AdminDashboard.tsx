@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../../hooks/useAuth'
 import { FaUsers, FaChartLine, FaSignOutAlt, FaHome, FaCalendarDay, FaCalendarWeek, FaCalendarAlt } from 'react-icons/fa'
+import { ReprocessVideosButton } from './ReprocessVideosButton'
 
 interface UserAnalytics {
   totalUsers: number
@@ -21,7 +22,7 @@ interface UserAnalytics {
 }
 
 export function AdminDashboard() {
-  const { user, isAuthenticated, authLoading, signOut } = useAuth()
+  const { user, isAuthenticated, loading: authLoading, signOut } = useAuth()
   const router = useRouter()
   const [analytics, setAnalytics] = useState<UserAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -29,14 +30,24 @@ export function AdminDashboard() {
 
   // Check if user is admin
   const isAdmin = user?.email === 'adrianhumphrey374@gmail.com'
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('Admin Dashboard Auth Check:', {
+      authLoading,
+      isAuthenticated,
+      userEmail: user?.email,
+      isAdmin
+    })
+  }, [authLoading, isAuthenticated, user?.email, isAdmin])
 
   useEffect(() => {
-    if (!authLoading && (!isAuthenticated || !isAdmin)) {
-      router.push('/auth/login')
-      return
-    }
+    // Wait for auth to be checked
+    if (authLoading) return
 
-    if (isAuthenticated && isAdmin) {
+    // Only fetch analytics if user is admin (no redirects)
+    if (isAdmin) {
+      console.log('User is admin, fetching analytics')
       fetchAnalytics()
     }
   }, [isAuthenticated, isAdmin, authLoading, router])
@@ -80,23 +91,38 @@ export function AdminDashboard() {
     }
   }
 
-  if (authLoading || loading) {
+  // Show loading only while auth is loading
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-400">Loading admin dashboard...</p>
+          <p className="text-gray-400">Checking authentication...</p>
         </div>
       </div>
     )
   }
 
-  if (!isAuthenticated || !isAdmin) {
+  // Show access denied only if not admin email
+  if (!authLoading && user?.email !== 'adrianhumphrey374@gmail.com') {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center space-y-4">
           <h1 className="text-2xl font-bold text-red-400">Access Denied</h1>
           <p className="text-gray-400">You don't have permission to view this page.</p>
+          <p className="text-sm text-gray-500">Current user: {user?.email || 'Not logged in'}</p>
+        </div>
+      </div>
+    )
+  }
+  
+  // Show loading while fetching analytics (only after auth is confirmed)
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading analytics...</p>
         </div>
       </div>
     )
@@ -157,6 +183,9 @@ export function AdminDashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {analytics && (
           <div className="space-y-8">
+            {/* Reprocess Videos Section */}
+            <ReprocessVideosButton />
+            
             {/* Overview Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">

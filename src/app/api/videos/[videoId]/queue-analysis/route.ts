@@ -9,6 +9,11 @@ export async function POST(
   return withCreditsCheck(request, 'video_upload', async (userId, supabase) => {
     try {
       const { videoId } = await params;
+      
+      // Get request body for analysis type and file size
+      const body = await request.json();
+      const analysisType = body.analysisType || 'full';
+      const fileSize = body.fileSize || 0;
 
       // Verify video exists and belongs to user
       const { data: video, error: videoError } = await supabase
@@ -27,6 +32,11 @@ export async function POST(
       if (videoError || !video) {
         return NextResponse.json({ error: 'Video not found' }, { status: 404 });
       }
+
+      // Check if file needs conversion (>500MB or MOV format)
+      const CONVERSION_SIZE_THRESHOLD = 500 * 1024 * 1024; // 500MB
+      const needsConversion = fileSize > CONVERSION_SIZE_THRESHOLD || 
+                             video.original_name?.toLowerCase().endsWith('.mov');
 
       // Get next queue position
       const { data: queuePosition, error: queueError } = await supabase
@@ -57,7 +67,9 @@ export async function POST(
             max_retries: 3,
             error_message: null,
             processing_started_at: null,
-            processing_completed_at: null
+            processing_completed_at: null,
+            analysis_type: analysisType,
+            is_converting: needsConversion
           })
           .eq('video_id', videoId)
           .select()
@@ -80,7 +92,9 @@ export async function POST(
             queue_position: queuePosition,
             queued_at: new Date().toISOString(),
             retry_count: 0,
-            max_retries: 3
+            max_retries: 3,
+            analysis_type: analysisType,
+            is_converting: needsConversion
           })
           .select()
           .single();

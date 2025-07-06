@@ -319,7 +319,7 @@ export async function findContentHooks(
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
-    // Get ALL user videos with completed analysis
+    // Get ALL user videos across all their projects
     const { data: userVideos, error: videosError } = await supabase
       .from('videos')
       .select(`
@@ -327,16 +327,10 @@ export async function findContentHooks(
         original_name,
         file_path,
         created_at,
-        video_analysis!inner (
-          transcription,
-          video_analysis,
-          llm_analysis,
-          created_at
-        )
+        projects!inner(user_id)
       `)
-      .eq('user_id', userId)
-      .eq('status', 'processed')
-      .not('video_analysis.transcription', 'is', null);
+      .eq('projects.user_id', userId)
+      .eq('status', 'processed');
 
     if (videosError) {
       throw new Error(`Failed to fetch videos: ${videosError.message}`);
@@ -345,16 +339,37 @@ export async function findContentHooks(
     if (!userVideos || userVideos.length === 0) {
       return {
         success: false,
+        message: "No processed videos found. Please upload and wait for analysis to complete.",
+      };
+    }
+
+    // Get video analysis data separately
+    const videoIds = userVideos.map(v => v.id);
+    const { data: analysisData, error: analysisError } = await supabase
+      .from('video_analysis')
+      .select('video_id, transcription, video_analysis, llm_analysis, created_at')
+      .in('video_id', videoIds)
+      .not('transcription', 'is', null);
+
+    if (analysisError) {
+      throw new Error(`Failed to fetch analysis data: ${analysisError.message}`);
+    }
+
+    if (!analysisData || analysisData.length === 0) {
+      return {
+        success: false,
         message: "No analyzed videos found. Please upload and wait for analysis to complete.",
       };
     }
 
-    console.log(`🔍 Searching through ${userVideos.length} analyzed videos for: "${query}"`);
+    console.log(`🔍 Searching through ${analysisData.length} analyzed videos for: "${query}"`);
 
-    // Prepare data for batch analysis
-    const videosForAnalysis = userVideos.map(video => {
-      const analysis = Array.isArray(video.video_analysis) ? video.video_analysis[0] : video.video_analysis;
-      const utterances = analysis?.transcription?.utterances || [];
+    // Prepare data for batch analysis by combining video and analysis data
+    const videosForAnalysis = analysisData.map(analysis => {
+      const video = userVideos.find(v => v.id === analysis.video_id);
+      if (!video) return null;
+
+      const utterances = analysis.transcription?.utterances || [];
       const fullTranscript = utterances.map((u: any) => u.text).join(' ');
       
       return {
@@ -363,11 +378,11 @@ export async function findContentHooks(
         videoUrl: video.file_path,
         transcript: fullTranscript,
         utterances: utterances,
-        videoAnalysis: analysis?.video_analysis,
-        finalAnalysis: analysis?.llm_analysis,
+        videoAnalysis: analysis.video_analysis,
+        finalAnalysis: analysis.llm_analysis,
         createdAt: video.created_at
       };
-    }).filter(v => v.transcript.length > 0); // Only include videos with transcripts
+    }).filter(v => v !== null && v.transcript.length > 0); // Only include videos with transcripts
 
     if (videosForAnalysis.length === 0) {
       return {

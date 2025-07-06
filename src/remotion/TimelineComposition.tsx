@@ -1,7 +1,5 @@
 import React from 'react';
 import { useCurrentFrame, useVideoConfig, Img, Video, Audio, Sequence, AbsoluteFill, getInputProps } from 'remotion';
-import { TransitionSeries, springTiming } from '@remotion/transitions';
-import { fade } from '@remotion/transitions/fade';
 import { TimelineItem, MediaType, Transition } from '../../types/timeline';
 import { TextLayer } from '../components/TextLayer';
 import { TextSelectionOutline } from '../components/TextSelectionOutline';
@@ -98,6 +96,9 @@ function TimelineItemRenderer({
           src={item.src}
           startFrom={startFromFrame}  // Start trim point in frames
           endAt={endAtFrame}          // End trim point in frames
+          onError={(error) => {
+            console.error('❌ Video playback error for:', item.name, 'URL:', item.src, 'Error:', error);
+          }}
           pauseWhenBuffering={true}   // Pause player when video is loading
           style={style}
           // Use default playback rate (1.0) for consistent timing
@@ -162,17 +163,9 @@ export function TimelineComposition(props: TimelineCompositionProps) {
   const { width, height, durationInFrames } = useVideoConfig();
   const currentFrame = useCurrentFrame();
   
-  // 🔍 Get input props from Lambda render (this is the dynamic data from the API)
-  const inputProps = getInputProps() as any;
-  
-  // 🔍 DEBUG: Log ALL props received by composition
+  // 🔍 DEBUG: Log props received by composition
   console.log('🎬 TIMELINE COMPOSITION - COMPONENT PROPS:', JSON.stringify(props, null, 2));
-  console.log('🎬 TIMELINE COMPOSITION - INPUT PROPS (from Lambda):', JSON.stringify(inputProps, null, 2));
   console.log('🎬 TIMELINE COMPOSITION - Props keys:', Object.keys(props));
-  console.log('🎬 TIMELINE COMPOSITION - Input props keys:', Object.keys(inputProps || {}));
-  
-  // Prioritize inputProps from Lambda render over component props
-  const dynamicTimelineState = inputProps?.timelineState;
   
   const { 
     timelineState: componentTimelineState,
@@ -187,8 +180,8 @@ export function TimelineComposition(props: TimelineCompositionProps) {
     onCanvasClick 
   } = props;
   
-  // Use dynamic timeline state from Lambda render if available, otherwise fall back to component props
-  const timelineState = dynamicTimelineState || componentTimelineState;
+  // Use the timeline state from component props
+  const timelineState = componentTimelineState;
 
   // Handle both new timelineState format and legacy items/transitions format
   let actualTimelineState;
@@ -309,40 +302,19 @@ export function TimelineComposition(props: TimelineCompositionProps) {
     );
   };
 
-  // Helper function to group video items with transitions
-  const groupItemsWithTransitions = (videoItems: TimelineItem[], allTransitions: Transition[]) => {
-    // Sort items by start time
-    const sortedItems = [...videoItems].sort((a, b) => a.startTime - b.startTime);
-    const groups: Array<{ items: TimelineItem[]; transitions: Transition[] }> = [];
-    
-    if (sortedItems.length === 0) return groups;
-
-    let currentGroup = { items: [sortedItems[0]], transitions: [] as Transition[] };
-    
-    for (let i = 1; i < sortedItems.length; i++) {
-      const currentItem = sortedItems[i];
-      const previousItem = sortedItems[i - 1];
-      
-      // Find transition between previous and current item
-      const transition = allTransitions.find(t => 
-        t.fromItemId === previousItem.id && t.toItemId === currentItem.id
-      );
-      
-      if (transition) {
-        // Add transition and continue group
-        currentGroup.transitions.push(transition);
-        currentGroup.items.push(currentItem);
-      } else {
-        // No transition, start new group
-        groups.push(currentGroup);
-        currentGroup = { items: [currentItem], transitions: [] };
+  // Simple helper to sort all items by priority for rendering
+  const sortAllItems = (allItems: TimelineItem[]) => {
+    return allItems.sort((a, b) => {
+      const trackPriorityA = getTrackPriority(a.trackId || 'default');
+      const trackPriorityB = getTrackPriority(b.trackId || 'default');
+      if (trackPriorityA !== trackPriorityB) {
+        return trackPriorityA - trackPriorityB;
       }
-    }
-    
-    // Don't forget the last group
-    groups.push(currentGroup);
-    
-    return groups;
+      
+      const typeA = getMediaTypePriority(a.type);
+      const typeB = getMediaTypePriority(b.type);
+      return typeA - typeB;
+    });
   };
 
   // Helper function to get track priority (Track 1 has highest priority)
@@ -370,49 +342,8 @@ export function TimelineComposition(props: TimelineCompositionProps) {
     }
   };
 
-  // Separate video and non-video items
-  const videoItems = items.filter(item => item.type === MediaType.VIDEO);
-  const nonVideoItems = items.filter(item => item.type !== MediaType.VIDEO);
-
-  // Group video items by track and then by transitions
-  const videoItemsByTrack = videoItems.reduce((acc, item) => {
-    const trackId = item.trackId || 'default';
-    if (!acc[trackId]) acc[trackId] = [];
-    acc[trackId].push(item);
-    return acc;
-  }, {} as Record<string, TimelineItem[]>);
-
-  // Get the highest priority track for videos (Track 1 > Track 2, etc.)
-  const highestPriorityTrackId = Object.keys(videoItemsByTrack)
-    .sort((a, b) => getTrackPriority(b) - getTrackPriority(a))[0];
-
-  const primaryVideoItems = highestPriorityTrackId ? videoItemsByTrack[highestPriorityTrackId] : [];
-  const primaryTrackTransitions = transitions.filter(t => t?.trackId === highestPriorityTrackId);
-
-  // Group primary video items with their transitions
-  const videoGroups = groupItemsWithTransitions(primaryVideoItems, primaryTrackTransitions);
-
-  // Filter active non-video items
-  const activeNonVideoItems = nonVideoItems.filter(item => 
-    currentFrame >= item.startTime && currentFrame < item.startTime + item.duration
-  );
-
-  // Sort non-video items for proper layering
-  const sortedNonVideoItems = activeNonVideoItems.sort((a, b) => {
-    const trackPriorityA = getTrackPriority(a.trackId || 'default');
-    const trackPriorityB = getTrackPriority(b.trackId || 'default');
-    if (trackPriorityA !== trackPriorityB) {
-      return trackPriorityA - trackPriorityB;
-    }
-    
-    const typeA = getMediaTypePriority(a.type);
-    const typeB = getMediaTypePriority(b.type);
-    if (typeA !== typeB) {
-      return typeA - typeB;
-    }
-    
-    return a.startTime - b.startTime;
-  });
+  // Sort all items by priority for simple rendering
+  const sortedItems = sortAllItems(items);
 
   // Sort outlines to render selected items on top
   const displaySelectedItemOnTop = (items: TimelineItem[]) => {
@@ -421,8 +352,10 @@ export function TimelineComposition(props: TimelineCompositionProps) {
     return [...unselectedItems, ...selectedItems];
   };
 
-  const sortedOutlines = displaySelectedItemOnTop(sortedNonVideoItems.filter(item => item.type === MediaType.TEXT));
-  const isDragging = sortedNonVideoItems.some(item => item.properties?.isDragging);
+  // Filter text items for outline rendering
+  const textItems = items.filter(item => item.type === MediaType.TEXT);
+  const sortedOutlines = displaySelectedItemOnTop(textItems);
+  const isDragging = items.some(item => item.properties?.isDragging);
 
   return (
     <AbsoluteFill
@@ -447,74 +380,8 @@ export function TimelineComposition(props: TimelineCompositionProps) {
 
       {/* Layer container with hidden overflow */}
       <AbsoluteFill style={{ overflow: 'hidden' }}>
-        {/* Render video groups with transitions */}
-        {videoGroups.map((group, groupIndex) => {
-          if (group.transitions.length === 0) {
-            // Single video item without transitions
-            return group.items.map((item, index) => createSequenceForItem(item, index));
-          } else {
-            // Video group with transitions
-            const groupStartTime = Math.min(...group.items.map(item => item.startTime));
-            const groupDuration = Math.max(...group.items.map(item => item.startTime + item.duration)) - groupStartTime;
-            
-            return (
-              <Sequence
-                key={`group-${groupIndex}`}
-                from={groupStartTime}
-                durationInFrames={groupDuration}
-                layout="none"
-              >
-                <TransitionSeries>
-                  {group.items.map((item, itemIndex) => {
-                    // Calculate relative timing within the group
-                    const relativeStartTime = item.startTime - groupStartTime;
-                    
-                    return (
-                      <TransitionSeries.Sequence
-                        key={item.id}
-                        durationInFrames={item.duration}
-                      >
-                        <TimelineItemRenderer
-                          item={item}
-                          layerIndex={itemIndex}
-                          fps={timelineFps}
-                          selectedItemId={selectedItemId}
-                          editingTextId={editingTextId}
-                          onItemSelect={onItemSelect}
-                          onItemUpdate={onItemUpdate}
-                          onTextEdit={onTextEdit}
-                        />
-                      </TransitionSeries.Sequence>
-                    );
-                  })}
-                  
-                  {/* Add transitions between sequences */}
-                  {group.transitions.map((transition) => {
-                    // Get the appropriate transition effect
-                    const getTransitionEffect = (effectType: string) => {
-                      switch (effectType) {
-                        case 'fade':
-                        default:
-                          return fade();
-                      }
-                    };
-
-                    return (
-                      <TransitionSeries.Transition
-                        key={transition.id}
-                        presentation={getTransitionEffect(transition.effect)}
-                        timing={springTiming({ config: { damping: 20 } })}
-                      />
-                    );
-                  })}
-                </TransitionSeries>
-              </Sequence>
-            );
-          }
-        })}
-
-        {/* Render non-video items normally */}
-        {sortedNonVideoItems.map((item, index) => createSequenceForItem(item, index + 1000))}
+        {/* Render all items as simple sequences */}
+        {sortedItems.map((item, index) => createSequenceForItem(item, index))}
       </AbsoluteFill>
 
       {/* Selection outlines (with overflow visible) */}
@@ -556,13 +423,13 @@ export function TimelineComposition(props: TimelineCompositionProps) {
         >
           <div>Frame: {currentFrame}</div>
           <div style={{ marginTop: 8, fontSize: 10 }}>
-            Video Groups: {videoGroups.length}
+            Total Items: {items.length}
           </div>
           <div style={{ marginTop: 4, fontSize: 10 }}>
-            Active Transitions: {primaryTrackTransitions.length}
+            Video Items: {items.filter(item => item.type === MediaType.VIDEO).length}
           </div>
           <div style={{ marginTop: 4, fontSize: 10 }}>
-            Non-Video Items: {sortedNonVideoItems.length}
+            Text Items: {textItems.length}
           </div>
         </div>
       )}

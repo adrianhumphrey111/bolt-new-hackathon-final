@@ -123,13 +123,14 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
             duration: video.duration ? Math.round(video.duration * 30) : 150 // Convert to frames
           }
 
-          completed.push(completedVideo)
-          
-          // Notify parent component only if we haven't already notified for this video
+          // Notify parent component only once
           if (!notifiedVideoIds.has(video.id)) {
             setNotifiedVideoIds(prev => new Set([...prev, video.id]))
             onVideoCompleted(completedVideo)
           }
+          
+          // Don't show completed videos in the processing flow once they're in main list
+          // This keeps the UI clean - videos only appear here briefly during transition
         } else if (analysis.status === 'failed') {
           // Video failed processing
           processing.push({

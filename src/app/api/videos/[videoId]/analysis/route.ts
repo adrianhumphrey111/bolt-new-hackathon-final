@@ -31,11 +31,14 @@ export async function GET(
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
     }
 
-    // Get analysis data
+    // Get analysis data - get the most recent completed analysis
     const { data: analysis, error: analysisError } = await supabase
       .from('video_analysis')
       .select('llm_response, status, processing_started_at, processing_completed_at')
       .eq('video_id', videoId)
+      .eq('status', 'completed')
+      .order('processing_completed_at', { ascending: false })
+      .limit(1)
       .single();
 
     if (analysisError) {

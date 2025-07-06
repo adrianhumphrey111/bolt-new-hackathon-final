@@ -13,7 +13,6 @@ import { AIVideoSorter } from './AIVideoSorter';
 import { useDrag } from './DragContext';
 import { StoragePaywallModal } from '../StoragePaywallModal';
 import { PaywallModal } from '../PaywallModal';
-import { VideoAnalysisModal } from './VideoAnalysisModal';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
 import { wipe } from '@remotion/transitions/wipe';
@@ -196,15 +195,6 @@ export function MediaLibrary() {
   });
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
-  const [analysisModal, setAnalysisModal] = useState<{
-    isOpen: boolean;
-    file: File | null;
-    analysisType: 'full' | 'sample' | null;
-  }>({
-    isOpen: false,
-    file: null,
-    analysisType: null,
-  });
   const [creditsPaywall, setCreditsPaywall] = useState<{
     isOpen: boolean;
     requiredCredits: number;
@@ -971,21 +961,12 @@ export function MediaLibrary() {
     const filesToProcess = Array.from(files).slice(0, 20);
     console.log('🚀 UPLOAD DEBUG: Processing', filesToProcess.length, 'files');
     
-    // Check if we have video files and need to show analysis modal
+    // Check if we have video files
     const videoFiles = filesToProcess.filter(file => file.type.startsWith('video/'));
     console.log('🚀 UPLOAD DEBUG: Found', videoFiles.length, 'video files');
     
-    if (videoFiles.length > 0 && !analysisType) {
-      console.log('🚀 UPLOAD DEBUG: Showing analysis modal for first video');
-      // Show analysis modal for the first video file
-      const firstVideoFile = videoFiles[0];
-      setAnalysisModal({
-        isOpen: true,
-        file: firstVideoFile,
-        analysisType: null,
-      });
-      return;
-    }
+    // Default to full analysis type for all videos (no modal needed with Gemini API)
+    const defaultAnalysisType = analysisType || 'full';
     
     console.log('🚀 UPLOAD DEBUG: Setting uploading state to true');
     setUploading(true);
@@ -1067,7 +1048,7 @@ export function MediaLibrary() {
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject:', fileToUpload);
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject size:', fileToUpload.size, 'bytes');
         console.log('DEBUG: handleFileUpload - File being sent to saveVideoToProject type:', fileToUpload.type);
-        const videoId = await saveVideoToProject(fileToUpload, duration, i === 0, analysisType || 'full'); // Only trigger analysis for first file
+        const videoId = await saveVideoToProject(fileToUpload, duration, i === 0, defaultAnalysisType); // Only trigger analysis for first file
         if (videoId) {
           console.log('✅ Video uploaded and saved to project - now being tracked by processing flow');
           
@@ -1110,30 +1091,6 @@ export function MediaLibrary() {
     }
   }, [handleFileUpload]);
 
-  const handleAnalysisConfirm = useCallback((analysisType: 'full' | 'sample') => {
-    if (analysisModal.file) {
-      // Create a FileList-like object with the single file
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(analysisModal.file);
-      
-      // Process the file with the selected analysis type
-      handleFileUpload(dataTransfer.files, analysisType);
-    }
-    
-    setAnalysisModal({
-      isOpen: false,
-      file: null,
-      analysisType: null,
-    });
-  }, [analysisModal.file, handleFileUpload]);
-
-  const handleAnalysisClose = useCallback(() => {
-    setAnalysisModal({
-      isOpen: false,
-      file: null,
-      analysisType: null,
-    });
-  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1898,17 +1855,6 @@ Scene 3: Conclusion
         action={creditsPaywall.action}
       />
 
-      {/* Video Analysis Modal */}
-      {analysisModal.file && (
-        <VideoAnalysisModal
-          isOpen={analysisModal.isOpen}
-          onClose={handleAnalysisClose}
-          onConfirm={handleAnalysisConfirm}
-          fileName={analysisModal.file.name}
-          fileSize={formatFileSize(analysisModal.file.size)}
-          duration={`${Math.ceil(analysisModal.file.size / (1024 * 1024))} min`}
-        />
-      )}
     </div>
   );
 }

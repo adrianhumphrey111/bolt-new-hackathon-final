@@ -179,9 +179,28 @@ function ResetPasswordForm() {
                 minLength={8}
                 placeholder="Enter new password"
               />
-              <p className="text-xs text-gray-400 mt-1">
-                Password must be at least 8 characters long
-              </p>
+              
+              {/* Password Requirements */}
+              <div className="mt-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">Password Requirements</span>
+                  {password && (
+                    <span className={`text-xs px-2 py-1 rounded text-white ${getPasswordStrength().color}`}>
+                      {getPasswordStrength().strength}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {passwordRequirements.map((req, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <div className={`w-2 h-2 rounded-full ${req.met ? 'bg-green-500' : 'bg-gray-500'}`}></div>
+                      <span className={`text-xs ${req.met ? 'text-green-400' : 'text-gray-400'}`}>
+                        {req.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div>
@@ -192,11 +211,29 @@ function ResetPasswordForm() {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
+                className={`w-full px-3 py-2 bg-gray-700 border rounded text-white focus:outline-none ${
+                  confirmPassword && !passwordsMatch 
+                    ? 'border-red-500 focus:border-red-500' 
+                    : confirmPassword && passwordsMatch 
+                      ? 'border-green-500 focus:border-green-500'
+                      : 'border-gray-600 focus:border-blue-500'
+                }`}
                 required
                 minLength={8}
                 placeholder="Confirm new password"
               />
+              {confirmPassword && !passwordsMatch && (
+                <p className="text-xs text-red-400 mt-1 flex items-center space-x-1">
+                  <span>✗</span>
+                  <span>Passwords do not match</span>
+                </p>
+              )}
+              {confirmPassword && passwordsMatch && (
+                <p className="text-xs text-green-400 mt-1 flex items-center space-x-1">
+                  <span>✓</span>
+                  <span>Passwords match</span>
+                </p>
+              )}
             </div>
 
             <button

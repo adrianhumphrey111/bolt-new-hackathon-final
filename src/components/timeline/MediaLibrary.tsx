@@ -210,7 +210,7 @@ export function MediaLibrary() {
   const videoProcessingFlowRef = useRef<VideoProcessingFlowMethods>(null);
   const supabase = createClientSupabaseClient();
   
-  // Use video processing hook for real-time status tracking
+  // Use video processing hook for real-time status tracking (this handles all polling to avoid duplicates)
   const {
     isProcessing,
     processingVideos,

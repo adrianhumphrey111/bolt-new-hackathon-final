@@ -207,6 +207,7 @@ export function addTrack(state: TimelineState): AIToolResult {
   }
 }
 
+
 // Helper functions for silence detection
 function findSilenceGaps(utterances: any[], threshold: number = 1.0): Array<{ start: number; end: number; type: string; reason: string }> {
   const cuts: Array<{ start: number; end: number; type: string; reason: string }> = [];

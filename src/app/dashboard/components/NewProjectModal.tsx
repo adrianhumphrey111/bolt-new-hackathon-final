@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import { useAuthContext } from '@/components/AuthProvider';
+import { trackProjectCreated } from '@/lib/analytics/gtag';
 
 interface NewProjectModalProps {
   isOpen: boolean;
@@ -56,6 +57,9 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
       setTitle('');
       setDescription('');
       onClose();
+      
+      // Track successful project creation
+      trackProjectCreated(description.trim() ? 'with_description' : 'simple');
       
       // Refresh the page to show the new project
       router.refresh();

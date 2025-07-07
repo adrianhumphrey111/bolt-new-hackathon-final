@@ -5,6 +5,7 @@ import { createClientSupabaseClient } from '../lib/supabase/client';
 import { STRIPE_CONFIG } from '../lib/stripe-config';
 import AddPaymentMethodModal from './AddPaymentMethodModal';
 import PaymentConfirmationModal from './PaymentConfirmationModal';
+import { trackPaywallInteraction, trackSubscription } from '../lib/analytics/gtag';
 
 interface PaywallModalProps {
   isOpen: boolean;
@@ -56,6 +57,8 @@ export function PaywallModal({
   useEffect(() => {
     if (isOpen) {
       fetchUserData();
+      // Track paywall shown
+      trackPaywallInteraction('shown', action);
     }
   }, [isOpen]);
 
@@ -226,6 +229,9 @@ export function PaywallModal({
         } : undefined)
       });
       setShowConfirmationModal(true);
+      
+      // Track upgrade attempt
+      trackPaywallInteraction('upgrade_clicked', plan?.name || planTier);
     } catch (error) {
       console.error('Error getting payment preview:', error);
       alert('Failed to get payment preview. Please try again.');

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { createClientSupabaseClient } from '../../lib/supabase/client'
+import { trackVideoUpload, trackVideoProcessingComplete, trackError } from '../../lib/analytics/gtag'
 
 interface UploadingVideo {
   id: string
@@ -119,6 +120,12 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
           if (!notifiedVideoIds.has(video.id)) {
             setNotifiedVideoIds(prev => new Set([...prev, video.id]))
             onVideoCompleted(completedVideo)
+            
+            // Track successful video processing completion
+            const processingTime = analysis.processing_completed_at 
+              ? new Date(analysis.processing_completed_at).getTime() - new Date(video.created_at).getTime()
+              : undefined
+            trackVideoProcessingComplete(video.id, processingTime || 0, true)
           }
           
           // Don't show completed videos in the processing flow once they're in main list
@@ -135,6 +142,10 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
               created_at: video.created_at,
               error_message: analysis.error_message
             })
+            
+            // Track failed video processing
+            trackVideoProcessingComplete(video.id, 0, false)
+            trackError('video_processing_failed', analysis.error_message || 'Unknown error', video.id)
           }
         } else if (!analysis || (analysis.status !== 'completed' && analysis.status !== 'failed')) {
           // Video is still processing (not completed or failed)
@@ -171,17 +182,13 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
     }
   }, [projectId, supabase, onVideoCompleted])
 
-  // Poll every 3 seconds for status updates
+  // DISABLED: Polling is now handled by useVideoProcessing hook in MediaLibrary to avoid duplicate API calls
+  // Only do initial fetch when component mounts or project changes, but no continuous polling
   useEffect(() => {
     if (!projectId) return
 
-    // Initial fetch
+    console.log('🔄 VideoProcessingFlow: Initial fetch only (polling disabled to prevent duplicates)')
     pollProcessingStatus()
-
-    // Set up polling interval
-    const interval = setInterval(pollProcessingStatus, 3000)
-
-    return () => clearInterval(interval)
   }, [projectId, pollProcessingStatus])
 
   // Helper functions for parent component to use
@@ -198,11 +205,17 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
   }, [])
 
   const markUploadComplete = useCallback((id: string) => {
-    setUploadingVideos(prev => 
-      prev.map(video => 
+    setUploadingVideos(prev => {
+      const video = prev.find(v => v.id === id)
+      if (video) {
+        // Track successful video upload
+        trackVideoUpload(video.size, video.name.split('.').pop() || 'unknown', true)
+      }
+      
+      return prev.map(video => 
         video.id === id ? { ...video, status: 'uploaded' as const, progress: 100 } : video
       )
-    )
+    })
     
     // Remove from uploading list after 2 seconds
     setTimeout(() => {
@@ -211,11 +224,18 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
   }, [])
 
   const markUploadFailed = useCallback((id: string) => {
-    setUploadingVideos(prev => 
-      prev.map(video => 
+    setUploadingVideos(prev => {
+      const video = prev.find(v => v.id === id)
+      if (video) {
+        // Track failed video upload
+        trackVideoUpload(video.size, video.name.split('.').pop() || 'unknown', false)
+        trackError('video_upload_failed', 'Upload failed', video.id)
+      }
+      
+      return prev.map(video => 
         video.id === id ? { ...video, status: 'failed' as const } : video
       )
-    )
+    })
   }, [])
 
   // Expose methods to parent component

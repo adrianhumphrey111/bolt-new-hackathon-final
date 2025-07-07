@@ -7,6 +7,7 @@ import { useAuthContext } from '../AuthProvider';
 import { VideoClipPreview } from './VideoClipPreview';
 import { RecommendedCutsPreview } from './RecommendedCutsPreview';
 import { MediaType } from '../../../types/timeline';
+import { trackAIChatInteraction, trackContentRemovalSuggestion, trackTimelineOperation } from '../../lib/analytics/gtag';
 
 interface ContentClip {
   id: string;
@@ -277,6 +278,9 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     }
     actions.addItem(newItem);
 
+    // Track timeline operation
+    trackTimelineOperation('add_ai_content_clip', true, clipDurationSeconds * 1000);
+
     // Show success message
     const successMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -296,6 +300,9 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
         ? Math.round((cut.end_time - cut.start_time) * 60) // Legacy format in minutes
         : 0;
     
+    // Track content removal suggestion acceptance
+    trackContentRemovalSuggestion(true, cut.type || 'unknown');
+    
     // Show success message
     const successMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -311,12 +318,18 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     scrollToBottom();
   }, [messages]);
 
+  // Reset cache when project changes
+  useEffect(() => {
+    setCacheLoaded(false);
+    setContentCache([]);
+  }, [projectId]);
+
   // Load content cache when chat panel opens
   useEffect(() => {
-    if (isOpen && !cacheLoaded && !cacheLoading) {
+    if (isOpen && !cacheLoaded && !cacheLoading && projectId && session?.access_token) {
       loadContentCache();
     }
-  }, [isOpen, projectId, session?.access_token]);
+  }, [isOpen, projectId, cacheLoaded, cacheLoading]); // Removed session?.access_token to prevent auth refresh triggers
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -338,6 +351,10 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
       if (!session?.access_token) {
         throw new Error('Please sign in to use AI chat');
       }
+
+      // Track AI chat interaction
+      const queryType = inputValue.toLowerCase().includes('remove') || inputValue.toLowerCase().includes('cut') ? 'content_removal' : 'content_discovery';
+      trackAIChatInteraction(queryType, true); // Will track success/failure at the end
 
       // Legacy cut query system - commented out to use LLM for all removal requests
       /*

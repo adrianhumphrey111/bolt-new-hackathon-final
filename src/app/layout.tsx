@@ -1,6 +1,7 @@
 import "../../styles/global.css";
 import { Metadata, Viewport } from "next";
 import { AuthProvider } from "../components/AuthProvider";
+import GoogleAnalytics from "../components/GoogleAnalytics";
 
 export const metadata: Metadata = {
   title: "Tailored Labs - AI Video Editor",
@@ -21,6 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-background">
+        <GoogleAnalytics />
         <AuthProvider>
           {children}
         </AuthProvider>

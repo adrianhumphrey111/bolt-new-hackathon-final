@@ -261,6 +261,27 @@ export function useVideoProcessing(projectId: string | null) {
     checkProcessingStatus()
   }, [checkProcessingStatus])
 
+  // Memoize helper functions to prevent unnecessary re-renders
+  const getProcessingCount = useCallback(() => processingVideos.length, [processingVideos.length])
+  
+  const getOldestProcessingVideo = useCallback(() => {
+    return processingVideos.length > 0 
+      ? processingVideos.reduce((oldest, current) => 
+          current.startTime < oldest.startTime ? current : oldest
+        ) 
+      : null
+  }, [processingVideos])
+  
+  const isVideoProcessing = useCallback((videoId: string) => 
+    processingVideos.some(info => info.video.id === videoId), 
+    [processingVideos]
+  )
+  
+  const getVideoProcessingInfo = useCallback((videoId: string) => 
+    processingVideos.find(info => info.video.id === videoId), 
+    [processingVideos]
+  )
+
   return {
     isProcessing,
     processingVideos,
@@ -271,20 +292,10 @@ export function useVideoProcessing(projectId: string | null) {
     startMonitoring, // Expose this for manual triggering after uploads
     formatElapsedTime,
     
-    // Helper functions for UI
-    getProcessingCount: () => processingVideos.length,
-    getOldestProcessingVideo: () => processingVideos.length > 0 
-      ? processingVideos.reduce((oldest, current) => 
-          current.startTime < oldest.startTime ? current : oldest
-        ) 
-      : null,
-    
-    // Check if a specific video is processing
-    isVideoProcessing: (videoId: string) => 
-      processingVideos.some(info => info.video.id === videoId),
-      
-    // Get processing info for a specific video
-    getVideoProcessingInfo: (videoId: string) => 
-      processingVideos.find(info => info.video.id === videoId)
+    // Helper functions for UI (now memoized)
+    getProcessingCount,
+    getOldestProcessingVideo,
+    isVideoProcessing,
+    getVideoProcessingInfo
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { aiService } from '../../../lib/ai-service';
+import { aiService } from '@/lib/ai-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,6 +35,7 @@ ${videos.map((video: any, index: number) => `
 🧠 LLM ANALYSIS: ${video.llmAnalysis ? JSON.stringify(video.llmAnalysis, null, 2) : 'No LLM analysis'}
 🎬 VIDEO ANALYSIS: ${video.videoAnalysis ? JSON.stringify(video.videoAnalysis, null, 2) : 'No visual analysis'}
 📹 VIDEO ID: ${video.videoId}
+TYPE OF REMOVAL: ${analysisType}
 ---
 `).join('\n')}
 
@@ -73,9 +74,7 @@ RESPONSE FORMAT - Return ONLY this JSON structure:
       "type": "filler_word",
       "reason": "Filler word 'um' interrupts flow",
       "transcript": "um",
-      "confidence": 0.95,
-      "videoId": "video_id_here",
-      "videoName": "Video Name Here"
+      "confidence": 0.95
     },
     {
       "id": "cut_2", 
@@ -84,9 +83,7 @@ RESPONSE FORMAT - Return ONLY this JSON structure:
       "type": "silence",
       "reason": "Long pause (2.6 seconds) breaks engagement",
       "transcript": "[silence]",
-      "confidence": 0.90,
-      "videoId": "video_id_here",
-      "videoName": "Video Name Here"
+      "confidence": 0.90
     }
   ]
 }

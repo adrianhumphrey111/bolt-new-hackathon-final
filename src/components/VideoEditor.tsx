@@ -749,7 +749,9 @@ function VideoEditorContent() {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden min-w-0">
         {/* Media Library */}
-        {showMediaLibrary && <MediaLibrary />}
+        <div style={{ display: showMediaLibrary ? 'block' : 'none' }}>
+          <MediaLibrary />
+        </div>
 
         {/* Center Content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

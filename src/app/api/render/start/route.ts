@@ -167,8 +167,8 @@ export async function POST(request: NextRequest) {
       privacy: 'public',
       outName: `${user.id}/${projectId}-${Date.now()}.${outputFormat}`,
       // Set concurrency for current Lambda limits
-      concurrencyPerLambda: 1,
-      framesPerLambda:500,
+      concurrencyPerLambda: 2,
+      framesPerLambda:180,
       downloadBehavior: {
         type: 'download',
         fileName: `${projectId}-render.${outputFormat}`

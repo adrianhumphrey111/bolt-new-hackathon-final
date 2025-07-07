@@ -32,6 +32,8 @@ interface TimelineItemRendererProps {
   item: TimelineItem;
   layerIndex: number;
   fps: number;
+  canvasWidth: number;
+  canvasHeight: number;
   selectedItemId?: string;
   editingTextId?: string;
   onItemSelect?: (itemId: string) => void;
@@ -43,6 +45,8 @@ function TimelineItemRenderer({
   item, 
   layerIndex, 
   fps,
+  canvasWidth,
+  canvasHeight,
   selectedItemId,
   editingTextId, 
   onItemSelect,
@@ -53,6 +57,10 @@ function TimelineItemRenderer({
   // useCurrentFrame() will give us the frame relative to the Sequence start
   const relativeFrame = useCurrentFrame();
   
+  // Calculate sizing and positioning with rotation adjustments
+  const rotation = item.properties?.rotation || 0;
+  const scale = item.properties?.scale || 1;
+  
   // Default positioning and sizing with explicit z-index for layering
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -60,10 +68,20 @@ function TimelineItemRenderer({
     top: item.properties?.y || 0,
     width: item.properties?.width || '100%',
     height: item.properties?.height || 'auto',
-    transform: `scale(${item.properties?.scale || 1}) rotate(${item.properties?.rotation || 0}deg)`,
+    transform: `scale(${scale}) rotate(${rotation}deg)`,
+    transformOrigin: 'center center',
     opacity: item.properties?.opacity || 1,
     zIndex: layerIndex, // Explicit z-index based on sort order
   };
+
+  // Debug log for rotation
+  if (item.properties?.rotation && item.properties.rotation !== 0) {
+    console.log(`🔄 Rotation debug for ${item.name}:`, {
+      rotation: item.properties.rotation,
+      transform: style.transform,
+      allProperties: item.properties
+    });
+  }
 
   switch (item.type) {
     case MediaType.VIDEO:
@@ -248,6 +266,8 @@ export function TimelineComposition(props: TimelineCompositionProps) {
           item={item}
           layerIndex={index}
           fps={timelineFps}
+          canvasWidth={width}
+          canvasHeight={height}
           selectedItemId={selectedItemId}
           editingTextId={editingTextId}
           onItemSelect={onItemSelect}

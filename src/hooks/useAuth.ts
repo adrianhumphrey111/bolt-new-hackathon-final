@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { createClientSupabaseClient } from '../lib/supabase/client'
+import { trackUserLogin, trackUserSignUp } from '../lib/analytics/gtag'
 
 interface AuthState {
   user: User | null
@@ -76,6 +77,9 @@ export function useAuth() {
         error: null,
       })
 
+      // Track successful login
+      trackUserLogin('email')
+
       return { success: true, user: data.user }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sign in failed'
@@ -137,6 +141,9 @@ export function useAuth() {
         loading: false,
         error: null,
       })
+
+      // Track successful signup
+      trackUserSignUp('email')
 
       return { 
         success: true, 
@@ -200,6 +207,9 @@ export function useAuth() {
       if (error) {
         throw error
       }
+
+      // Track successful OAuth login
+      trackUserLogin(provider)
 
       return { success: true }
     } catch (error) {

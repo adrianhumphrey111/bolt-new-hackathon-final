@@ -20,6 +20,13 @@ export function PropertyPanel() {
     startTime: 0,
     duration: 0,
     content: '',
+    x: 0,
+    y: 0,
+    scale: 1,
+    rotation: 0,
+    opacity: 1,
+    width: '100%',
+    height: 'auto',
   });
 
   useEffect(() => {
@@ -29,6 +36,13 @@ export function PropertyPanel() {
         startTime: selectedItem.startTime,
         duration: selectedItem.duration,
         content: selectedItem.content || '',
+        x: selectedItem.properties?.x || 0,
+        y: selectedItem.properties?.y || 0,
+        scale: selectedItem.properties?.scale || 1,
+        rotation: selectedItem.properties?.rotation || 0,
+        opacity: selectedItem.properties?.opacity || 1,
+        width: selectedItem.properties?.width || '100%',
+        height: selectedItem.properties?.height || 'auto',
       });
     }
   }, [selectedItem]);
@@ -41,11 +55,30 @@ export function PropertyPanel() {
     e.preventDefault();
     if (!selectedItem) return;
 
+    const updatedProperties = {
+      ...selectedItem.properties,
+      x: Number(formData.x),
+      y: Number(formData.y),
+      scale: Number(formData.scale),
+      rotation: Number(formData.rotation),
+      opacity: Number(formData.opacity),
+      width: formData.width,
+      height: formData.height,
+    };
+
+    console.log('🔄 PropertyPanel: Updating item with rotation:', {
+      itemId: selectedItem.id,
+      oldRotation: selectedItem.properties?.rotation,
+      newRotation: Number(formData.rotation),
+      updatedProperties
+    });
+
     actions.updateItem(selectedItem.id, {
       name: formData.name,
       startTime: Number(formData.startTime),
       duration: Number(formData.duration),
       content: formData.content || undefined,
+      properties: updatedProperties,
     });
   };
 
@@ -176,9 +209,9 @@ export function PropertyPanel() {
   }, [handleDelete, handleDuplicate]);
 
   return (
-    <div className={`bg-gray-800 border-l border-gray-600 transition-all duration-300 ${isCollapsed ? 'w-12' : 'w-80'}`}>
+    <div className={`bg-gray-800 border-l border-gray-600 transition-all duration-300 ${isCollapsed ? 'w-12' : 'w-80'} flex flex-col h-full`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-600">
+      <div className="flex items-center justify-between p-3 border-b border-gray-600 flex-shrink-0">
         {!isCollapsed && (
           <h3 className="text-white font-medium">Properties</h3>
         )}
@@ -197,7 +230,7 @@ export function PropertyPanel() {
       </div>
 
       {!isCollapsed && (
-        <div className="p-3">
+        <div className="p-3 overflow-y-auto flex-1">
           {selectedItems.length === 0 && (
             <div className="text-center text-gray-500 py-8">
               <div className="w-16 h-16 mx-auto mb-4 opacity-50">
@@ -410,13 +443,102 @@ export function PropertyPanel() {
 
               {/* Transform */}
               <div className="pt-4 border-t border-gray-600">
-                <h4 className="text-sm font-medium text-gray-300 mb-3">Transform</h4>
-                <div className="grid grid-cols-2 gap-3 text-sm">
+                <h4 className="text-sm font-medium text-gray-300 mb-3">Transform & Canvas</h4>
+                
+                {/* Size Controls */}
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-400 mb-2">Size</label>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Width (e.g. 100%, 500px)"
+                        value={formData.width}
+                        onChange={(e) => handleInputChange('width', e.target.value)}
+                        className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Height (auto, 300px)"
+                        value={formData.height}
+                        onChange={(e) => handleInputChange('height', e.target.value)}
+                        className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Scale Control */}
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-400 mb-2">Scale ({Math.round(formData.scale * 100)}%)</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="range"
+                      value={formData.scale}
+                      onChange={(e) => handleInputChange('scale', parseFloat(e.target.value))}
+                      min={0.1}
+                      max={3}
+                      step={0.1}
+                      className="flex-1"
+                    />
+                    <input
+                      type="number"
+                      value={formData.scale}
+                      onChange={(e) => handleInputChange('scale', parseFloat(e.target.value) || 1)}
+                      step={0.1}
+                      min={0.1}
+                      max={5}
+                      className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none text-xs"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 mt-2">
+                    <button type="button" onClick={() => handleInputChange('scale', 0.5)} className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs">50%</button>
+                    <button type="button" onClick={() => handleInputChange('scale', 1)} className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs">100%</button>
+                    <button type="button" onClick={() => handleInputChange('scale', 1.5)} className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs">150%</button>
+                  </div>
+                  <div className="mt-2">
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        // Calculate scale to fit 9:16 canvas based on rotation
+                        const rotation = formData.rotation % 360;
+                        let scaleToFit = 1;
+                        
+                        if (rotation === 90 || rotation === 270) {
+                          // Video rotated 90° or 270°: width becomes height
+                          // For phone videos (9:16), when rotated they become 16:9
+                          // To fit in 9:16 canvas: scale = 9/16 = 0.5625
+                          scaleToFit = 0.5625;
+                        } else {
+                          // 0° or 180° rotation: original orientation
+                          // Most phone videos are already 9:16, so they should fit
+                          // But if it's overflowing, scale it down slightly
+                          scaleToFit = 0.95; // Slight padding to ensure it fits
+                        }
+                        
+                        handleInputChange('scale', scaleToFit);
+                        
+                        // Also center the video
+                        handleInputChange('x', 0);
+                        handleInputChange('y', 0);
+                      }} 
+                      className="w-full px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium"
+                    >
+                      Scale to Fit 9:16
+                    </button>
+                  </div>
+                </div>
+
+                {/* Position */}
+                <div className="grid grid-cols-2 gap-3 text-sm mb-4">
                   <div>
                     <label className="block text-xs text-gray-400 mb-1">X Position</label>
                     <input
                       type="number"
-                      defaultValue={0}
+                      value={formData.x}
+                      onChange={(e) => handleInputChange('x', parseFloat(e.target.value) || 0)}
                       className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
                     />
                   </div>
@@ -424,27 +546,81 @@ export function PropertyPanel() {
                     <label className="block text-xs text-gray-400 mb-1">Y Position</label>
                     <input
                       type="number"
-                      defaultValue={0}
+                      value={formData.y}
+                      onChange={(e) => handleInputChange('y', parseFloat(e.target.value) || 0)}
                       className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Scale</label>
+                </div>
+
+                {/* Rotation */}
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-400 mb-2">Rotation ({formData.rotation}°)</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="range"
+                      value={formData.rotation}
+                      onChange={(e) => handleInputChange('rotation', parseFloat(e.target.value))}
+                      min={0}
+                      max={360}
+                      step={1}
+                      className="flex-1"
+                    />
                     <input
                       type="number"
-                      defaultValue={1}
-                      step={0.1}
-                      min={0.1}
-                      className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
+                      value={formData.rotation}
+                      onChange={(e) => handleInputChange('rotation', parseFloat(e.target.value) || 0)}
+                      className="w-16 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none text-xs"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Rotation</label>
-                    <input
-                      type="number"
-                      defaultValue={0}
-                      className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
-                    />
+                </div>
+
+                {/* Opacity */}
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-400 mb-2">Opacity ({Math.round(formData.opacity * 100)}%)</label>
+                  <input
+                    type="range"
+                    value={formData.opacity}
+                    onChange={(e) => handleInputChange('opacity', parseFloat(e.target.value))}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    className="w-full"
+                  />
+                </div>
+                
+                {/* Quick rotation buttons */}
+                <div className="mt-3">
+                  <label className="block text-xs text-gray-400 mb-2">Quick Rotate</label>
+                  <div className="grid grid-cols-4 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('rotation', 0)}
+                      className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs transition-colors"
+                    >
+                      0°
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('rotation', 90)}
+                      className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs transition-colors"
+                    >
+                      90°
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('rotation', 180)}
+                      className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs transition-colors"
+                    >
+                      180°
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('rotation', 270)}
+                      className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs transition-colors"
+                    >
+                      270°
+                    </button>
                   </div>
                 </div>
               </div>

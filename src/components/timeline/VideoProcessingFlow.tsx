@@ -169,7 +169,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
     } catch (error) {
       console.error('Error polling processing status:', error)
     }
-  }, [projectId, supabase, onVideoCompleted, notifiedVideoIds])
+  }, [projectId, supabase, onVideoCompleted])
 
   // Poll every 3 seconds for status updates
   useEffect(() => {

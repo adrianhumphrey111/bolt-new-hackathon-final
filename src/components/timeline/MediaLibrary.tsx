@@ -278,13 +278,17 @@ export function MediaLibrary() {
           videoUrl = video.file_path;
           console.log('✅ Using existing HTTP URL:', videoUrl);
         } else if (video.file_path) {
-          const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET;
-          console.log('🔧 S3 Bucket Name:', bucketName);
+          // For converted videos, they're in the processed bucket
+          const bucketName = video.file_path.includes('_converted.mp4') 
+            ? 'raw-clips-global-processed'  // Processed bucket for converted videos
+            : process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET; // Upload bucket for original videos
+          
+          console.log('🔧 S3 Bucket Name:', bucketName, '(converted:', video.file_path.includes('_converted.mp4'), ')');
           if (bucketName) {
             videoUrl = `https://${bucketName}.s3.amazonaws.com/${video.file_path}`;
             console.log('🔗 Constructed S3 URL:', videoUrl);
           } else {
-            console.warn('❌ NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET is not set. Cannot construct S3 URL.');
+            console.warn('❌ S3 bucket not available. Cannot construct S3 URL.');
             videoUrl = undefined;
           }
         } else {
@@ -1168,7 +1172,11 @@ export function MediaLibrary() {
     // Create URL for the video
     let videoUrl = completedVideo.file_path;
     if (completedVideo.file_path && !completedVideo.file_path.startsWith('http')) {
-      const bucketName = process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET;
+      // For converted videos, they're in the processed bucket
+      const bucketName = completedVideo.file_path.includes('_converted.mp4') 
+        ? 'raw-clips-global-processed'  // Processed bucket for converted videos
+        : process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET; // Upload bucket for original videos
+      
       if (bucketName) {
         videoUrl = `https://${bucketName}.s3.amazonaws.com/${completedVideo.file_path}`;
       }

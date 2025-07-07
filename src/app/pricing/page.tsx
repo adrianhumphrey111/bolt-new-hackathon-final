@@ -148,7 +148,7 @@ export default function Pricing() {
     {
       name: "Pro",
       icon: <FaRocket className="w-6 h-6" />,
-      price: { monthly: 100, annual: 85 },
+      price: { monthly: 49, annual: 42 },
       description: "Scale content without hiring",
       aiActions: "500 AI actions/month",
       videoMinutes: "150 minutes of AI video/month",

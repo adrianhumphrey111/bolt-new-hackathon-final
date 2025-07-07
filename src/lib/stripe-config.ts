@@ -89,8 +89,8 @@ export const STRIPE_CONFIG = {
     pro: {
       name: 'Pro',
       credits: 5000,
-      price: 100,
-      annual_price: 85,
+      price: 49,
+      annual_price: 42,
       features: [
         '5,000 credits per month',
         '10 credits per video upload',

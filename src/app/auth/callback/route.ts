@@ -6,6 +6,7 @@ import { addEmailToMailchimp } from '../../../lib/mailchimp'
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
+  const type = requestUrl.searchParams.get('type')
   const next = requestUrl.searchParams.get('next') ?? '/dashboard'
 
   if (code) {
@@ -38,6 +39,11 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('OAuth callback error:', error)
       return NextResponse.redirect(`${requestUrl.origin}/auth/login?error=callback_error&message=${encodeURIComponent(error.message)}`)
+    }
+
+    // Handle password recovery flow
+    if (type === 'recovery') {
+      return NextResponse.redirect(`${requestUrl.origin}/auth/reset-password`)
     }
 
     // Add user to Mailchimp if this is a new user

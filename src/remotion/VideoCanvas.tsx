@@ -271,9 +271,13 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
               style={mediaStyle}
               startFrom={startFrom}
               endAt={endAt}
-              pauseWhenBuffering
+              pauseWhenBuffering={true}
               volume={1}
               muted={false}
+              crossOrigin="anonymous"
+              preload="auto"
+              playsInline
+              disableRemotePlayback
             />
           </div>
         );

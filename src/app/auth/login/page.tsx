@@ -10,6 +10,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { signIn, signInWithOAuth, isAuthenticated, loading } = useAuthContext();
@@ -20,19 +21,23 @@ export default function Login() {
       router.push('/dashboard');
     }
     
-    // Check for OAuth callback errors
+    // Check for URL parameters (errors and success messages)
     const searchParams = new URLSearchParams(window.location.search);
     const callbackError = searchParams.get('error');
-    const errorMessage = searchParams.get('message');
+    const message = searchParams.get('message');
     
     if (callbackError === 'callback_error') {
-      setError(errorMessage ? decodeURIComponent(errorMessage) : 'OAuth callback failed. Please try again.');
+      setError(message ? decodeURIComponent(message) : 'OAuth callback failed. Please try again.');
+    } else if (message) {
+      // Handle success messages (like password reset confirmation)
+      setSuccessMessage(decodeURIComponent(message));
     }
   }, [isAuthenticated, loading, router]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMessage(null);
     setIsLoading(true);
 
     try {
@@ -59,6 +64,8 @@ export default function Login() {
   };
 
   const handleSocialLogin = async (provider: 'google' | 'github') => {
+    setError(null);
+    setSuccessMessage(null);
     try {
       const result = await signInWithOAuth(provider);
       if (!result.success) {
@@ -96,6 +103,12 @@ export default function Login() {
         {error && (
           <div className="bg-red-600 text-white p-3 rounded mb-4">
             {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="bg-green-600 text-white p-3 rounded mb-4">
+            {successMessage}
           </div>
         )}
 

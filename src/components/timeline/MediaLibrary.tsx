@@ -588,7 +588,8 @@ export function MediaLibrary() {
       
       if (file.size > LARGE_FILE_SIZE_LIMIT) {
         console.log(`Skipping duration estimation for large file (${formatFileSize(file.size)}):`, file.name);
-        resolve(3000); // Default 100 seconds (3000 frames at 30fps) for large videos
+        // Use a more reasonable default for large files - Lambda will update with real duration
+        resolve(300); // Default 10 seconds (300 frames at 30fps) - will be updated after analysis
         return;
       }
       

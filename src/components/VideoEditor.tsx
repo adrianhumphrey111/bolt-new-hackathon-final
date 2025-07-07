@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect, createContext, useContext } from 'react';
 import { Player, PlayerRef } from "@remotion/player";
-import { preloadVideo } from "@remotion/preload";
+// Removed preloadVideo import - using custom cache manager instead
 import { TimelineComposition } from "../remotion/TimelineComposition";
 import { Timeline } from './timeline/Timeline';
 import { MediaLibrary, ProjectProvider, useProject } from './timeline/MediaLibrary';
@@ -28,6 +28,7 @@ import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
 } from "../../types/constants";
+import { videoCacheManager } from '../lib/video-cache';
 
 // Create a context for player controls
 interface PlayerControlsContextType {
@@ -222,6 +223,23 @@ function VideoEditorContent() {
     onTextEdit: handleTextEdit,
     onCanvasClick: handleCanvasClick,
   };
+
+  // Efficient video preloading using cache manager
+  useEffect(() => {
+    const videoItems = allTimelineItems.filter(item => item.type === MediaType.VIDEO && item.src);
+    const uniqueVideos = Array.from(new Set(videoItems.map(item => item.src).filter(Boolean)));
+    
+    if (uniqueVideos.length > 0) {
+      console.log('📹 Cache manager stats:', videoCacheManager.getStats());
+      
+      // Preload videos with proper throttling
+      uniqueVideos.forEach((src, index) => {
+        setTimeout(() => {
+          videoCacheManager.preloadVideo(src!);
+        }, index * 1000); // Stagger by 1 second each to avoid overwhelming
+      });
+    }
+  }, [allTimelineItems]);
 
   // Track if we're manually seeking to avoid sync conflicts
   const isManualSeek = useRef(false);

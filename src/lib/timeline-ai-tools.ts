@@ -333,11 +333,25 @@ export async function findContentHooksFromCache(
 
     console.log(`🔍 Analyzing ${cachedContent.length} cached videos with LLM for: "${query}"`);
 
+    // Helper function to construct proper S3 URL
+    const constructVideoUrl = (filePath: string): string => {
+      if (filePath.startsWith('http')) {
+        return filePath;
+      }
+      
+      // For converted videos, they're in the processed bucket
+      const bucketName = filePath.includes('_converted.mp4') 
+        ? 'raw-clips-global-processed'  // Processed bucket for converted videos
+        : 'raw-clips-global'; // Upload bucket for original videos
+      
+      return `https://${bucketName}.s3.amazonaws.com/${filePath}`;
+    };
+
     // Prepare content library for LLM analysis
     const contentLibrary = cachedContent.map(video => ({
       videoId: video.id,
       videoName: video.name,
-      videoUrl: video.filePath,
+      videoUrl: constructVideoUrl(video.filePath),
       transcript: video.transcript,
       llmAnalysis: video.llmAnalysis,
       videoAnalysis: video.videoAnalysis,

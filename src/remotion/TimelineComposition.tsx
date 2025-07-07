@@ -78,18 +78,6 @@ function TimelineItemRenderer({
       const startFromFrame = Math.round(originalStartTime * fps);
       const endAtFrame = originalEndTime > 0 ? Math.round(originalEndTime * fps) : undefined;
       
-      // Log for debugging
-      console.log(`🎬 VIDEO COMPONENT - Rendering video ${item.name}:`, {
-        src: item.src,
-        startFromFrame,
-        endAtFrame,
-        originalStartTime,
-        originalEndTime,
-        fps,
-        relativeFrame,
-        style,
-        itemId: item.id,
-      });
       
       return (
         <Video
@@ -97,7 +85,7 @@ function TimelineItemRenderer({
           startFrom={startFromFrame}  // Start trim point in frames
           endAt={endAtFrame}          // End trim point in frames
           onError={(error) => {
-            console.error('❌ Video playback error for:', item.name, 'URL:', item.src, 'Error:', error);
+            // Video playback error - could be network, codec, or file access issue
           }}
           pauseWhenBuffering={true}   // Pause player when video is loading
           style={style}
@@ -116,15 +104,6 @@ function TimelineItemRenderer({
       const audioStartFromFrame = Math.round(audioStartTime * fps);
       const audioEndAtFrame = audioEndTime > 0 ? Math.round(audioEndTime * fps) : undefined;
       
-      console.log(`🎬 AUDIO COMPONENT - Rendering audio ${item.name}:`, {
-        src: item.src,
-        audioStartFromFrame,
-        audioEndAtFrame,
-        audioStartTime,
-        audioEndTime,
-        fps,
-        itemId: item.id,
-      });
       
       return (
         <Audio
@@ -163,9 +142,6 @@ export function TimelineComposition(props: TimelineCompositionProps) {
   const { width, height, durationInFrames } = useVideoConfig();
   const currentFrame = useCurrentFrame();
   
-  // 🔍 DEBUG: Log props received by composition
-  console.log('🎬 TIMELINE COMPOSITION - COMPONENT PROPS:', JSON.stringify(props, null, 2));
-  console.log('🎬 TIMELINE COMPOSITION - Props keys:', Object.keys(props));
   
   const { 
     timelineState: componentTimelineState,
@@ -191,14 +167,12 @@ export function TimelineComposition(props: TimelineCompositionProps) {
 
   if (timelineState && timelineState.tracks) {
     // New format: use timelineState
-    console.log('🎬 TIMELINE COMPOSITION - Using new timelineState format');
     actualTimelineState = timelineState;
     items = timelineState.tracks.flatMap(track => track.items);
     transitions = timelineState.tracks.flatMap(track => track.transitions);
     timelineFps = timelineState.fps;
   } else if (legacyItems && legacyTransitions && legacyFps) {
     // Legacy format: use items/transitions directly
-    console.log('🎬 TIMELINE COMPOSITION - Using legacy items/transitions format');
     items = legacyItems;
     transitions = legacyTransitions;
     timelineFps = legacyFps;
@@ -214,8 +188,6 @@ export function TimelineComposition(props: TimelineCompositionProps) {
       isPlaying: false,
     };
   } else {
-    console.log('🎬 TIMELINE COMPOSITION - No valid timeline data found');
-    console.log('🎬 TIMELINE COMPOSITION - Available props:', Object.keys(props));
     return (
       <AbsoluteFill style={{ background: 'linear-gradient(135deg, #1e293b, #334155)' }}>
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', fontSize: 24 }}>
@@ -230,39 +202,11 @@ export function TimelineComposition(props: TimelineCompositionProps) {
   
   // Don't render frames beyond the actual timeline duration
   if (currentFrame >= actualDuration) {
-    console.log(`🎬 TIMELINE COMPOSITION - Frame ${currentFrame} beyond duration ${actualDuration}, returning null`);
     return null;
   }
 
   // Items and transitions are already extracted above
 
-  // Debug logging for render
-  console.log('🎬 TIMELINE COMPOSITION - Render frame:', currentFrame);
-  console.log('🎬 TIMELINE COMPOSITION - Using timeline state:', JSON.stringify(actualTimelineState, null, 2));
-  console.log('🎬 TIMELINE COMPOSITION - Extracted data:', {
-    totalDuration: actualTimelineState.totalDuration,
-    fps: actualTimelineState.fps,
-    tracksCount: actualTimelineState.tracks.length,
-    itemsCount: items.length,
-    transitionsCount: transitions.length,
-    currentFrame,
-    videoConfig: { width, height },
-  });
-
-  // Log each item being rendered
-  items.forEach((item, index) => {
-    const isActive = currentFrame >= item.startTime && currentFrame < item.startTime + item.duration;
-    console.log(`🎬 TIMELINE COMPOSITION - Item ${index + 1} (${item.id}):`, {
-      name: item.name,
-      type: item.type,
-      startTime: item.startTime,
-      duration: item.duration,
-      trackId: item.trackId,
-      isActive,
-      hasSrc: !!item.src,
-      src: item.src ? item.src.substring(0, 50) + '...' : 'NO SRC',
-    });
-  });
 
   // Helper function to create a sequence component for a single item
   const createSequenceForItem = (item: TimelineItem, index: number) => {

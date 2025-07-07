@@ -25,6 +25,7 @@ ANALYZED VIDEO LIBRARY (${videos.length} videos):
 ${videos.map((video: any, index: number) => `
 📹 VIDEO ${index + 1}: "${video.videoName}"
 📝 FULL TRANSCRIPT: ${video.transcript}
+⏱️ WORD-LEVEL TIMESTAMPS: ${video.utterances ? JSON.stringify(video.utterances, null, 2) : 'No precise timestamps available'}
 🧠 LLM ANALYSIS: ${video.llmAnalysis ? JSON.stringify(video.llmAnalysis, null, 2) : 'No LLM analysis'}
 🎬 VIDEO ANALYSIS: ${video.videoAnalysis ? JSON.stringify(video.videoAnalysis, null, 2) : 'No visual analysis'}
 ⏰ CREATED: ${video.createdAt}
@@ -39,7 +40,7 @@ VIDEO LIBRARY (${videos.length} videos):
 ${videos.map((video: any, index: number) => `
 VIDEO ${index + 1}: "${video.videoName}"
 TRANSCRIPT: ${video.transcript}
-DETAILED UTTERANCES: ${JSON.stringify(video.utterances?.slice(0, 20) || [], null, 2)}
+WORD-LEVEL TIMESTAMPS: ${JSON.stringify(video.utterances || [], null, 2)}
 VIDEO ANALYSIS: ${video.videoAnalysis || 'No visual analysis'}
 LLM ANALYSIS: ${video.finalAnalysis || 'No LLM analysis'}
 ---
@@ -53,7 +54,23 @@ SPECIAL INSTRUCTIONS FOR CACHED SEARCH:
 2. **Use transcript text** to identify the best segments that match the request
 3. **Duration Precision**: If they specify duration (like "4 to 7 seconds"), find clips in that range
 4. **Quality over Quantity**: Return only the BEST matches, not filler content
-5. **Exact Timestamps**: Estimate timestamps based on transcript analysis (assume average speaking pace of ~150 words/minute)
+5. **PRECISE TIMESTAMPS**: Use the WORD-LEVEL TIMESTAMPS provided in the utterances data. Each utterance has:
+   - "text": the spoken words (exact phrase)
+   - "start": start time in seconds (precise to milliseconds) 
+   - "end": end time in seconds (precise to milliseconds)
+   
+   CRITICAL: Your startTime and endTime MUST come from the utterances array, not estimates!
+   
+   STEP-BY-STEP PROCESS:
+   1. Read the full transcript to find content matching the user's request
+   2. Locate the EXACT same words in the utterances array
+   3. Use the "start" time from the first utterance for your clip's startTime
+   4. Use the "end" time from the last utterance for your clip's endTime
+   5. NEVER estimate times - only use the precise utterance timestamps
+   
+   Example: If you want a clip of "The biggest marketing mistake I see", find this exact phrase in utterances:
+   [{"text": "The biggest", "start": 15.2, "end": 15.8}, {"text": "marketing mistake", "start": 15.9, "end": 16.4}, {"text": "I see", "start": 16.5, "end": 16.8}]
+   Your clip would be: startTime: 15.2, endTime: 16.8
 
 For the request "${query}":
 - Identify the TYPE of content requested (hook, intro, conclusion, etc.)
@@ -93,7 +110,7 @@ ${topicFilter ? `3. **Topic Relevance**: Focus on content related to "${topicFil
    - Emotional impact (excitement, curiosity, inspiration)
 
 4. **Diversity**: Include variety across different videos and content types
-5. **Timestamp Precision**: Use exact timestamps from utterances data
+5. **Timestamp Precision**: Use EXACT timestamps from utterances data - find the precise words in the utterances array and use their start/end times. NEVER estimate timestamps!
 
 CONTENT TYPES TO IDENTIFY:
 - 🎣 **Hooks**: Attention-grabbing openings, questions, surprising statements
@@ -126,11 +143,13 @@ Return your analysis as a JSON object with this exact structure:
 IMPORTANT REQUIREMENTS:
 - Return 5-10 of the ABSOLUTE BEST moments (high confidence only: 0.75+)
 - Rank by overall quality and relevance to query
-- Include precise timestamps from utterances data
+- **CRITICAL**: startTime and endTime MUST come from utterances array - find the exact words in utterances and use their precise timestamps
 - Mix different content types and videos for variety
 - "reason" should explain WHY this moment is exceptional
-- "transcript" should be exact text from that time segment
+- "transcript" should be exact text from that time segment matching the utterances
 - Only include moments that would genuinely improve someone's video
+
+**UTTERANCES STRUCTURE**: Each utterance is an object with "text" (the spoken words), "start" (precise start time in seconds), and "end" (precise end time in seconds). Find your chosen clip text within these utterances and use their exact start/end times.
 
 Analyze the content now and return ONLY the JSON response:`;
 

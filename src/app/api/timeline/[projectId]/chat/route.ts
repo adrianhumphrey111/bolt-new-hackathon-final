@@ -35,11 +35,16 @@ You have access to powerful tools including:
 - This searches the project's video library, not just timeline clips
 - Perfect for: "Show me my best hooks", "Find content about marketing", "What's my most engaging content?"
 
+✂️ SMART CONTENT REMOVAL TOOLS:
+- analyzeContentForRemoval: LLM-powered analysis to identify segments for removal with precise timestamps
+- Intelligently detects: silences, filler words, specific content, quality issues, off-topic segments
+- Perfect for: "Remove all ums and uhs", "Cut out silences longer than 2 seconds", "Remove filler words"
+
 🎥 TIMELINE EDITING TOOLS:
 - Adding text layers and transitions
 - Changing clip durations and removing clips  
 - Adding tracks
-- Removing silences, filler words, or specific words from video clips
+- Legacy silence removal for timeline clips
 
 CONTENT DISCOVERY EXAMPLES:
 - "Show me my best hooks" → searches all videos for compelling openings
@@ -48,9 +53,14 @@ CONTENT DISCOVERY EXAMPLES:
 - "I need a good intro" → finds strong introduction segments
 - "Show me funny moments" → finds entertaining/humorous content
 
+SMART CONTENT REMOVAL EXAMPLES:
+- "Remove all ums and uhs" → LLM identifies all filler words with precise timestamps
+- "Cut out silences longer than 2 seconds" → finds and marks long pauses for removal
+- "Remove filler words" → detects um, uh, like, you know, basically, etc.
+- "Clean up this content" → general cleanup for better flow
+- "Remove mentions of competitor X" → finds and removes specific content
+
 TIMELINE EDITING EXAMPLES:
-- "remove silences" = removes silent pauses (1+ seconds)
-- "remove filler words" = removes um, uh, like, etc.
 - "add text that says Hello" = adds text overlay
 - "add transition between clips" = creates smooth transitions
 

@@ -73,6 +73,18 @@ function TimelineItemRenderer({
       const originalStartTime = item.properties?.originalStartTime || item.properties?.trim_start || 0;
       const originalEndTime = item.properties?.originalEndTime || item.properties?.trim_end || 0;
       
+      // Debug logging for video timing issues
+      if (originalStartTime > 0 || originalEndTime > 0) {
+        console.log(`🎬 Video trim debug for ${item.name}:`, {
+          src: item.src,
+          originalStartTime,
+          originalEndTime,
+          startTimeMinutes: (originalStartTime / 60).toFixed(2),
+          endTimeMinutes: (originalEndTime / 60).toFixed(2),
+          fps
+        });
+      }
+      
       // Convert seconds to frames for Remotion - use Math.round for better precision
       // Use timeline fps for consistent timing
       const startFromFrame = Math.round(originalStartTime * fps);

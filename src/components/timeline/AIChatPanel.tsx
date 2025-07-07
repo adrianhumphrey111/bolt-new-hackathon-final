@@ -59,7 +59,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     {
       id: '1',
       role: 'assistant',
-      content: '🎬 Welcome to AI Content Discovery!\n\nI\'m loading your analyzed videos and will search them instantly! Try these:\n\n📹 CONTENT DISCOVERY:\n• "Show me my best hooks"\n• "Find content about [topic]"\n• "What\'s my most engaging content?"\n• "I need a good intro"\n\n✂️ SMART EDITING:\n• "What should I remove?"\n• "Show me recommended cuts"\n• "Remove filler words"\n• "Cut out silences"\n• "Add text overlay"\n\nContent search is lightning fast once loaded! ⚡',
+      content: '🎬 Welcome to AI Content Discovery!\n\n📦 Loading your analyzed videos... Please wait while I prepare your content library for instant search and LLM-powered editing!\n\n⏳ This usually takes a few seconds...',
       timestamp: new Date(),
     }
   ]);
@@ -72,6 +72,17 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Update welcome message when content is loaded
+  const updateWelcomeMessage = (videosLoaded: number) => {
+    const welcomeContent = videosLoaded > 0 ? 
+      `🎬 Welcome to AI Content Discovery!\n\n✅ ${videosLoaded} analyzed videos loaded and ready for instant search!\n\n📹 CONTENT DISCOVERY:\n• "Show me my best hooks"\n• "Find content about [topic]"\n• "What's my most engaging content?"\n• "I need a good intro"\n\n✂️ SMART CONTENT REMOVAL:\n• "Remove all ums and uhs"\n• "Cut out silences longer than 2 seconds"\n• "Remove filler words"\n• "Clean up this content"\n\n🎨 TIMELINE EDITING:\n• "Add text overlay"\n• "Add transitions"\n\nContent search & LLM-powered removal is ready! ⚡` :
+      `🎬 Welcome to AI Content Discovery!\n\n📭 No analyzed videos found in this project yet.\n\nTo get started:\n1. Upload videos to your project\n2. Wait for analysis to complete\n3. Return here for AI-powered content search and editing!\n\n💡 Once you have analyzed videos, you'll be able to use powerful features like finding the best hooks and intelligent content removal.`;
+    
+    setMessages(prev => prev.map(msg => 
+      msg.id === '1' ? { ...msg, content: welcomeContent } : msg
+    ));
   };
 
   // Load content cache when chat panel opens
@@ -104,6 +115,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
       if (videoIds.length === 0) {
         setContentCache([]);
         setCacheLoaded(true);
+        updateWelcomeMessage(0);
         console.log('📦 No videos found for project');
         return;
       }
@@ -156,6 +168,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
 
       setContentCache(cache);
       setCacheLoaded(true);
+      updateWelcomeMessage(cache.length);
       console.log(`🎯 Content cache loaded with ${cache.length} analyzed videos`);
 
     } catch (error) {
@@ -171,15 +184,15 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     return result.clips || [];
   };
 
-  // Check if query is asking about cuts/removal
-  const isCutQuery = (query: string): boolean => {
-    const cutKeywords = [
-      'cut', 'remove', 'trim', 'delete', 'should i remove', 'what to remove', 
-      'recommended cuts', 'editing suggestions', 'what should i cut',
-      'silence', 'filler', 'unnecessary', 'boring parts'
+  // Check if query is asking for pre-existing recommended cuts (not LLM analysis)
+  const isLegacyCutQuery = (query: string): boolean => {
+    // Only intercept very specific queries for showing existing cuts
+    const legacyCutKeywords = [
+      'recommended cuts', 'show cuts', 'what cuts do you recommend',
+      'show recommended cuts', 'existing cuts'
     ];
     const lowerQuery = query.toLowerCase();
-    return cutKeywords.some(keyword => lowerQuery.includes(keyword));
+    return legacyCutKeywords.some(keyword => lowerQuery.includes(keyword));
   };
 
   // Get recommended cuts from cached video analysis
@@ -326,9 +339,10 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
         throw new Error('Please sign in to use AI chat');
       }
 
-      // Check if this is a cut-related query - handle it client-side
-      if (isCutQuery(userMessage.content)) {
-        console.log('🔍 Detected cut query, analyzing cached content');
+      // Legacy cut query system - commented out to use LLM for all removal requests
+      /*
+      if (isLegacyCutQuery(userMessage.content)) {
+        console.log('🔍 Detected legacy cut query, showing pre-existing cuts');
         
         if (contentCache.length === 0) {
           const errorMessage: ChatMessage = {
@@ -349,8 +363,8 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
           content: cuts.length > 0 
-            ? `✂️ Found ${cuts.length} recommended cut${cuts.length > 1 ? 's' : ''} in your videos!\n\nI can apply these cuts to videos that are already on your timeline. If a video isn't on the timeline yet, add it first and then apply the cuts.`
-            : '🔍 No recommended cuts found in your video analysis. Your content looks well-edited already!',
+            ? `✂️ Found ${cuts.length} pre-existing recommended cut${cuts.length > 1 ? 's' : ''} in your videos!\n\nI can apply these cuts to videos that are already on your timeline. If a video isn't on the timeline yet, add it first and then apply the cuts.`
+            : '🔍 No pre-existing cuts found in your video analysis. Try asking me to analyze your content for removal opportunities!',
           timestamp: new Date(),
           cuts: cuts.length > 0 ? cuts : undefined,
         };
@@ -358,6 +372,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
         setIsLoading(false);
         return;
       }
+      */
 
       const timelineSummary = getTimelineSummary(state);
       
@@ -426,7 +441,10 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
                 : '📦 No analyzed videos found in this project. Upload and analyze videos first.',
             };
           } else {
-            // Use cached content for removal analysis
+            // Show immediate feedback that analysis is starting
+            console.log(`🤖 Analyzing ${contentCache.length} videos for content removal with LLM...`);
+            
+            // Use cached content for removal analysis - this ensures we're using the client-side cache
             const removalResult = await analyzeContentForRemoval(
               contentCache, 
               result.args.removalQuery as string,
@@ -550,6 +568,20 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Loading indicator for cache */}
+        {cacheLoading && (
+          <div className="flex justify-center py-4">
+            <div className="flex items-center space-x-2 text-blue-400">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+              </div>
+              <span className="text-sm">Loading analyzed videos...</span>
+            </div>
+          </div>
+        )}
+        
         {messages.map((message) => (
           <div
             key={message.id}

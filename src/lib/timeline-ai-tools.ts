@@ -312,6 +312,7 @@ export interface CachedVideoContent {
   name: string;
   filePath: string;
   transcript: string;
+  utterances?: any[]; // Word-level timestamps from transcription
   llmAnalysis: any;
   videoAnalysis: any;
   createdAt: string;
@@ -353,6 +354,7 @@ export async function findContentHooksFromCache(
       videoName: video.name,
       videoUrl: constructVideoUrl(video.filePath),
       transcript: video.transcript,
+      utterances: video.utterances || [], // Include word-level timestamps
       llmAnalysis: video.llmAnalysis,
       videoAnalysis: video.videoAnalysis,
       createdAt: video.createdAt
@@ -399,6 +401,106 @@ export async function findContentHooksFromCache(
     return {
       success: false,
       message: `Failed to analyze content: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
+}
+
+// Content removal result type
+export interface ContentRemovalResult {
+  success: boolean;
+  message: string;
+  cuts?: Array<{
+    id: string;
+    startTime: number;
+    endTime: number;
+    type: 'silence' | 'filler_word' | 'specific_content' | 'unwanted_content' | 'quality_issue' | 'off_topic';
+    reason: string;
+    transcript: string;
+    confidence: number;
+    videoId: string;
+    videoName: string;
+  }>;
+}
+
+// LLM-powered content removal analysis using cached content
+export async function analyzeContentForRemoval(
+  cachedContent: CachedVideoContent[],
+  removalQuery: string,
+  videoId?: string // Optional: target specific video
+): Promise<ContentRemovalResult> {
+  try {
+    if (!cachedContent || cachedContent.length === 0) {
+      return {
+        success: false,
+        message: "No analyzed videos found in cache. Please wait for content to load.",
+      };
+    }
+
+    // Filter to specific video if requested
+    const targetVideos = videoId 
+      ? cachedContent.filter(video => video.id === videoId)
+      : cachedContent;
+
+    if (targetVideos.length === 0) {
+      return {
+        success: false,
+        message: videoId ? "Target video not found in cache." : "No videos available for analysis.",
+      };
+    }
+
+    console.log(`🎬 Analyzing ${targetVideos.length} videos for content removal: "${removalQuery}"`);
+
+    // Prepare content for LLM analysis with word-level timestamps
+    const videosForAnalysis = targetVideos.map(video => ({
+      videoId: video.id,
+      videoName: video.name,
+      transcript: video.transcript,
+      utterances: video.utterances || [], // Critical: word-level timestamps
+      llmAnalysis: video.llmAnalysis,
+      videoAnalysis: video.videoAnalysis,
+      createdAt: video.createdAt
+    }));
+
+    // Send to LLM for content removal analysis
+    const response = await fetch('/api/ai/analyze-content-removal', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        videos: videosForAnalysis,
+        removalQuery: removalQuery,
+        analysisType: 'content_removal'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Content removal analysis failed: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      return {
+        success: false,
+        message: result.message || 'Failed to analyze content for removal',
+      };
+    }
+
+    console.log(`✂️ LLM identified ${result.cuts?.length || 0} segments for removal`);
+    
+    return {
+      success: true,
+      message: result.cuts && result.cuts.length > 0 
+        ? `Found ${result.cuts.length} segments to remove based on your request`
+        : 'No segments identified for removal. Content looks good as-is!',
+      cuts: result.cuts || []
+    };
+  } catch (error) {
+    console.error('Error in content removal analysis:', error);
+    return {
+      success: false,
+      message: `Failed to analyze content for removal: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
 }
@@ -656,6 +758,27 @@ export const AI_TOOLS = [
         required: ["query"]
       }
     }
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "analyzeContentForRemoval",
+      description: "Analyze videos to identify content that should be removed or trimmed based on user requests. Returns precise timestamps for cuts.",
+      parameters: {
+        type: "object",
+        properties: {
+          removalQuery: {
+            type: "string",
+            description: "What to remove: 'remove all ums and uhs', 'cut out silences longer than 2 seconds', 'remove mentions of competitor X', 'trim boring parts', 'remove filler words', 'cut out background noise', etc."
+          },
+          videoId: {
+            type: "string",
+            description: "Optional: Target specific video ID to analyze. If not provided, analyzes all videos in the project."
+          }
+        },
+        required: ["removalQuery"]
+      }
+    }
   }
 ];
 
@@ -692,6 +815,13 @@ export async function executeAITool(
       return {
         success: false,
         message: 'Content search is now handled client-side with cached content. This should not be called server-side.',
+      };
+    case 'analyzeContentForRemoval':
+      // This should be handled client-side with cached content
+      // The AIChatPanel intercepts this call and uses analyzeContentForRemoval instead
+      return {
+        success: false,
+        message: 'Content removal analysis is now handled client-side with cached content. This should not be called server-side.',
       };
     default:
       return {

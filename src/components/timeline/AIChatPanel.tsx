@@ -2,9 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTimeline } from './TimelineContext';
-import { executeAITool, getTimelineSummary, findContentHooksFromCache, CachedVideoContent } from '../../lib/timeline-ai-tools';
+import { executeAITool, getTimelineSummary, findContentHooksFromCache, CachedVideoContent, analyzeContentForRemoval } from '../../lib/timeline-ai-tools';
 import { useAuthContext } from '../AuthProvider';
 import { VideoClipPreview } from './VideoClipPreview';
+import { RecommendedCutsPreview } from './RecommendedCutsPreview';
 import { MediaType } from '../../../types/timeline';
 
 interface ContentClip {
@@ -20,12 +21,28 @@ interface ContentClip {
   videoName?: string;
 }
 
+interface RecommendedCut {
+  id?: string;
+  start_time?: number;  // in minutes (legacy format)
+  end_time?: number;    // in minutes (legacy format)
+  startTime?: number;   // in seconds (new format)
+  endTime?: number;     // in seconds (new format)
+  type?: 'silence' | 'filler_word' | 'specific_content' | 'unwanted_content' | 'quality_issue' | 'off_topic';
+  reason: string;
+  transcript?: string;
+  confidence?: number;
+  priority?: 'high' | 'medium' | 'low';
+  videoId: string;
+  videoName: string;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   clips?: ContentClip[];
+  cuts?: RecommendedCut[];
 }
 
 
@@ -42,7 +59,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     {
       id: '1',
       role: 'assistant',
-      content: '🎬 Welcome to AI Content Discovery!\n\nI\'m loading your analyzed videos and will search them instantly! Try these:\n\n📹 CONTENT DISCOVERY:\n• "Show me my best hooks"\n• "Find content about [topic]"\n• "What\'s my most engaging content?"\n• "I need a good intro"\n\n✂️ TIMELINE EDITING:\n• "Remove silences from first video"\n• "Add text overlay"\n• "Cut out filler words"\n\nContent search is lightning fast once loaded! ⚡',
+      content: '🎬 Welcome to AI Content Discovery!\n\nI\'m loading your analyzed videos and will search them instantly! Try these:\n\n📹 CONTENT DISCOVERY:\n• "Show me my best hooks"\n• "Find content about [topic]"\n• "What\'s my most engaging content?"\n• "I need a good intro"\n\n✂️ SMART EDITING:\n• "What should I remove?"\n• "Show me recommended cuts"\n• "Remove filler words"\n• "Cut out silences"\n• "Add text overlay"\n\nContent search is lightning fast once loaded! ⚡',
       timestamp: new Date(),
     }
   ]);
@@ -126,6 +143,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
               name: video.original_name,
               filePath: video.file_path,
               transcript: fullTranscript,
+              utterances: utterances, // Include word-level timestamps
               llmAnalysis: analysis.llm_response,
               videoAnalysis: analysis.video_analysis,
               createdAt: video.created_at,
@@ -153,6 +171,57 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     return result.clips || [];
   };
 
+  // Check if query is asking about cuts/removal
+  const isCutQuery = (query: string): boolean => {
+    const cutKeywords = [
+      'cut', 'remove', 'trim', 'delete', 'should i remove', 'what to remove', 
+      'recommended cuts', 'editing suggestions', 'what should i cut',
+      'silence', 'filler', 'unnecessary', 'boring parts'
+    ];
+    const lowerQuery = query.toLowerCase();
+    return cutKeywords.some(keyword => lowerQuery.includes(keyword));
+  };
+
+  // Get recommended cuts from cached video analysis
+  const getRecommendedCuts = async (query: string): Promise<RecommendedCut[]> => {
+    const cuts: RecommendedCut[] = [];
+    
+    // Extract recommended cuts from each video's analysis
+    contentCache.forEach(video => {
+      try {
+        // Check if video analysis has recommended cuts (Gemini format)
+        const videoAnalysis = video.videoAnalysis;
+        if (videoAnalysis?.recommended_cuts_or_trims) {
+          videoAnalysis.recommended_cuts_or_trims.forEach((cut: any) => {
+            cuts.push({
+              start_time: cut.start_time,
+              end_time: cut.end_time,
+              reason: cut.reason,
+              priority: cut.priority || 'medium',
+              videoId: video.id,
+              videoName: video.name
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Error extracting cuts from video analysis:', error);
+      }
+    });
+
+    // Filter cuts based on query if it's more specific
+    if (query.toLowerCase().includes('high priority')) {
+      return cuts.filter(cut => cut.priority === 'high');
+    }
+    if (query.toLowerCase().includes('silence')) {
+      return cuts.filter(cut => cut.reason.toLowerCase().includes('silence') || cut.reason.toLowerCase().includes('pause'));
+    }
+    if (query.toLowerCase().includes('filler')) {
+      return cuts.filter(cut => cut.reason.toLowerCase().includes('filler') || cut.reason.toLowerCase().includes('um') || cut.reason.toLowerCase().includes('uh'));
+    }
+
+    return cuts;
+  };
+
   const handleAddToTimeline = (clip: ContentClip) => {
     // Add the video clip to the timeline
     const targetTrack = state.tracks[0] || { id: 'track-1', items: [] };
@@ -163,9 +232,9 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
       0
     );
 
-    // Convert AI times from minutes to seconds, then to frames
-    const clipStartSeconds = clip.startTime * 60; // Convert minutes to seconds
-    const clipEndSeconds = clip.endTime * 60; // Convert minutes to seconds
+    // AI now returns times in seconds (from utterances), no conversion needed
+    const clipStartSeconds = clip.startTime; // Already in seconds from utterances
+    const clipEndSeconds = clip.endTime; // Already in seconds from utterances  
     const clipDurationSeconds = clipEndSeconds - clipStartSeconds;
     
     // Create timeline item from clip
@@ -206,6 +275,25 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     setMessages(prev => [...prev, successMessage]);
   };
 
+  const handleCutApplied = (cut: RecommendedCut) => {
+    // Calculate duration based on which format is used
+    const duration = cut.startTime && cut.endTime 
+      ? Math.round(cut.endTime - cut.startTime) // New format in seconds
+      : cut.start_time && cut.end_time 
+        ? Math.round((cut.end_time - cut.start_time) * 60) // Legacy format in minutes
+        : 0;
+    
+    // Show success message
+    const successMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `✂️ Applied cut to "${cut.videoName}"!\n\nRemoved: ${duration}s\nReason: ${cut.reason}\nYou can undo this change if needed.`,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, successMessage]);
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -236,6 +324,39 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
       // Check if user is authenticated
       if (!session?.access_token) {
         throw new Error('Please sign in to use AI chat');
+      }
+
+      // Check if this is a cut-related query - handle it client-side
+      if (isCutQuery(userMessage.content)) {
+        console.log('🔍 Detected cut query, analyzing cached content');
+        
+        if (contentCache.length === 0) {
+          const errorMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: cacheLoading 
+              ? '📦 Content is still loading... Please wait a moment and try again.'
+              : '📦 No analyzed videos found in this project. Upload and analyze videos first.',
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setIsLoading(false);
+          return;
+        }
+
+        const cuts = await getRecommendedCuts(userMessage.content);
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: cuts.length > 0 
+            ? `✂️ Found ${cuts.length} recommended cut${cuts.length > 1 ? 's' : ''} in your videos!\n\nI can apply these cuts to videos that are already on your timeline. If a video isn't on the timeline yet, add it first and then apply the cuts.`
+            : '🔍 No recommended cuts found in your video analysis. Your content looks well-edited already!',
+          timestamp: new Date(),
+          cuts: cuts.length > 0 ? cuts : undefined,
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+        setIsLoading(false);
+        return;
       }
 
       const timelineSummary = getTimelineSummary(state);
@@ -293,6 +414,34 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
               } : undefined
             };
           }
+        } else if (result.tool === 'analyzeContentForRemoval') {
+          console.log('✂️ Using cached content for analyzeContentForRemoval');
+          console.log('📝 Removal query:', result.args.removalQuery);
+          
+          if (contentCache.length === 0) {
+            toolResult = {
+              success: false,
+              message: cacheLoading 
+                ? '📦 Content is still loading... Please wait a moment and try again.'
+                : '📦 No analyzed videos found in this project. Upload and analyze videos first.',
+            };
+          } else {
+            // Use cached content for removal analysis
+            const removalResult = await analyzeContentForRemoval(
+              contentCache, 
+              result.args.removalQuery as string,
+              result.args.videoId as string
+            );
+            
+            toolResult = {
+              success: removalResult.success,
+              message: removalResult.message,
+              action: removalResult.cuts && removalResult.cuts.length > 0 ? {
+                type: 'SHOW_CONTENT_CUTS',
+                payload: { cuts: removalResult.cuts }
+              } : undefined
+            };
+          }
         } else {
           // Execute other tools normally
           toolResult = await executeAITool(result.tool, result.args, state, user?.id, projectId);
@@ -324,6 +473,9 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
             case 'SHOW_CONTENT_CLIPS':
               // Handle content clips display - will be shown in message
               break;
+            case 'SHOW_CONTENT_CUTS':
+              // Handle content cuts display - will be shown in message
+              break;
           }
         }
 
@@ -333,6 +485,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
           content: toolResult.message,
           timestamp: new Date(),
           clips: toolResult.action?.type === 'SHOW_CONTENT_CLIPS' ? toolResult.action.payload.clips : undefined,
+          cuts: toolResult.action?.type === 'SHOW_CONTENT_CUTS' ? toolResult.action.payload.cuts : undefined,
         };
 
         setMessages(prev => [...prev, assistantMessage]);
@@ -365,7 +518,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
   return (
     <div className={`fixed right-0 top-0 h-full bg-gray-800 shadow-xl border-l border-gray-600 z-50 transition-transform duration-300 ease-in-out ${
       isOpen ? 'translate-x-0' : 'translate-x-full'
-    } ${messages.some(msg => msg.clips && msg.clips.length > 0) ? 'w-[600px]' : 'w-[400px]'} flex flex-col`}>
+    } ${messages.some(msg => (msg.clips && msg.clips.length > 0) || (msg.cuts && msg.cuts.length > 0)) ? 'w-[600px]' : 'w-[400px]'} flex flex-col`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-600 bg-gray-900">
         <div className="flex items-center space-x-2">
@@ -403,7 +556,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`${message.clips ? 'max-w-full' : 'max-w-xs'} px-3 py-2 rounded-lg ${
+              className={`${(message.clips && message.clips.length > 0) || (message.cuts && message.cuts.length > 0) ? 'max-w-full' : 'max-w-xs'} px-3 py-2 rounded-lg ${
                 message.role === 'user'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-100'
@@ -411,6 +564,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
             >
               <div className="whitespace-pre-wrap text-sm">{message.content}</div>
               {message.clips && <VideoClipPreview clips={message.clips} onAddToTimeline={handleAddToTimeline} />}
+              {message.cuts && <RecommendedCutsPreview cuts={message.cuts} onCutApplied={handleCutApplied} />}
               <div className="text-xs opacity-70 mt-1">
                 {message.timestamp.toLocaleTimeString()}
               </div>

@@ -1,8 +1,9 @@
-import React from 'react';
-import { useCurrentFrame, useVideoConfig, Img, Video, Audio, Sequence, AbsoluteFill, getInputProps } from 'remotion';
+import React, { useState, useCallback } from 'react';
+import { useCurrentFrame, useVideoConfig, Img, Video, Audio, Sequence, AbsoluteFill, getInputProps, useCurrentScale } from 'remotion';
 import { TimelineItem, MediaType, Transition } from '../../types/timeline';
 import { TextLayer } from '../components/TextLayer';
 import { TextSelectionOutline } from '../components/TextSelectionOutline';
+import { VideoCanvas } from './VideoCanvas';
 
 interface TimelineCompositionProps {
   // New format (preferred)
@@ -14,6 +15,7 @@ interface TimelineCompositionProps {
     fps: number;
     selectedItems: string[];
     isPlaying: boolean;
+    aiSelectedTimelineItems?: string[];
   };
   // Legacy format (fallback)
   items?: TimelineItem[];
@@ -22,169 +24,38 @@ interface TimelineCompositionProps {
   // Common props
   selectedItemId?: string;
   editingTextId?: string;
+  aiSelectedTimelineItems?: string[];
   onItemSelect?: (itemId: string) => void;
   onItemUpdate?: (itemId: string, updates: Partial<TimelineItem>) => void;
   onTextEdit?: (itemId: string) => void;
   onCanvasClick?: () => void;
+  onAiToggleItem?: (itemId: string) => void;
 }
 
-interface TimelineItemRendererProps {
-  item: TimelineItem;
-  layerIndex: number;
-  fps: number;
-  canvasWidth: number;
-  canvasHeight: number;
-  selectedItemId?: string;
-  editingTextId?: string;
-  onItemSelect?: (itemId: string) => void;
-  onItemUpdate?: (itemId: string, updates: Partial<TimelineItem>) => void;
-  onTextEdit?: (itemId: string) => void;
-}
-
-function TimelineItemRenderer({ 
-  item, 
-  layerIndex, 
-  fps,
-  canvasWidth,
-  canvasHeight,
-  selectedItemId,
-  editingTextId, 
-  onItemSelect,
-  onItemUpdate,
-  onTextEdit 
-}: TimelineItemRendererProps) {
-  // With Sequence, we don't need to check timing - Sequence handles that
-  // useCurrentFrame() will give us the frame relative to the Sequence start
-  const relativeFrame = useCurrentFrame();
-  
-  // Calculate sizing and positioning with rotation adjustments
-  const rotation = item.properties?.rotation || 0;
-  const scale = item.properties?.scale || 1;
-  
-  // Default positioning and sizing with explicit z-index for layering
-  const style: React.CSSProperties = {
-    position: 'absolute',
-    left: item.properties?.x || 0,
-    top: item.properties?.y || 0,
-    width: item.properties?.width || '100%',
-    height: item.properties?.height || 'auto',
-    transform: `scale(${scale}) rotate(${rotation}deg)`,
-    transformOrigin: 'center center',
-    opacity: item.properties?.opacity || 1,
-    zIndex: layerIndex, // Explicit z-index based on sort order
-  };
-
-  // Debug log for rotation
-  if (item.properties?.rotation && item.properties.rotation !== 0) {
-    console.log(`🔄 Rotation debug for ${item.name}:`, {
-      rotation: item.properties.rotation,
-      transform: style.transform,
-      allProperties: item.properties
-    });
-  }
-
-  switch (item.type) {
-    case MediaType.VIDEO:
-      if (!item.src) return null;
-      
-      // Extract trim points from item properties (from AI analysis)
-      const originalStartTime = item.properties?.originalStartTime || item.properties?.trim_start || 0;
-      const originalEndTime = item.properties?.originalEndTime || item.properties?.trim_end || 0;
-      
-      // Debug logging for video timing issues
-      if (originalStartTime > 0 || originalEndTime > 0) {
-        console.log(`🎬 Video trim debug for ${item.name}:`, {
-          src: item.src,
-          originalStartTime,
-          originalEndTime,
-          startTimeMinutes: (originalStartTime / 60).toFixed(2),
-          endTimeMinutes: (originalEndTime / 60).toFixed(2),
-          fps
-        });
-      }
-      
-      // Convert seconds to frames for Remotion - use Math.round for better precision
-      // Use timeline fps for consistent timing
-      const startFromFrame = Math.round(originalStartTime * fps);
-      const endAtFrame = originalEndTime > 0 ? Math.round(originalEndTime * fps) : undefined;
-      
-      
-      return (
-        <Video
-          src={item.src}
-          startFrom={startFromFrame}  // Start trim point in frames
-          endAt={endAtFrame}          // End trim point in frames
-          onError={(error) => {
-            // Video playback error - could be network, codec, or file access issue
-          }}
-          pauseWhenBuffering={true}   // Pause player when video is loading
-          style={style}
-          // Use default playback rate (1.0) for consistent timing
-          volume={1}
-          muted={false}
-        />
-      );
-
-    case MediaType.AUDIO:
-      if (!item.src) return null;
-      
-      // Apply same trim logic as video for consistency
-      const audioStartTime = item.properties?.originalStartTime || item.properties?.trim_start || 0;
-      const audioEndTime = item.properties?.originalEndTime || item.properties?.trim_end || 0;
-      const audioStartFromFrame = Math.round(audioStartTime * fps);
-      const audioEndAtFrame = audioEndTime > 0 ? Math.round(audioEndTime * fps) : undefined;
-      
-      
-      return (
-        <Audio
-          src={item.src}
-          startFrom={audioStartFromFrame}
-          endAt={audioEndAtFrame}
-          volume={1}
-        />
-      );
-
-    case MediaType.IMAGE:
-      if (!item.src) return null;
-      return (
-        <Img
-          src={item.src}
-          style={style}
-        />
-      );
-
-    case MediaType.TEXT:
-      return (
-        <TextLayer
-          item={item}
-          isEditing={editingTextId === item.id}
-          onSave={(newContent) => onItemUpdate?.(item.id, { content: newContent })}
-          onCancel={() => onTextEdit?.(item.id)} // Toggle off editing
-        />
-      );
-
-    default:
-      return null;
-  }
-}
 
 export function TimelineComposition(props: TimelineCompositionProps) {
   const { width, height, durationInFrames } = useVideoConfig();
   const currentFrame = useCurrentFrame();
-  
+  const scale = 1; // Use fixed scale for now - useCurrentScale might not work in composition context
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   
   const { 
     timelineState: componentTimelineState,
     items: legacyItems,
     transitions: legacyTransitions,
     fps: legacyFps,
-    selectedItemId,
-    editingTextId, 
+    selectedItemId: externalSelectedId,
+    editingTextId,
+    aiSelectedTimelineItems: propAiSelected,
     onItemSelect,
     onItemUpdate,
     onTextEdit, 
-    onCanvasClick 
+    onCanvasClick,
+    onAiToggleItem
   } = props;
+  
+  // Use internal selection state if external is not provided
+  const selectedItemId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
   
   // Use the timeline state from component props
   const timelineState = componentTimelineState;
@@ -236,7 +107,27 @@ export function TimelineComposition(props: TimelineCompositionProps) {
   }
 
   // Items and transitions are already extracted above
+  
+  // Extract AI selection data
+  const aiSelectedItems = timelineState?.aiSelectedTimelineItems || propAiSelected || [];
 
+  // Handle item selection
+  const handleItemSelect = useCallback((itemId: string) => {
+    if (onItemSelect) {
+      onItemSelect(itemId);
+    } else {
+      setInternalSelectedId(itemId);
+    }
+  }, [onItemSelect]);
+
+  // Handle canvas click (deselect)
+  const handleCanvasClick = useCallback(() => {
+    if (onCanvasClick) {
+      onCanvasClick();
+    } else {
+      setInternalSelectedId(null);
+    }
+  }, [onCanvasClick]);
 
   // Helper function to create a sequence component for a single item
   const createSequenceForItem = (item: TimelineItem, index: number) => {
@@ -262,17 +153,16 @@ export function TimelineComposition(props: TimelineCompositionProps) {
         premountFor={premountFrames}
         layout="none"
       >
-        <TimelineItemRenderer
+        <VideoCanvas
           item={item}
-          layerIndex={index}
-          fps={timelineFps}
           canvasWidth={width}
           canvasHeight={height}
-          selectedItemId={selectedItemId}
-          editingTextId={editingTextId}
-          onItemSelect={onItemSelect}
-          onItemUpdate={onItemUpdate}
-          onTextEdit={onTextEdit}
+          isSelected={selectedItemId === item.id}
+          isAiSelected={aiSelectedItems.includes(item.id)}
+          onSelect={handleItemSelect}
+          onUpdate={onItemUpdate || (() => {})}
+          onAiToggle={onAiToggleItem}
+          scale={scale}
         />
       </Sequence>
     );
@@ -341,7 +231,7 @@ export function TimelineComposition(props: TimelineCompositionProps) {
       onPointerDown={(e) => {
         // Only handle canvas clicks if no other element handles it
         if (e.target === e.currentTarget && e.button === 0) {
-          onCanvasClick?.();
+          handleCanvasClick();
         }
       }}
     >
@@ -354,31 +244,14 @@ export function TimelineComposition(props: TimelineCompositionProps) {
         }}
       />
 
-      {/* Layer container with hidden overflow */}
-      <AbsoluteFill style={{ overflow: 'hidden' }}>
+      {/* Layer container - videos constrained to canvas but outlines can overflow */}
+      <AbsoluteFill>
         {/* Render all items as simple sequences */}
         {sortedItems.map((item, index) => createSequenceForItem(item, index))}
       </AbsoluteFill>
 
-      {/* Selection outlines (with overflow visible) */}
-      {sortedOutlines.map((item) => (
-        <Sequence
-          key={`outline-${item.id}`}
-          from={item.startTime}
-          durationInFrames={item.duration}
-          layout="none"
-        >
-          <TextSelectionOutline
-            item={item}
-            onUpdate={(updates) => onItemUpdate?.(item.id, updates)}
-            onSelect={() => onItemSelect?.(item.id)}
-            isSelected={selectedItemId === item.id}
-            isDragging={isDragging}
-            onStartEdit={() => onTextEdit?.(item.id)}
-            isEditing={editingTextId === item.id}
-          />
-        </Sequence>
-      ))}
+
+      {/* Text selection outlines are now handled within VideoCanvas */}
 
       {/* Frame counter and layer info overlay (optional, for debugging) */}
       {process.env.NODE_ENV === 'development' && (

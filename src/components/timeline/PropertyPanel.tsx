@@ -25,8 +25,8 @@ export function PropertyPanel() {
     scale: 1,
     rotation: 0,
     opacity: 1,
-    width: '100%',
-    height: 'auto',
+    width: 1080,
+    height: 1920,
   });
 
   useEffect(() => {
@@ -36,13 +36,13 @@ export function PropertyPanel() {
         startTime: selectedItem.startTime,
         duration: selectedItem.duration,
         content: selectedItem.content || '',
-        x: selectedItem.properties?.x || 0,
-        y: selectedItem.properties?.y || 0,
-        scale: selectedItem.properties?.scale || 1,
-        rotation: selectedItem.properties?.rotation || 0,
-        opacity: selectedItem.properties?.opacity || 1,
-        width: selectedItem.properties?.width || '100%',
-        height: selectedItem.properties?.height || 'auto',
+        x: Number(selectedItem.properties?.x) || 0,
+        y: Number(selectedItem.properties?.y) || 0,
+        scale: Number(selectedItem.properties?.scale) || 1,
+        rotation: Number(selectedItem.properties?.rotation) || 0,
+        opacity: Number(selectedItem.properties?.opacity) || 1,
+        width: Number(selectedItem.properties?.width) || 1080,
+        height: Number(selectedItem.properties?.height) || 1920,
       });
     }
   }, [selectedItem]);
@@ -57,13 +57,13 @@ export function PropertyPanel() {
 
     const updatedProperties = {
       ...selectedItem.properties,
-      x: Number(formData.x),
-      y: Number(formData.y),
-      scale: Number(formData.scale),
-      rotation: Number(formData.rotation),
-      opacity: Number(formData.opacity),
-      width: formData.width,
-      height: formData.height,
+      x: Number(formData.x) || 0,
+      y: Number(formData.y) || 0,
+      scale: Number(formData.scale) || 1,
+      rotation: Number(formData.rotation) || 0,
+      opacity: Number(formData.opacity) || 1,
+      width: Number(formData.width) || 1080,
+      height: Number(formData.height) || 1920,
     };
 
     console.log('🔄 PropertyPanel: Updating item with rotation:', {
@@ -450,23 +450,47 @@ export function PropertyPanel() {
                   <label className="block text-xs text-gray-400 mb-2">Size</label>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
+                      <label className="block text-xs text-gray-500 mb-1">Width</label>
                       <input
-                        type="text"
-                        placeholder="Width (e.g. 100%, 500px)"
-                        value={formData.width}
-                        onChange={(e) => handleInputChange('width', e.target.value)}
+                        type="number"
+                        placeholder="1080"
+                        value={typeof formData.width === 'number' ? formData.width : parseInt(formData.width) || 1080}
+                        onChange={(e) => handleInputChange('width', parseInt(e.target.value) || 1080)}
                         className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
                       />
                     </div>
                     <div>
+                      <label className="block text-xs text-gray-500 mb-1">Height</label>
                       <input
-                        type="text"
-                        placeholder="Height (auto, 300px)"
-                        value={formData.height}
-                        onChange={(e) => handleInputChange('height', e.target.value)}
+                        type="number"
+                        placeholder="1920"
+                        value={typeof formData.height === 'number' ? formData.height : parseInt(formData.height) || 1920}
+                        onChange={(e) => handleInputChange('height', parseInt(e.target.value) || 1920)}
                         className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
                       />
                     </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleInputChange('width', 1080);
+                        handleInputChange('height', 1920);
+                      }}
+                      className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs"
+                    >
+                      9:16 (Phone)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleInputChange('width', 1920);
+                        handleInputChange('height', 1080);
+                      }}
+                      className="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs"
+                    >
+                      16:9 (Landscape)
+                    </button>
                   </div>
                 </div>
 
@@ -502,31 +526,73 @@ export function PropertyPanel() {
                     <button 
                       type="button" 
                       onClick={() => {
-                        // Calculate scale to fit 9:16 canvas based on rotation
+                        // Fit the video within 9:16 canvas dimensions
+                        const canvasWidth = 1080;
+                        const canvasHeight = 1920;
                         const rotation = formData.rotation % 360;
-                        let scaleToFit = 1;
                         
                         if (rotation === 90 || rotation === 270) {
-                          // Video rotated 90° or 270°: width becomes height
-                          // For phone videos (9:16), when rotated they become 16:9
-                          // To fit in 9:16 canvas: scale = 9/16 = 0.5625
-                          scaleToFit = 0.5625;
+                          // Video is rotated 90°/270° - the visual result should be portrait (9:16)
+                          // But the container needs to be sized for the rotated dimensions
+                          // Since the video content rotates, we need landscape container to show portrait result
+                          const rotatedWidth = Math.round(canvasHeight * 16/9); // Wide enough for rotated content
+                          const rotatedHeight = canvasHeight; // Full height
+                          
+                          handleInputChange('width', rotatedWidth);
+                          handleInputChange('height', rotatedHeight);
+                          handleInputChange('scale', 1);
+                          
+                          // Center horizontally if it's wider than canvas
+                          const offsetX = rotatedWidth > canvasWidth ? -((rotatedWidth - canvasWidth) / 2) : (canvasWidth - rotatedWidth) / 2;
+                          handleInputChange('x', Math.round(offsetX));
+                          handleInputChange('y', 0);
                         } else {
-                          // 0° or 180° rotation: original orientation
-                          // Most phone videos are already 9:16, so they should fit
-                          // But if it's overflowing, scale it down slightly
-                          scaleToFit = 0.95; // Slight padding to ensure it fits
+                          // Video is 0°/180° - normal orientation
+                          handleInputChange('width', canvasWidth);
+                          handleInputChange('height', canvasHeight);
+                          handleInputChange('scale', 1);
+                          handleInputChange('x', 0);
+                          handleInputChange('y', 0);
                         }
-                        
-                        handleInputChange('scale', scaleToFit);
-                        
-                        // Also center the video
-                        handleInputChange('x', 0);
-                        handleInputChange('y', 0);
                       }} 
                       className="w-full px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium"
                     >
-                      Scale to Fit 9:16
+                      Fit to 9:16 Canvas
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        // Size container to typical phone video dimensions
+                        const phoneWidth = 720;  // Typical phone video width
+                        const phoneHeight = 1280; // Typical phone video height
+                        
+                        handleInputChange('x', (1080 - phoneWidth) / 2); // Center horizontally
+                        handleInputChange('y', (1920 - phoneHeight) / 2); // Center vertically
+                        handleInputChange('width', phoneWidth);
+                        handleInputChange('height', phoneHeight);
+                        handleInputChange('scale', 1);
+                        handleInputChange('rotation', 0);
+                        handleInputChange('opacity', 1);
+                      }} 
+                      className="w-full px-2 py-1 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-medium mt-1"
+                    >
+                      Fit Video Size
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        // Reset to basic visible state
+                        handleInputChange('x', 0);
+                        handleInputChange('y', 0);
+                        handleInputChange('width', 1080);
+                        handleInputChange('height', 1920);
+                        handleInputChange('scale', 1);
+                        handleInputChange('rotation', 0);
+                        handleInputChange('opacity', 1);
+                      }} 
+                      className="w-full px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-medium mt-1"
+                    >
+                      Reset Position
                     </button>
                   </div>
                 </div>

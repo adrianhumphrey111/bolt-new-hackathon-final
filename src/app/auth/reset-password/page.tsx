@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClientSupabaseClient } from '@/lib/supabase/client';
 
+interface PasswordRequirement {
+  label: string;
+  test: (password: string) => boolean;
+  met: boolean;
+}
+
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -12,9 +18,20 @@ export default function ResetPassword() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isValidSession, setIsValidSession] = useState(false);
+  const [showRequirements, setShowRequirements] = useState(false);
+  const [passwordsMatch, setPasswordsMatch] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientSupabaseClient();
+
+  // Password requirements
+  const passwordRequirements: PasswordRequirement[] = [
+    { label: 'At least 8 characters long', test: (pwd) => pwd.length >= 8, met: password.length >= 8 },
+    { label: 'Contains uppercase letter', test: (pwd) => /[A-Z]/.test(pwd), met: /[A-Z]/.test(password) },
+    { label: 'Contains lowercase letter', test: (pwd) => /[a-z]/.test(pwd), met: /[a-z]/.test(password) },
+    { label: 'Contains number', test: (pwd) => /\d/.test(pwd), met: /\d/.test(password) },
+    { label: 'Contains special character (!@#$%^&*)', test: (pwd) => /[!@#$%^&*(),.?":{}|<>]/.test(pwd), met: /[!@#$%^&*(),.?":{}|<>]/.test(password) },
+  ];
 
   // Check if we have a valid reset session
   useEffect(() => {
@@ -42,9 +59,20 @@ export default function ResetPassword() {
     checkSession();
   }, [supabase]);
 
+  // Real-time password validation
+  useEffect(() => {
+    if (confirmPassword.length > 0) {
+      setPasswordsMatch(password === confirmPassword);
+    } else {
+      setPasswordsMatch(true);
+    }
+  }, [password, confirmPassword]);
+
   const validatePassword = () => {
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
+    const allRequirementsMet = passwordRequirements.every(req => req.test(password));
+    
+    if (!allRequirementsMet) {
+      setError('Password does not meet all security requirements');
       return false;
     }
     if (password !== confirmPassword) {
@@ -52,6 +80,13 @@ export default function ResetPassword() {
       return false;
     }
     return true;
+  };
+
+  const getPasswordStrength = () => {
+    const metRequirements = passwordRequirements.filter(req => req.met).length;
+    if (metRequirements <= 2) return { strength: 'Weak', color: 'bg-red-500' };
+    if (metRequirements <= 4) return { strength: 'Medium', color: 'bg-yellow-500' };
+    return { strength: 'Strong', color: 'bg-green-500' };
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {

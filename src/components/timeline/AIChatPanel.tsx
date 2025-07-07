@@ -163,18 +163,30 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
       0
     );
 
+    // Convert AI times from minutes to seconds, then to frames
+    const clipStartSeconds = clip.startTime * 60; // Convert minutes to seconds
+    const clipEndSeconds = clip.endTime * 60; // Convert minutes to seconds
+    const clipDurationSeconds = clipEndSeconds - clipStartSeconds;
+    
     // Create timeline item from clip
     const newItem = {
       type: MediaType.VIDEO,
       name: `${clip.videoName} - ${clip.name}`,
       startTime: endTime,
-      duration: Math.round((clip.endTime - clip.startTime) * 30), // Convert to frames
+      duration: Math.round(clipDurationSeconds * 30), // Convert seconds to frames
       trackId: targetTrack.id,
       videoId: clip.videoId || clip.id,
-      videoUrl: clip.videoUrl,
-      clipStart: clip.startTime * 30, // Store original start time in frames
-      clipEnd: clip.endTime * 30, // Store original end time in frames
-      originalName: clip.videoName
+      src: clip.videoUrl, // Use src for video source
+      clipStart: Math.round(clipStartSeconds * 30), // Convert seconds to frames
+      clipEnd: Math.round(clipEndSeconds * 30), // Convert seconds to frames
+      originalName: clip.videoName,
+      // Add properties for video trimming
+      properties: {
+        originalStartTime: clipStartSeconds, // Trim start in seconds
+        originalEndTime: clipEndSeconds, // Trim end in seconds
+        trim_start: clipStartSeconds,
+        trim_end: clipEndSeconds
+      }
     };
 
     // Add to timeline
@@ -187,7 +199,7 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     const successMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'assistant',
-      content: `✅ Added "${clip.name}" from ${clip.videoName} to your timeline!\n\nDuration: ${Math.round(clip.endTime - clip.startTime)}s\nType: ${clip.type}\nAdded at: ${Math.round(endTime / 30)}s`,
+      content: `✅ Added "${clip.name}" from ${clip.videoName} to your timeline!\n\nDuration: ${Math.round(clipDurationSeconds)}s\nType: ${clip.type}\nAdded at: ${Math.round(endTime / 30)}s`,
       timestamp: new Date(),
     };
 

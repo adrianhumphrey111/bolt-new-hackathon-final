@@ -45,6 +45,39 @@ interface AIAnalysisData {
   overallMetrics: OverallMetrics;
 }
 
+// New Gemini video analysis interfaces
+interface GeminiChunk {
+  start_time: number;
+  end_time: number;
+  visual_description: string;
+  scene_type: string;
+  key_elements: string[];
+  editing_suggestions: string;
+}
+
+interface GeminiCutTrim {
+  start_time: number;
+  end_time: number;
+  reason: string;
+  priority: string;
+}
+
+interface GeminiHighlight {
+  start_time: number;
+  end_time: number;
+  description: string;
+  emphasis_type: string;
+  suggested_enhancement: string;
+}
+
+interface GeminiAnalysisData {
+  duration: number; // duration in seconds
+  chunks: GeminiChunk[];
+  overall_pacing_assessment: string;
+  recommended_cuts_or_trims: GeminiCutTrim[];
+  highlight_moments_worth_emphasizing: GeminiHighlight[];
+}
+
 interface AIAnalysisPanelProps {
   videoId: string;
   videoName: string;
@@ -55,9 +88,12 @@ interface AIAnalysisPanelProps {
 
 export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose }: AIAnalysisPanelProps) {
   const [analysisData, setAnalysisData] = useState<AIAnalysisData | null>(null);
+  const [geminiAnalysisData, setGeminiAnalysisData] = useState<GeminiAnalysisData | null>(null);
+  const [activeTab, setActiveTab] = useState<'claude' | 'gemini'>('gemini'); // Default to Gemini tab
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
+  const [selectedGeminiChunk, setSelectedGeminiChunk] = useState<number | null>(null);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [showReanalysisModal, setShowReanalysisModal] = useState(false);
   const [additionalContext, setAdditionalContext] = useState('');
@@ -93,10 +129,28 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
       const data = await response.json();
 
       if (data.has_analysis && data.analysis_data) {
-        setAnalysisData(data.analysis_data);
-        // Auto-select first scene if available
-        if (data.analysis_data.sceneAnalysis && data.analysis_data.sceneAnalysis.length > 0) {
-          setSelectedScene(0);
+        // Check if we have Claude analysis (old format)
+        if (data.analysis_data.sceneAnalysis) {
+          setAnalysisData(data.analysis_data);
+          if (data.analysis_data.sceneAnalysis.length > 0) {
+            setSelectedScene(0);
+          }
+        }
+        
+        // Check if we have Gemini analysis (new format) from video_analysis column
+        if (data.analysis_data.chunks || data.video_analysis) {
+          const geminiData = data.analysis_data.chunks ? data.analysis_data : data.video_analysis;
+          setGeminiAnalysisData(geminiData);
+          if (geminiData.chunks && geminiData.chunks.length > 0) {
+            setSelectedGeminiChunk(0);
+          }
+        }
+        
+        // Set default tab based on available data
+        if (data.analysis_data.chunks || data.video_analysis) {
+          setActiveTab('gemini');
+        } else if (data.analysis_data.sceneAnalysis) {
+          setActiveTab('claude');
         }
       } else {
         setError('No analysis data available for this video');
@@ -168,11 +222,48 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
     videoElement.addEventListener('timeupdate', handleTimeUpdate);
   };
 
+  const playGeminiChunk = (chunkIndex: number) => {
+    if (!videoElement || !geminiAnalysisData) return;
+    
+    const chunk = geminiAnalysisData.chunks[chunkIndex];
+    
+    // Convert minutes to seconds
+    const startTimeSeconds = chunk.start_time * 60;
+    const endTimeSeconds = chunk.end_time * 60;
+    
+    videoElement.currentTime = startTimeSeconds;
+    videoElement.play();
+    
+    // Stop at end time
+    const handleTimeUpdate = () => {
+      if (videoElement.currentTime >= endTimeSeconds) {
+        videoElement.pause();
+        videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+      }
+    };
+    
+    videoElement.addEventListener('timeupdate', handleTimeUpdate);
+  };
+
+  // Format time from minutes to display format
+  const formatMinutesToTime = (minutes: number) => {
+    const totalSeconds = Math.round(minutes * 60);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   useEffect(() => {
-    if (selectedScene !== null && videoElement && analysisData) {
+    if (selectedScene !== null && videoElement && analysisData && activeTab === 'claude') {
       playScene(selectedScene);
     }
-  }, [selectedScene, videoElement, analysisData]);
+  }, [selectedScene, videoElement, analysisData, activeTab]);
+
+  useEffect(() => {
+    if (selectedGeminiChunk !== null && videoElement && geminiAnalysisData && activeTab === 'gemini') {
+      playGeminiChunk(selectedGeminiChunk);
+    }
+  }, [selectedGeminiChunk, videoElement, geminiAnalysisData, activeTab]);
 
   // Polling mechanism for re-analysis status
   useEffect(() => {
@@ -279,52 +370,82 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] mx-4 flex flex-col">
+    <div className="fixed inset-0 bg-gray-900 z-50 flex flex-col">
+      <div className="bg-gray-800 shadow-xl w-full h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-600">
-          <div>
-            <h2 className="text-xl font-bold text-white">AI Analysis</h2>
-            <p className="text-gray-400 text-sm truncate max-w-md">{videoName}</p>
-            {reanalysisStatus === 'polling' && (
-              <div className="flex items-center mt-2 text-sm text-blue-400">
-                <svg className="w-4 h-4 animate-spin mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                </svg>
-                Re-analyzing with AI... ({pollCount * 5}s)
-              </div>
-            )}
-          </div>
-          <div className="flex items-center space-x-3">
-            {/* Re-analysis Button */}
-            {analysisData && !isReanalyzing && (
+        <div className="border-b border-gray-600">
+          <div className="flex items-center justify-between p-6 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-white">AI Analysis</h2>
+              <p className="text-gray-400 text-sm truncate max-w-md">{videoName}</p>
+              {reanalysisStatus === 'polling' && (
+                <div className="flex items-center mt-2 text-sm text-blue-400">
+                  <svg className="w-4 h-4 animate-spin mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
+                  Re-analyzing with AI... ({pollCount * 5}s)
+                </div>
+              )}
+            </div>
+            <div className="flex items-center space-x-3">
+              {/* Re-analysis Button */}
+              {analysisData && !isReanalyzing && activeTab === 'claude' && (
+                <button
+                  onClick={() => setShowReanalysisModal(true)}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
+                  <span>Re-analyze with AI</span>
+                </button>
+              )}
+              
               <button
-                onClick={() => setShowReanalysisModal(true)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center space-x-2"
+                onClick={() => {
+                  resetReanalysisState();
+                  onClose();
+                }}
+                className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
-                <span>Re-analyze with AI</span>
+              </button>
+            </div>
+          </div>
+          
+          {/* Tabs */}
+          <div className="flex border-b border-gray-600">
+            {geminiAnalysisData && (
+              <button
+                onClick={() => setActiveTab('gemini')}
+                className={`px-6 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'gemini'
+                    ? 'text-purple-400 border-b-2 border-purple-400 bg-gray-700/50'
+                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+                }`}
+              >
+                🎥 Video Analysis
               </button>
             )}
-            
-            <button
-              onClick={() => {
-                resetReanalysisState();
-                onClose();
-              }}
-              className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
+            {analysisData && (
+              <button
+                onClick={() => setActiveTab('claude')}
+                className={`px-6 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'claude'
+                    ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-700/50'
+                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+                }`}
+              >
+                📝 Script Analysis
+              </button>
+            )}
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-scroll">
+        <div className="flex-1 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -345,7 +466,194 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
                 </button>
               </div>
             </div>
-          ) : analysisData ? (
+          ) : (analysisData || geminiAnalysisData) ? (
+            activeTab === 'gemini' && geminiAnalysisData ? (
+              <div className="h-full overflow-y-auto">
+                {/* Full Screen Gemini Analysis Layout */}
+                <div className="max-w-7xl mx-auto p-8 space-y-8">
+                  {/* Video Overview Section */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                    <div className="bg-gray-700/50 rounded-xl p-6">
+                      <h3 className="text-xl font-semibold text-white mb-4">Video Overview</h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-sm font-medium text-gray-300">Duration</label>
+                          <div className="text-2xl font-bold text-white">
+                            {formatMinutesToTime(geminiAnalysisData.duration / 60)}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium text-gray-300">Total Chunks</label>
+                          <div className="text-2xl font-bold text-purple-400">
+                            {geminiAnalysisData.chunks.length}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-700/50 rounded-xl p-6">
+                      <h3 className="text-xl font-semibold text-white mb-4">Pacing Assessment</h3>
+                      <p className="text-gray-300 text-sm leading-relaxed">
+                        {geminiAnalysisData.overall_pacing_assessment}
+                      </p>
+                    </div>
+
+                    {videoSrc && (
+                      <div className="bg-gray-700/50 rounded-xl p-6">
+                        <h3 className="text-xl font-semibold text-white mb-4">Video Player</h3>
+                        <video
+                          ref={setVideoElement}
+                          src={videoSrc}
+                          controls
+                          className="w-full rounded-lg shadow-lg"
+                          style={{ maxHeight: '200px' }}
+                        />
+                        {selectedGeminiChunk !== null && geminiAnalysisData && (
+                          <div className="mt-3 text-center">
+                            <button
+                              onClick={() => playGeminiChunk(selectedGeminiChunk)}
+                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm font-medium"
+                            >
+                              ▶ Play Chunk {selectedGeminiChunk + 1}
+                            </button>
+                            <div className="text-xs text-gray-400 mt-2">
+                              {formatMinutesToTime(geminiAnalysisData.chunks[selectedGeminiChunk].start_time)} - {formatMinutesToTime(geminiAnalysisData.chunks[selectedGeminiChunk].end_time)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Main Content Grid */}
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    {/* Left Column - Recommended Cuts */}
+                    <div className="space-y-8">
+                      {geminiAnalysisData.recommended_cuts_or_trims && geminiAnalysisData.recommended_cuts_or_trims.length > 0 && (
+                        <div className="bg-gray-700/30 rounded-xl p-6">
+                          <h3 className="text-2xl font-bold text-white mb-6">Recommended Cuts ({geminiAnalysisData.recommended_cuts_or_trims.length})</h3>
+                          <div className="space-y-4 max-h-96 overflow-y-auto">
+                            {geminiAnalysisData.recommended_cuts_or_trims.map((cut, index) => (
+                              <div key={index} className="bg-red-900/20 border border-red-600/30 rounded-lg p-4 hover:bg-red-900/30 transition-colors">
+                                <div className="flex justify-between items-start mb-3">
+                                  <div className="text-base text-red-400 font-semibold">
+                                    {formatMinutesToTime(cut.start_time)} - {formatMinutesToTime(cut.end_time)}
+                                  </div>
+                                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                    cut.priority === 'high' ? 'bg-red-600 text-white' :
+                                    cut.priority === 'medium' ? 'bg-yellow-600 text-white' :
+                                    'bg-gray-600 text-white'
+                                  }`}>
+                                    {cut.priority}
+                                  </span>
+                                </div>
+                                <p className="text-gray-300 leading-relaxed">
+                                  {cut.reason}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column - Highlight Moments */}
+                    <div className="space-y-8">
+                      {geminiAnalysisData.highlight_moments_worth_emphasizing && geminiAnalysisData.highlight_moments_worth_emphasizing.length > 0 && (
+                        <div className="bg-gray-700/30 rounded-xl p-6">
+                          <h3 className="text-2xl font-bold text-white mb-6">Highlight Moments ({geminiAnalysisData.highlight_moments_worth_emphasizing.length})</h3>
+                          <div className="space-y-4 max-h-96 overflow-y-auto">
+                            {geminiAnalysisData.highlight_moments_worth_emphasizing.map((highlight, index) => (
+                              <div key={index} className="bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-4 hover:bg-yellow-900/30 transition-colors">
+                                <div className="flex justify-between items-start mb-3">
+                                  <div className="text-base text-yellow-400 font-semibold">
+                                    {formatMinutesToTime(highlight.start_time)} - {formatMinutesToTime(highlight.end_time)}
+                                  </div>
+                                  <span className="px-3 py-1 bg-yellow-600 text-white rounded-full text-sm font-medium capitalize">
+                                    {highlight.emphasis_type.replace(/_/g, ' ')}
+                                  </span>
+                                </div>
+                                <p className="text-gray-300 leading-relaxed mb-3">
+                                  {highlight.description}
+                                </p>
+                                <div className="text-sm text-yellow-300 bg-yellow-900/20 rounded-lg p-3">
+                                  <strong>Enhancement:</strong> {highlight.suggested_enhancement}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Video Chunks Section */}
+                  <div className="bg-gray-700/30 rounded-xl p-6 mt-8">
+                    <h3 className="text-2xl font-bold text-white mb-6">Video Chunks ({geminiAnalysisData.chunks.length})</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {geminiAnalysisData.chunks.map((chunk, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setSelectedGeminiChunk(index)}
+                          className={`text-left p-4 rounded-lg transition-all hover:scale-[1.02] ${
+                            selectedGeminiChunk === index 
+                              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25' 
+                              : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                          }`}
+                        >
+                          <div className="text-sm font-semibold mb-2">
+                            {formatMinutesToTime(chunk.start_time)} - {formatMinutesToTime(chunk.end_time)}
+                          </div>
+                          <div className="text-xs opacity-75 capitalize mb-2">
+                            {chunk.scene_type}
+                          </div>
+                          <div className="text-xs opacity-60 line-clamp-2">
+                            {chunk.visual_description}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Selected Chunk Detail */}
+                  {selectedGeminiChunk !== null && geminiAnalysisData.chunks[selectedGeminiChunk] && (
+                    <div className="bg-gray-700/30 rounded-xl p-6 mt-8">
+                      <h3 className="text-2xl font-bold text-white mb-6">
+                        Chunk {selectedGeminiChunk + 1} Details
+                      </h3>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div>
+                          <div className="mb-6">
+                            <h4 className="text-lg font-semibold text-white mb-3">Visual Description</h4>
+                            <p className="text-gray-300 leading-relaxed bg-gray-800/50 rounded-lg p-4">
+                              {geminiAnalysisData.chunks[selectedGeminiChunk].visual_description}
+                            </p>
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-semibold text-white mb-3">Key Elements</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {geminiAnalysisData.chunks[selectedGeminiChunk].key_elements.map((element, i) => (
+                                <span key={i} className="px-3 py-1 bg-blue-600 text-white text-sm rounded-full">
+                                  {element}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-lg font-semibold text-white mb-3">Editing Suggestions</h4>
+                          <div className="bg-gray-800/50 rounded-lg p-4">
+                            <p className="text-gray-300 leading-relaxed">
+                              {geminiAnalysisData.chunks[selectedGeminiChunk].editing_suggestions}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
             <div className="flex h-full">
               {/* Left sidebar - Overall Metrics */}
               <div className="w-80 bg-gray-750 border-r border-gray-600 p-6 overflow-y-auto flex-shrink-0">
@@ -634,7 +942,17 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
                 </div>
               </div>
             </div>
-          ) : null}
+          )) : (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <svg className="w-16 h-16 text-gray-500 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 2v10h8V6H6z" clipRule="evenodd" />
+                </svg>
+                <p className="text-gray-400">No analysis available yet</p>
+                <p className="text-gray-500 text-sm mt-2">Upload and analyze your video to see insights</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTimeline } from './TimelineContext';
-import { executeAITool, getTimelineSummary } from '../../lib/timeline-ai-tools';
+import { executeAITool, getTimelineSummary, findContentHooksFromCache, CachedVideoContent } from '../../lib/timeline-ai-tools';
 import { useAuthContext } from '../AuthProvider';
 import { VideoClipPreview } from './VideoClipPreview';
 import { MediaType } from '../../../types/timeline';
@@ -28,6 +28,7 @@ interface ChatMessage {
   clips?: ContentClip[];
 }
 
+
 interface AIChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -41,16 +42,115 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
     {
       id: '1',
       role: 'assistant',
-      content: '🎬 Welcome to AI Content Discovery!\n\nI can search your entire video library and help edit your timeline. Try these:\n\n📹 CONTENT DISCOVERY:\n• "Show me my best hooks"\n• "Find content about [topic]"\n• "What\'s my most engaging content?"\n• "I need a good intro"\n\n✂️ TIMELINE EDITING:\n• "Remove silences from first video"\n• "Add text overlay"\n• "Cut out filler words"\n\nJust tell me what you\'re looking for!',
+      content: '🎬 Welcome to AI Content Discovery!\n\nI\'m loading your analyzed videos and will search them instantly! Try these:\n\n📹 CONTENT DISCOVERY:\n• "Show me my best hooks"\n• "Find content about [topic]"\n• "What\'s my most engaging content?"\n• "I need a good intro"\n\n✂️ TIMELINE EDITING:\n• "Remove silences from first video"\n• "Add text overlay"\n• "Cut out filler words"\n\nContent search is lightning fast once loaded! ⚡',
       timestamp: new Date(),
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [contentCache, setContentCache] = useState<CachedVideoContent[]>([]);
+  const [cacheLoading, setCacheLoading] = useState(false);
+  const [cacheLoaded, setCacheLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Load content cache when chat panel opens
+  const loadContentCache = async () => {
+    if (!session?.access_token || !projectId || cacheLoaded) return;
+
+    setCacheLoading(true);
+    try {
+      console.log('📦 Loading content cache for project:', projectId);
+
+      // Query videos with analysis data for this project
+      const response = await fetch(`/api/videos?project_id=${projectId}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const videos = result.videos || [];
+
+      console.log(`📊 Found ${videos.length} videos for project`);
+
+      // Get video IDs for analysis query
+      const videoIds = videos.map((video: any) => video.id);
+      
+      if (videoIds.length === 0) {
+        setContentCache([]);
+        setCacheLoaded(true);
+        console.log('📦 No videos found for project');
+        return;
+      }
+
+      // Separate query to get analysis data for all videos
+      const analysisResponse = await fetch(`/api/videos/analysis-bulk?video_ids=${videoIds.join(',')}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!analysisResponse.ok) {
+        throw new Error(`Failed to fetch analysis data: ${analysisResponse.statusText}`);
+      }
+
+      const analysisResult = await analysisResponse.json();
+      const analysisData = analysisResult.analyses || [];
+
+      console.log(`📊 Found ${analysisData.length} completed analyses`);
+
+      // Build content cache by combining video and analysis data
+      const cache: CachedVideoContent[] = [];
+      
+      videos.forEach((video: any) => {
+        // Find corresponding analysis data
+        const analysis = analysisData.find((a: any) => a.video_id === video.id);
+        
+        if (analysis && analysis.status === 'completed' && analysis.transcription) {
+          // Extract full transcript from utterances if text field is not available
+          const utterances = analysis.transcription?.utterances || [];
+          const fullTranscript = analysis.transcription?.text || 
+                                utterances.map((u: any) => u.text).join(' ');
+          
+          if (fullTranscript) {
+            cache.push({
+              id: video.id,
+              name: video.original_name,
+              filePath: video.file_path,
+              transcript: fullTranscript,
+              llmAnalysis: analysis.llm_response,
+              videoAnalysis: analysis.video_analysis,
+              createdAt: video.created_at,
+            });
+          }
+        }
+      });
+
+      console.log(`✅ ${cache.length} videos with completed analysis and transcripts`);
+
+      setContentCache(cache);
+      setCacheLoaded(true);
+      console.log(`🎯 Content cache loaded with ${cache.length} analyzed videos`);
+
+    } catch (error) {
+      console.error('❌ Error loading content cache:', error);
+    } finally {
+      setCacheLoading(false);
+    }
+  };
+
+  // Client-side content search function using LLM analysis
+  const searchCachedContent = async (query: string, topicFilter?: string): Promise<ContentClip[]> => {
+    const result = await findContentHooksFromCache(contentCache, query, topicFilter);
+    return result.clips || [];
   };
 
   const handleAddToTimeline = (clip: ContentClip) => {
@@ -97,6 +197,13 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load content cache when chat panel opens
+  useEffect(() => {
+    if (isOpen && !cacheLoaded && !cacheLoading) {
+      loadContentCache();
+    }
+  }, [isOpen, projectId, session?.access_token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,8 +252,39 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
       const result = await response.json();
 
       if (result.action === 'executeTool') {
-        // Execute the tool locally (now async)
-        const toolResult = await executeAITool(result.tool, result.args, state, user?.id);
+        let toolResult;
+
+        // Check if it's a content hooks request - use cached content instead of server query
+        if (result.tool === 'findContentHooks') {
+          console.log('🎯 Using cached content for findContentHooks');
+          console.log('📝 Original user query:', userMessage.content);
+          console.log('🔍 Simplified tool query:', result.args.query);
+          
+          if (contentCache.length === 0) {
+            toolResult = {
+              success: false,
+              message: cacheLoading 
+                ? '📦 Content is still loading... Please wait a moment and try again.'
+                : '📦 No analyzed videos found in this project. Upload and analyze videos first.',
+            };
+          } else {
+            // Use the original user message instead of the simplified query for better analysis
+            const clips = await searchCachedContent(userMessage.content, result.args.topicFilter as string);
+            toolResult = {
+              success: true,
+              message: clips.length > 0 
+                ? `🎬 Found ${clips.length} content matches in your project videos!`
+                : '🔍 No matches found. Try different keywords or topics.',
+              action: clips.length > 0 ? {
+                type: 'SHOW_CONTENT_CLIPS',
+                payload: { clips }
+              } : undefined
+            };
+          }
+        } else {
+          // Execute other tools normally
+          toolResult = await executeAITool(result.tool, result.args, state, user?.id, projectId);
+        }
         
         if (toolResult.success && toolResult.action) {
           // Apply the action to the timeline
@@ -221,6 +359,19 @@ export function AIChatPanel({ isOpen, onClose, projectId }: AIChatPanelProps) {
         <div className="flex items-center space-x-2">
           <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
           <h2 className="text-lg font-semibold text-white">AI Content Discovery</h2>
+          {/* Cache Status Indicator */}
+          {cacheLoading && (
+            <div className="flex items-center space-x-1 text-xs text-blue-400">
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+              <span>Loading content...</span>
+            </div>
+          )}
+          {cacheLoaded && (
+            <div className="flex items-center space-x-1 text-xs text-green-400">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              <span>{contentCache.length} videos ready</span>
+            </div>
+          )}
         </div>
         <button
           onClick={onClose}

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { aiService } from '@/lib/ai-service';
 
 export async function POST(request: NextRequest) {
   try {
-    const { videos, query, topicFilter, userId } = await request.json();
+    const { videos, query, topicFilter, userId, analysisType } = await request.json();
 
     if (!videos || videos.length === 0) {
       return NextResponse.json({
@@ -11,8 +12,24 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create comprehensive prompt for multi-video content analysis
-    const analysisPrompt = `
+    // Create appropriate prompt based on analysis type
+    const isCachedSearch = analysisType === 'cached_content_search';
+    
+    const basePrompt = isCachedSearch ? `
+You are an expert video editor helping find specific clips from analyzed videos. The user has a CACHED LIBRARY of analyzed videos and wants precise clips with exact timestamps.
+
+USER REQUEST: "${query}"
+${topicFilter ? `TOPIC FILTER: "${topicFilter}"` : ''}
+
+ANALYZED VIDEO LIBRARY (${videos.length} videos):
+${videos.map((video: any, index: number) => `
+📹 VIDEO ${index + 1}: "${video.videoName}"
+📝 FULL TRANSCRIPT: ${video.transcript}
+🧠 LLM ANALYSIS: ${video.llmAnalysis ? JSON.stringify(video.llmAnalysis, null, 2) : 'No LLM analysis'}
+🎬 VIDEO ANALYSIS: ${video.videoAnalysis ? JSON.stringify(video.videoAnalysis, null, 2) : 'No visual analysis'}
+⏰ CREATED: ${video.createdAt}
+---
+`).join('\n')}` : `
 You are a world-class video editor and content strategist. Analyze this user's entire video library to find the BEST moments based on their query.
 
 USER QUERY: "${query}"
@@ -26,8 +43,44 @@ DETAILED UTTERANCES: ${JSON.stringify(video.utterances?.slice(0, 20) || [], null
 VIDEO ANALYSIS: ${video.videoAnalysis || 'No visual analysis'}
 LLM ANALYSIS: ${video.finalAnalysis || 'No LLM analysis'}
 ---
-`).join('\n')}
+`).join('\n')}`;
 
+    const taskPrompt = isCachedSearch ? `
+TASK: Find the EXACT clips the user requested: "${query}"
+
+SPECIAL INSTRUCTIONS FOR CACHED SEARCH:
+1. **Be VERY SPECIFIC** to the user's request - if they ask for "2 best hooks about 4 to 7 seconds", find exactly that
+2. **Use transcript text** to identify the best segments that match the request
+3. **Duration Precision**: If they specify duration (like "4 to 7 seconds"), find clips in that range
+4. **Quality over Quantity**: Return only the BEST matches, not filler content
+5. **Exact Timestamps**: Estimate timestamps based on transcript analysis (assume average speaking pace of ~150 words/minute)
+
+For the request "${query}":
+- Identify the TYPE of content requested (hook, intro, conclusion, etc.)
+- Find segments that match the specified duration if mentioned
+- Look for high-energy, engaging moments that would work well for the requested purpose
+- Prioritize content with strong opening lines, questions, surprising statements, or valuable insights
+
+RESPONSE FORMAT - Return ONLY this JSON structure:
+{
+  "success": true,
+  "clips": [
+    {
+      "id": "video_id_timestamp",
+      "name": "Descriptive clip name",
+      "type": "hook|intro|main_point|conclusion|transition|highlight",
+      "startTime": 0.0,
+      "endTime": 6.5,
+      "confidence": 0.95,
+      "reason": "Why this clip is perfect for the user's request",
+      "transcript": "Exact words from this time segment",
+      "videoName": "Original video name",
+      "videoId": "video_id_here"
+    }
+  ]
+}
+
+Find the clips now:` : `
 TASK: Based on the user's query "${query}", analyze ALL videos and find the most compelling moments. Consider:
 
 1. **Cross-Video Comparison**: Rank moments across ALL videos, not just within individual videos
@@ -81,35 +134,23 @@ IMPORTANT REQUIREMENTS:
 
 Analyze the content now and return ONLY the JSON response:`;
 
-    // Call Claude API for comprehensive content analysis
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': process.env.ANTHROPIC_API_KEY!,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 3000,
-        temperature: 0.3,
-        messages: [
-          {
-            role: 'user',
-            content: analysisPrompt
-          }
-        ]
-      })
-    });
+    const analysisPrompt = basePrompt + '\n\n' + taskPrompt;
 
-    if (!response.ok) {
-      throw new Error(`Claude API error: ${response.statusText}`);
-    }
+    console.log('🤖 Using AI Service provider:', aiService.getCurrentProvider());
+    console.log('📝 Analyzing content with prompt length:', analysisPrompt.length);
 
-    const result = await response.json();
-    const analysisText = result.content[0].text;
+    // Use the configured AI service (OpenAI)
+    const analysisText = await aiService.complete(
+      analysisPrompt,
+      undefined, // no system prompt needed since it's in the user prompt
+      {
+        model: 'gpt-4o', // Use GPT-4o for best results
+        max_tokens: 4000,
+        temperature: 0.3
+      }
+    );
 
-    // Parse the JSON response from Claude
+    // Parse the JSON response from OpenAI
     let parsedAnalysis;
     try {
       // Extract JSON from the response (in case there's extra text)
@@ -142,7 +183,14 @@ Analyze the content now and return ONLY the JSON response:`;
 
     console.log(`✅ Found ${parsedAnalysis.clips?.length || 0} clips across ${videos.length} videos for query: "${query}"`);
 
-    return NextResponse.json(parsedAnalysis);
+    // Ensure consistent response format
+    const response = {
+      success: true,
+      clips: parsedAnalysis.clips || [],
+      ...parsedAnalysis
+    };
+
+    return NextResponse.json(response);
 
   } catch (error) {
     console.error('Content library analysis error:', error);

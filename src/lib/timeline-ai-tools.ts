@@ -306,122 +306,102 @@ export interface ContentStructureResult {
   }>;
 }
 
-// Find the best hook/highlight moments across ALL user videos
-export async function findContentHooks(
-  userId: string,
+// Cached video content type for client-side operations
+export interface CachedVideoContent {
+  id: string;
+  name: string;
+  filePath: string;
+  transcript: string;
+  llmAnalysis: any;
+  videoAnalysis: any;
+  createdAt: string;
+}
+
+// Find the best hook/highlight moments within cached content using LLM analysis
+export async function findContentHooksFromCache(
+  cachedContent: CachedVideoContent[],
   query: string = "best hook",
   topicFilter?: string
 ): Promise<ContentStructureResult> {
   try {
-    // Get Supabase client
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
-    // Get ALL user videos across all their projects
-    const { data: userVideos, error: videosError } = await supabase
-      .from('videos')
-      .select(`
-        id,
-        original_name,
-        file_path,
-        created_at,
-        projects!inner(user_id)
-      `)
-      .eq('projects.user_id', userId)
-      .eq('status', 'processed');
-
-    if (videosError) {
-      throw new Error(`Failed to fetch videos: ${videosError.message}`);
-    }
-
-    if (!userVideos || userVideos.length === 0) {
+    if (!cachedContent || cachedContent.length === 0) {
       return {
         success: false,
-        message: "No processed videos found. Please upload and wait for analysis to complete.",
+        message: "No analyzed videos found in cache. Please wait for content to load.",
       };
     }
 
-    // Get video analysis data separately
-    const videoIds = userVideos.map(v => v.id);
-    const { data: analysisData, error: analysisError } = await supabase
-      .from('video_analysis')
-      .select('video_id, transcription, video_analysis, llm_analysis, created_at')
-      .in('video_id', videoIds)
-      .not('transcription', 'is', null);
+    console.log(`🔍 Analyzing ${cachedContent.length} cached videos with LLM for: "${query}"`);
 
-    if (analysisError) {
-      throw new Error(`Failed to fetch analysis data: ${analysisError.message}`);
-    }
+    // Prepare content library for LLM analysis
+    const contentLibrary = cachedContent.map(video => ({
+      videoId: video.id,
+      videoName: video.name,
+      videoUrl: video.filePath,
+      transcript: video.transcript,
+      llmAnalysis: video.llmAnalysis,
+      videoAnalysis: video.videoAnalysis,
+      createdAt: video.createdAt
+    }));
 
-    if (!analysisData || analysisData.length === 0) {
-      return {
-        success: false,
-        message: "No analyzed videos found. Please upload and wait for analysis to complete.",
-      };
-    }
-
-    console.log(`🔍 Searching through ${analysisData.length} analyzed videos for: "${query}"`);
-
-    // Prepare data for batch analysis by combining video and analysis data
-    const videosForAnalysis = analysisData.map(analysis => {
-      const video = userVideos.find(v => v.id === analysis.video_id);
-      if (!video) return null;
-
-      const utterances = analysis.transcription?.utterances || [];
-      const fullTranscript = utterances.map((u: any) => u.text).join(' ');
-      
-      return {
-        videoId: video.id,
-        videoName: video.original_name,
-        videoUrl: video.file_path,
-        transcript: fullTranscript,
-        utterances: utterances,
-        videoAnalysis: analysis.video_analysis,
-        finalAnalysis: analysis.llm_analysis,
-        createdAt: video.created_at
-      };
-    }).filter(v => v !== null && v.transcript.length > 0); // Only include videos with transcripts
-
-    if (videosForAnalysis.length === 0) {
-      return {
-        success: false,
-        message: "No videos with transcripts found. Please wait for analysis to complete.",
-      };
-    }
-
-    // Use Claude to analyze all content at once for better cross-video insights
+    // Send to LLM for intelligent content analysis
     const response = await fetch('/api/ai/analyze-content-library', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        videos: videosForAnalysis,
+        videos: contentLibrary,
         query: query,
         topicFilter: topicFilter,
-        userId: userId
+        analysisType: 'cached_content_search'
       })
     });
 
     if (!response.ok) {
-      throw new Error(`Content library analysis failed: ${response.statusText}`);
+      throw new Error(`LLM content analysis failed: ${response.statusText}`);
     }
 
     const result = await response.json();
     
+    if (!result.success) {
+      return {
+        success: false,
+        message: result.message || 'Failed to analyze content with LLM',
+      };
+    }
+
+    console.log(`🎯 LLM found ${result.clips?.length || 0} compelling moments`);
+    
     return {
       success: true,
-      message: `Found ${result.clips?.length || 0} compelling moments across ${videosForAnalysis.length} videos`,
+      message: result.clips && result.clips.length > 0 
+        ? `Found ${result.clips.length} ${query.includes('hook') ? 'hooks' : 'clips'} matching your request`
+        : 'No suitable clips found. Try adjusting your search criteria.',
       clips: result.clips || []
     };
   } catch (error) {
+    console.error('Error in LLM content analysis:', error);
     return {
       success: false,
-      message: `Failed to analyze content library: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      message: `Failed to analyze content: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
   }
+}
+
+// Original function for server-side use (keeping for backwards compatibility)
+export async function findContentHooks(
+  userId: string,
+  query: string = "best hook",
+  topicFilter?: string,
+  projectId?: string
+): Promise<ContentStructureResult> {
+  // This function is now deprecated in favor of client-side caching
+  // Return a message indicating to use the cached version
+  return {
+    success: false,
+    message: "Please use the cached content search instead. This server-side function is deprecated.",
+  };
 }
 
 // Remove silences and unwanted audio from video clips
@@ -646,7 +626,7 @@ export const AI_TOOLS = [
     type: "function" as const,
     function: {
       name: "findContentHooks",
-      description: "Search through ALL user videos to find the best hooks, highlights, or key moments. This searches the entire content library, not just timeline clips.",
+      description: "Search through analyzed videos in the current project to find the best hooks, highlights, or key moments. This searches the project's video library, not just timeline clips.",
       parameters: {
         type: "object",
         properties: {
@@ -670,7 +650,8 @@ export async function executeAITool(
   toolName: string,
   args: Record<string, unknown>,
   state: TimelineState,
-  userId?: string
+  userId?: string,
+  projectId?: string
 ): Promise<AIToolResult> {
   switch (toolName) {
     case 'addTextLayer':
@@ -692,22 +673,11 @@ export async function executeAITool(
         args.specificWords as string[]
       );
     case 'findContentHooks':
-      if (!userId) {
-        return {
-          success: false,
-          message: 'User ID required for content library search',
-        };
-      }
-      const result = await findContentHooks(userId, args.query as string, args.topicFilter as string);
+      // This should now be handled client-side with cached content
+      // The AIChatPanel intercepts this call and uses findContentHooksFromCache instead
       return {
-        success: result.success,
-        message: result.message,
-        action: result.success ? {
-          type: 'SHOW_CONTENT_CLIPS',
-          payload: {
-            clips: result.clips
-          }
-        } : undefined
+        success: false,
+        message: 'Content search is now handled client-side with cached content. This should not be called server-side.',
       };
     default:
       return {

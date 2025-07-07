@@ -31,8 +31,8 @@ Current timeline status: ${timelineSummary}
 You have access to powerful tools including:
 
 🎬 CONTENT DISCOVERY TOOLS:
-- findContentHooks: Search through ALL user videos to find hooks, highlights, key moments
-- This searches their entire content library, not just timeline clips
+- findContentHooks: Search through analyzed videos in the current project to find hooks, highlights, key moments
+- This searches the project's video library, not just timeline clips
 - Perfect for: "Show me my best hooks", "Find content about marketing", "What's my most engaging content?"
 
 🎥 TIMELINE EDITING TOOLS:
@@ -61,7 +61,7 @@ CONTENT DISCOVERY WORKFLOW:
 4. User can preview specific moments and add them to their project
 
 Guidelines:
-- Content discovery searches ALL user videos, not just timeline
+- Content discovery searches project videos that have been analyzed, not just timeline
 - Clip indices for timeline editing are 0-based (first clip = 0)
 - Durations are in seconds
 - Video analysis must be complete for content search to work

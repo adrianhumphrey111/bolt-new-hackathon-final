@@ -34,7 +34,7 @@ export async function GET(
     // Get analysis data - get the most recent completed analysis
     const { data: analysis, error: analysisError } = await supabase
       .from('video_analysis')
-      .select('llm_response, status, processing_started_at, processing_completed_at')
+      .select('llm_response, video_analysis, status, processing_started_at, processing_completed_at')
       .eq('video_id', videoId)
       .eq('status', 'completed')
       .order('processing_completed_at', { ascending: false })
@@ -56,11 +56,12 @@ export async function GET(
     return NextResponse.json({
       video_id: videoId,
       video_name: video.original_name,
-      has_analysis: !!analysis.llm_response,
+      has_analysis: !!(analysis.llm_response || analysis.video_analysis),
       status: analysis.status,
       processing_started_at: analysis.processing_started_at,
       processing_completed_at: analysis.processing_completed_at,
-      analysis_data: analysis.llm_response
+      analysis_data: analysis.llm_response,
+      video_analysis: analysis.video_analysis
     });
 
   } catch (error) {

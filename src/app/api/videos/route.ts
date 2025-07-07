@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // Get videos for the project with analysis data
+    // Get videos for the project with basic analysis metadata
     const { data: videos, error: videosError } = await supabase
       .from('videos')
       .select('*, video_analysis(id, status, processing_started_at, processing_completed_at)')

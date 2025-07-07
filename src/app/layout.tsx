@@ -1,8 +1,6 @@
 import "../../styles/global.css";
 import { Metadata, Viewport } from "next";
 import { AuthProvider } from "../components/AuthProvider";
-import { AdminImpersonationPanel } from "../components/admin/AdminImpersonationPanel";
-import { AuthTokenHandler } from "../components/AuthTokenHandler";
 
 export const metadata: Metadata = {
   title: "Tailored Labs - AI Video Editor",
@@ -24,9 +22,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-background">
         <AuthProvider>
-          <AuthTokenHandler />
           {children}
-          <AdminImpersonationPanel />
         </AuthProvider>
       </body>
     </html>

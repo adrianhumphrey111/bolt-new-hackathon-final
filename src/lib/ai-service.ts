@@ -194,14 +194,20 @@ If you don't need to use any tools, just respond normally with text.`;
   private async callOpenAI(options: AICompletionOptions): Promise<AIResponse> {
     const openai = this.getOpenAI();
     
-    const completion = await openai.chat.completions.create({
+    const requestOptions: any = {
       model: options.model || 'gpt-4o',
       messages: options.messages,
       temperature: options.temperature || 0.1,
       max_tokens: options.max_tokens || 3000,
-      tools: options.tools,
-      tool_choice: options.tool_choice || 'auto',
-    });
+    };
+
+    // Only add tools and tool_choice if tools are provided
+    if (options.tools && options.tools.length > 0) {
+      requestOptions.tools = options.tools;
+      requestOptions.tool_choice = options.tool_choice || 'auto';
+    }
+    
+    const completion = await openai.chat.completions.create(requestOptions);
 
     const responseMessage = completion.choices[0].message;
     

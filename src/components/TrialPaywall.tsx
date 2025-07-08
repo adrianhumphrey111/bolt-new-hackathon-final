@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FaVideo, FaBolt, FaRocket, FaStar, FaCheck, FaClock, FaShield, FaCreditCard } from 'react-icons/fa';
+import { FaVideo, FaBolt, FaRocket, FaStar, FaCheck, FaClock, FaLock, FaCreditCard } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 
 interface TrialPaywallProps {
@@ -67,7 +67,7 @@ export default function TrialPaywall({ userEmail, onClose }: TrialPaywallProps) 
     { icon: <FaVideo className="w-5 h-5" />, text: "150 minutes of AI video generation", highlight: true },
     { icon: <FaRocket className="w-5 h-5" />, text: "4K exports without watermarks" },
     { icon: <FaStar className="w-5 h-5" />, text: "Advanced motion graphics & effects" },
-    { icon: <FaShield className="w-5 h-5" />, text: "Priority processing & support" },
+    { icon: <FaLock className="w-5 h-5" />, text: "Priority processing & support" },
   ];
 
   return (
@@ -158,7 +158,7 @@ export default function TrialPaywall({ userEmail, onClose }: TrialPaywallProps) 
                     </span>
                   </div>
                 </div>
-                <FaShield className="w-12 h-12 text-blue-400/20" />
+                <FaLock className="w-12 h-12 text-blue-400/20" />
               </div>
               
               <div className="space-y-2 text-sm text-gray-300">
@@ -212,7 +212,7 @@ export default function TrialPaywall({ userEmail, onClose }: TrialPaywallProps) 
           <div className="border-t border-gray-800 px-8 py-4 bg-gray-900/50">
             <div className="flex items-center justify-center space-x-6 text-xs text-gray-400">
               <div className="flex items-center space-x-1">
-                <FaShield className="w-3 h-3" />
+                <FaLock className="w-3 h-3" />
                 <span>256-bit SSL</span>
               </div>
               <div className="flex items-center space-x-1">

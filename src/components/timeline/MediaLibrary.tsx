@@ -271,7 +271,8 @@ export function MediaLibrary() {
           id: video.id,
           name: video.original_name,
           file_path: video.file_path,
-          file_name: video.file_name
+          file_name: video.file_name,
+          video_analysis: video.video_analysis
         });
         
         if (video.file_path && video.file_path.startsWith('http')) {
@@ -296,9 +297,28 @@ export function MediaLibrary() {
           videoUrl = undefined;
         }
         
-        // Determine if video is still analyzing using the processing hook
-        const isAnalyzing = isVideoProcessing(video.id);
-        const processingInfo = getVideoProcessingInfo(video.id);
+        // Determine if video is still analyzing using the data from the API response
+        // The API joins with video_analysis table, so video.video_analysis is an array
+        const analysis = video.video_analysis?.[0]; // Get first analysis record
+        const isAnalyzing = !analysis || 
+          analysis.status === 'processing' || 
+          analysis.status === 'pending' ||
+          analysis.status === 'queued';
+        
+        console.log('🔍 Video analysis status:', {
+          videoId: video.id,
+          videoName: video.original_name,
+          analysis: analysis,
+          isAnalyzing: isAnalyzing
+        });
+        
+        // Use the analysis data directly instead of the hook
+        const processingInfo = isAnalyzing ? {
+          video: video,
+          analysis: analysis,
+          startTime: new Date(video.created_at),
+          elapsedSeconds: Math.floor((new Date().getTime() - new Date(video.created_at).getTime()) / 1000)
+        } : null;
 
         return {
           id: video.id,
@@ -323,7 +343,7 @@ export function MediaLibrary() {
       setLoading(false);
       fetchingRef.current = false;
     }
-  }, [projectId, supabase, state.fps, isVideoProcessing, getVideoProcessingInfo]); // Include necessary functions
+  }, [projectId, supabase, state.fps]); // Using analysis data directly from API instead of useVideoProcessing hook
 
   // Reset loaded state when projectId changes
   useEffect(() => {

@@ -138,8 +138,8 @@ export function SaveStatusIndicator() {
           onChange={(e) => actions.enableAutoSave(e.target.checked)}
           className="w-3 h-3"
         />
-        <label htmlFor="auto-save" className="cursor-pointer">
-          Auto-save
+        <label htmlFor="auto-save" className="cursor-pointer" title="Auto-saves every 2 minutes when changes are made">
+          Auto-save (2m)
         </label>
       </div>
     </div>

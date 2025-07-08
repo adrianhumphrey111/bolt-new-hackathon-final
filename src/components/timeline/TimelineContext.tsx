@@ -635,9 +635,7 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
   
   // Track last saved state hash to detect changes
   const lastSavedHash = useRef<string>('');
-  const lastMajorChangesHash = useRef<string>('');
   const isInitialized = useRef(false);
-  const lastAutoSaveTime = useRef<number>(0);
 
   // Save timeline function
   const saveTimeline = useCallback(async (status: 'draft' | 'manually_saved' = 'auto_saved') => {
@@ -653,9 +651,7 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
       const savedTimeline = await timelinePersistence.saveTimeline(projectId, saveRequest);
       
       const currentHash = getTimelineStateHash(state);
-      const currentMajorHash = getMajorChangesHash(state);
       lastSavedHash.current = currentHash;
-      lastMajorChangesHash.current = currentMajorHash;
       
       setPersistence(prev => ({
         ...prev,
@@ -696,9 +692,7 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
         dispatch({ type: 'LOAD_TIMELINE', timeline: timelineState });
         
         const currentHash = getTimelineStateHash({ ...state, ...timelineState } as TimelineState);
-        const currentMajorHash = getMajorChangesHash({ ...state, ...timelineState } as TimelineState);
         lastSavedHash.current = currentHash;
-        lastMajorChangesHash.current = currentMajorHash;
         
         setPersistence(prev => ({
           ...prev,
@@ -777,13 +771,13 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
     }
   }, [state]);
 
-  // Auto-save with debouncing
+  // Auto-save with debouncing - only save every 2 minutes
   const debouncedSave = useCallback(
     debounce(() => {
       if (autoSaveEnabled && projectId) {
         saveTimeline('auto_saved');
       }
-    }, 5000), // 5 second debounce
+    }, 120000), // 2 minute debounce
     [saveTimeline, autoSaveEnabled, projectId]
   );
 
@@ -796,26 +790,19 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
     }));
   }, []);
 
-  // Smart auto-save effect - only save for major changes or time-based
+  // Auto-save effect - only save when user makes changes (triggers 2-minute debounce)
   useEffect(() => {
     if (!isInitialized.current) return;
 
     const currentHash = getTimelineStateHash(state);
-    const currentMajorHash = getMajorChangesHash(state);
-    const now = Date.now();
-    
-    // Check if this is a major change (tracks, items, etc.)
-    const isMajorChange = currentMajorHash !== lastMajorChangesHash.current;
-    
-    // Check if enough time has passed for timed auto-save (5 seconds)
-    const shouldTimedSave = (now - lastAutoSaveTime.current) >= 5000 && currentHash !== lastSavedHash.current;
     
     if (currentHash !== lastSavedHash.current) {
       markUnsaved();
       
-      if (autoSaveEnabled && (isMajorChange || shouldTimedSave)) {
-        console.log(`Auto-saving: ${isMajorChange ? 'major change' : 'timed save'}`);
-        lastAutoSaveTime.current = now;
+      // Only trigger debounced save if auto-save is enabled
+      // This will wait 2 minutes before actually saving
+      if (autoSaveEnabled) {
+        console.log('Timeline changed - starting 2-minute auto-save timer');
         debouncedSave();
       }
     }

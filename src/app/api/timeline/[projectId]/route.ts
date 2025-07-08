@@ -174,7 +174,7 @@ export async function POST(
     // First, check if there's already an active timeline for this project
     const { data: existingTimeline, error: existingError } = await supabase
       .from('timeline_configurations')
-      .select('id')
+      .select('id, version')
       .eq('project_id', projectId)
       .eq('is_active', true)
       .maybeSingle();
@@ -203,7 +203,7 @@ export async function POST(
           title: title,
           updated_at: new Date().toISOString(),
           last_saved_at: new Date().toISOString(),
-          version: supabase.raw('version + 1') // Increment version
+          version: (existingTimeline.version || 1) + 1 // Increment version
         })
         .eq('id', existingTimeline.id)
         .select('id')

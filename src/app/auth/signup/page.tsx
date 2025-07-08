@@ -52,7 +52,8 @@ export default function Signup() {
       const result = await signUp(email.trim(), password);
 
       if (result.success) {
-        // Instead of showing message, show trial paywall
+        console.log('✅ Signup successful, user is authenticated');
+        // Show trial paywall immediately since user is now authenticated
         setSignupEmail(email.trim());
         setShowTrialPaywall(true);
       } else {

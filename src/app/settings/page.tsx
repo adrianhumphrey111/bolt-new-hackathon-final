@@ -127,17 +127,12 @@ function ProfileSection() {
   const handleSave = async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
       const response = await fetch('/api/user/profile', {
         method: 'PUT',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Use cookies for auth
         body: JSON.stringify(formData),
       });
 
@@ -239,21 +234,18 @@ function PaymentSection() {
     fetchPaymentMethods();
   }, []);
 
-  const getAuthHeaders = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const headers: Record<string, string> = {
+  const getAuthHeaders = () => {
+    return {
       'Content-Type': 'application/json',
     };
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`;
-    }
-    return headers;
   };
 
   const fetchPaymentMethods = async () => {
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch('/api/user/payment-methods', { headers });
+      const response = await fetch('/api/user/payment-methods', { 
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
       if (response.ok) {
         const methods = await response.json();
         setPaymentMethods(methods);
@@ -267,10 +259,10 @@ function PaymentSection() {
 
   const handleAddPayment = async () => {
     try {
-      const headers = await getAuthHeaders();
       const response = await fetch('/api/stripe/setup-intent', {
         method: 'POST',
-        headers
+        headers: getAuthHeaders(),
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -290,10 +282,10 @@ function PaymentSection() {
 
   const handleRemovePayment = async (id: string) => {
     try {
-      const headers = await getAuthHeaders();
       const response = await fetch('/api/user/payment-methods', {
         method: 'DELETE',
-        headers,
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({ paymentMethodId: id }),
       });
 
@@ -418,7 +410,9 @@ function SubscriptionSection() {
     plan: 'Free',
     tier: 'free',
     status: 'active',
-    nextBilling: null as string | null
+    nextBilling: null as string | null,
+    trialEndsAt: null as string | null,
+    isTrialing: false
   });
 
   useEffect(() => {
@@ -429,18 +423,11 @@ function SubscriptionSection() {
 
   const fetchSubscriptionData = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
 
       // Fetch user profile for subscription info
       const { data: profile } = await supabase
         .from('profiles')
-        .select('subscription_tier, subscription_status')
+        .select('subscription_tier, subscription_status, trial_ends_at, trial_started_at')
         .eq('id', user?.id)
         .single();
 
@@ -461,17 +448,22 @@ function SubscriptionSection() {
 
       if (profile) {
         console.log('🔍 Profile data:', profile);
+        const isTrialing = profile.subscription_status === 'trialing';
         const planName = profile.subscription_tier === 'free' ? 'Free' : 
                         profile.subscription_tier === 'creator' ? 'Creator' : 'Pro';
         setSubscription({
           plan: planName,
           tier: profile.subscription_tier || 'free',
           status: profile.subscription_status || 'active',
-          nextBilling: null // Would need to fetch from Stripe for paid users
+          nextBilling: null, // Would need to fetch from Stripe for paid users
+          trialEndsAt: profile.trial_ends_at,
+          isTrialing: isTrialing
         });
         console.log('🔍 Setting subscription to:', {
           plan: planName,
-          tier: profile.subscription_tier || 'free'
+          tier: profile.subscription_tier || 'free',
+          isTrialing: isTrialing,
+          trialEndsAt: profile.trial_ends_at
         });
       }
     } catch (error) {
@@ -545,18 +537,13 @@ function SubscriptionSection() {
     }
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
       // Get payment preview first
       const response = await fetch('/api/stripe/payment-preview', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
         body: JSON.stringify({ 
           planTier,
           billingPeriod,
@@ -608,18 +595,13 @@ function SubscriptionSection() {
 
   const handleBuyCredits = async (creditsAmount: number) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
       // Get payment preview first
       const response = await fetch('/api/stripe/payment-preview', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
         body: JSON.stringify({ 
           creditsAmount,
           promotionCode: validatedPromo ? promoCode : undefined
@@ -673,17 +655,12 @@ function SubscriptionSection() {
 
   const handleCancelSubscription = async (cancelImmediately: boolean) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
       const response = await fetch('/api/stripe/cancel-subscription', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
         body: JSON.stringify({ 
           cancelImmediately
         })
@@ -726,17 +703,12 @@ function SubscriptionSection() {
 
   const handleConfirmPayment = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
       const response = await fetch('/api/stripe/process-payment', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
         body: JSON.stringify({ 
           paymentInfo: pendingPaymentInfo
         })
@@ -779,7 +751,19 @@ function SubscriptionSection() {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-8">
         <div className="flex justify-between items-start">
           <div>
-            <h3 className="text-xl font-semibold text-blue-900">{subscription.plan} Plan</h3>
+            <div className="flex items-center gap-3 mb-2">
+              <h3 className="text-xl font-semibold text-blue-900">{subscription.plan} Plan</h3>
+              {subscription.isTrialing && (
+                <span className="px-3 py-1 bg-orange-100 text-orange-800 text-sm font-medium rounded-full">
+                  Trial
+                </span>
+              )}
+            </div>
+            {subscription.isTrialing && subscription.trialEndsAt && (
+              <p className="text-sm text-orange-600 mb-3">
+                Trial ends {new Date(subscription.trialEndsAt).toLocaleDateString()}
+              </p>
+            )}
             <div className="mt-4 space-y-2">
               <div className="flex items-center gap-4">
                 <span className="text-gray-600">Credits Remaining:</span>
@@ -802,8 +786,12 @@ function SubscriptionSection() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full text-center">
-              {subscription.status}
+            <span className={`px-3 py-1 text-sm rounded-full text-center ${
+              subscription.isTrialing 
+                ? 'bg-orange-100 text-orange-800' 
+                : 'bg-green-100 text-green-800'
+            }`}>
+              {subscription.isTrialing ? 'Trial Active' : subscription.status}
             </span>
             <div className="relative group">
               <button className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
@@ -1097,15 +1085,12 @@ function UsageSection() {
 
   const fetchUsage = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
-      const response = await fetch('/api/user/usage', { headers });
+      const response = await fetch('/api/user/usage', { 
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include'
+      });
       if (response.ok) {
         const usageData = await response.json();
         setUsage(usageData);

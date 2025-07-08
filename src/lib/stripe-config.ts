@@ -1,5 +1,5 @@
 // Check if we're in production based on environment
-const isProduction = process.env.NODE_ENV === 'production' || process.env.STRIPE_SECRET_KEY?.includes('sk_live');
+export const isProduction = process.env.NODE_ENV === 'production' || process.env.STRIPE_SECRET_KEY?.includes('sk_live');
 
 export const STRIPE_CONFIG = {
   products: {

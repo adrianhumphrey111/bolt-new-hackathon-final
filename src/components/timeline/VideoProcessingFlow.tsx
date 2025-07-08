@@ -193,7 +193,12 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
 
   // Helper functions for parent component to use
   const addUploadingVideo = useCallback((video: UploadingVideo) => {
-    setUploadingVideos(prev => [...prev, video])
+    console.log('🎬 VideoProcessingFlow: Adding uploading video:', video);
+    setUploadingVideos(prev => {
+      const newState = [...prev, video];
+      console.log('🎬 VideoProcessingFlow: Updated uploading videos:', newState);
+      return newState;
+    });
   }, [])
 
   const updateUploadProgress = useCallback((id: string, progress: number) => {

@@ -7,6 +7,9 @@ import { FaPlus, FaVideo, FaSignOutAlt, FaCog } from 'react-icons/fa'
 import NewProjectModal from './components/NewProjectModal'
 import ProjectCard from './components/ProjectCard'
 import { useAuthContext } from '../../components/AuthProvider'
+import TrialBanner from '../../components/TrialBanner'
+import TrialPaywall from '../../components/TrialPaywall'
+import { apiRequest } from '../../lib/api-client'
 
 interface Video {
   id: string
@@ -30,6 +33,7 @@ export default function DashboardClient() {
   const [projects, setProjects] = useState<Project[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const { user, signOut, signIn, isAuthenticated, loading: authLoading, session } = useAuthContext()
   
   console.log('🏠 Dashboard render:', { isAuthenticated, hasUser: !!user, authLoading, loading })
@@ -40,6 +44,7 @@ export default function DashboardClient() {
   // State to track demo login
   const [isDemoLogin, setIsDemoLogin] = useState(false)
   const [showProfileDropdown, setShowProfileDropdown] = useState(false)
+  const [showTrialPaywall, setShowTrialPaywall] = useState(false)
   const profileDropdownRef = useRef<HTMLDivElement>(null)
   
 
@@ -90,8 +95,55 @@ export default function DashboardClient() {
   useEffect(() => {
     if (isAuthenticated && user) {
       fetchProjects()
+      fetchUserProfile()
     }
   }, [isAuthenticated, user])
+
+  // Check if user needs to complete trial flow
+  useEffect(() => {
+    const trialStarted = searchParams.get('trial_started');
+    console.log('🔍 Checking onboarding status:', { isAuthenticated, hasUser: !!user, userProfile, loading, trialStarted });
+    
+    // If user just completed trial, don't show paywall
+    if (trialStarted === 'true') {
+      console.log('✅ User just completed trial, skipping paywall check');
+      setShowTrialPaywall(false);
+      return;
+    }
+    
+    if (isAuthenticated && user && !loading) {
+      // Show trial paywall for users who:
+      // 1. Don't have a profile record at all (brand new signups)
+      // 2. Have a profile but no subscription_tier (new signups after migration)
+      // 3. Have a profile but no stripe_subscription_id AND no subscription_tier (edge case)
+      //
+      // Don't show paywall for:
+      // - Users with subscription_tier 'free' (grandfathered existing users)
+      // - Users with stripe_subscription_id (completed trial flow)
+      // - Users with subscription_tier 'pro', 'creator', etc. (paying customers)
+      const shouldShowTrialPaywall = !userProfile || 
+        (!userProfile.stripe_subscription_id && !userProfile.subscription_tier);
+      
+      if (shouldShowTrialPaywall) {
+        console.log('🔄 User needs to complete trial flow', { 
+          userProfile, 
+          hasProfile: !!userProfile, 
+          hasStripeSubscription: !!userProfile?.stripe_subscription_id,
+          subscriptionTier: userProfile?.subscription_tier 
+        });
+        setShowTrialPaywall(true);
+      } else {
+        console.log('✅ User has completed onboarding', { 
+          userProfile, 
+          hasStripeSubscription: !!userProfile?.stripe_subscription_id,
+          subscriptionTier: userProfile?.subscription_tier 
+        });
+        setShowTrialPaywall(false);
+      }
+    } else if (!isAuthenticated && !authLoading) {
+      setShowTrialPaywall(false);
+    }
+  }, [isAuthenticated, user, userProfile, loading, authLoading, searchParams])
 
   // Close profile dropdown when clicking outside
   useEffect(() => {
@@ -132,26 +184,39 @@ export default function DashboardClient() {
     if (!user) return
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
-      const response = await fetch('/api/projects', { headers });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch projects: ${response.statusText}`);
-      }
-
-      const { projects: projectsData } = await response.json();
-      setProjects(projectsData || [])
+      const data = await apiRequest('/api/projects');
+      setProjects(data.projects || [])
     } catch (error) {
       console.error('Error fetching projects:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchUserProfile = async () => {
+    if (!user) return
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No user record exists yet - this is expected for new signups
+          console.log('📝 No user record found, user needs to complete onboarding');
+          setUserProfile(null);
+        } else {
+          console.error('Error fetching user profile:', error);
+        }
+        return;
+      }
+
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
     }
   }
 
@@ -215,7 +280,27 @@ export default function DashboardClient() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
+    <>
+      {/* Trial Paywall for new users */}
+      {showTrialPaywall && (
+        <TrialPaywall 
+          userEmail={user?.email || ''}
+          onClose={() => {
+            setShowTrialPaywall(false);
+            // Refresh user profile after trial completion
+            fetchUserProfile();
+          }}
+        />
+      )}
+      
+      <div className="min-h-screen bg-gray-900">
+        {/* Trial Banner */}
+        {userProfile?.subscription_status === 'trialing' && userProfile?.trial_ends_at && (
+          <TrialBanner 
+            trialEndsAt={userProfile.trial_ends_at}
+            onUpgrade={() => router.push('/settings')}
+          />
+        )}
       
       {/* Top Navigation */}
       <nav className="bg-gray-800 shadow-lg border-b border-gray-700">
@@ -357,5 +442,6 @@ export default function DashboardClient() {
         }} 
       />
     </div>
+    </>
   )
 }

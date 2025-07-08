@@ -5,6 +5,7 @@ import { FaTimes } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import { useAuthContext } from '@/components/AuthProvider';
 import { trackProjectCreated } from '@/lib/analytics/gtag';
+import { apiRequest } from '@/lib/api-client';
 
 interface NewProjectModalProps {
   isOpen: boolean;
@@ -35,21 +36,15 @@ export default function NewProjectModal({ isOpen, onClose }: NewProjectModalProp
         return;
       }
 
-      const response = await fetch('/api/projects', {
+      const data = await apiRequest('/api/projects', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
         body: JSON.stringify({
           title: title.trim(),
           description: description.trim() || null,
         }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to create project');
       }
 

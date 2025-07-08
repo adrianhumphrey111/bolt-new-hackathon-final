@@ -703,6 +703,13 @@ export function MediaLibrary() {
     try {
       // Add to uploading videos in processing flow
       if (videoProcessingFlowRef.current) {
+        console.log('🎬 MediaLibrary: About to call addUploadingVideo with:', {
+          id: videoId,
+          name: file.name,
+          size: file.size,
+          progress: 0,
+          status: 'uploading'
+        });
         videoProcessingFlowRef.current.addUploadingVideo({
           id: videoId,
           name: file.name,
@@ -710,6 +717,9 @@ export function MediaLibrary() {
           progress: 0,
           status: 'uploading'
         });
+        console.log('🎬 MediaLibrary: Called addUploadingVideo successfully');
+      } else {
+        console.error('🚨 MediaLibrary: videoProcessingFlowRef.current is null!');
       }
 
       // Get current user session

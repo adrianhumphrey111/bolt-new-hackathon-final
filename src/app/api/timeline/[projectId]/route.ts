@@ -171,26 +171,85 @@ export async function POST(
       );
     }
 
-    // Use the upsert function to create or update timeline
-    const { data: timelineId, error: upsertError } = await supabase
-      .rpc('upsert_timeline_configuration', {
-        p_project_id: projectId,
-        p_user_id: user.id,
-        p_timeline_data: timelineData,
-        p_total_duration: totalDuration,
-        p_frame_rate: frameRate,
-        p_zoom: zoom,
-        p_playhead_position: playheadPosition,
-        p_status: status,
-        p_title: title
-      });
+    // First, check if there's already an active timeline for this project
+    const { data: existingTimeline, error: existingError } = await supabase
+      .from('timeline_configurations')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (upsertError) {
-      console.error('Error upserting timeline:', upsertError);
+    if (existingError) {
+      console.error('Error checking existing timeline:', existingError);
       return NextResponse.json(
-        { error: 'Failed to save timeline' },
+        { error: 'Failed to check existing timeline' },
         { status: 500 }
       );
+    }
+
+    let timelineId;
+
+    if (existingTimeline) {
+      // Update existing timeline
+      const { data: updatedData, error: updateError } = await supabase
+        .from('timeline_configurations')
+        .update({
+          timeline_data: timelineData,
+          total_duration: totalDuration,
+          frame_rate: frameRate,
+          zoom: zoom,
+          playhead_position: playheadPosition,
+          status: status,
+          title: title,
+          updated_at: new Date().toISOString(),
+          last_saved_at: new Date().toISOString(),
+          version: supabase.raw('version + 1') // Increment version
+        })
+        .eq('id', existingTimeline.id)
+        .select('id')
+        .single();
+
+      if (updateError) {
+        console.error('Error updating timeline:', updateError);
+        return NextResponse.json(
+          { error: 'Failed to update timeline' },
+          { status: 500 }
+        );
+      }
+
+      timelineId = updatedData.id;
+    } else {
+      // Create new timeline
+      const { data: newData, error: createError } = await supabase
+        .from('timeline_configurations')
+        .insert({
+          project_id: projectId,
+          user_id: user.id,
+          timeline_data: timelineData,
+          total_duration: totalDuration,
+          frame_rate: frameRate,
+          zoom: zoom,
+          playhead_position: playheadPosition,
+          status: status,
+          title: title,
+          is_active: true,
+          version: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          last_saved_at: new Date().toISOString()
+        })
+        .select('id')
+        .single();
+
+      if (createError) {
+        console.error('Error creating timeline:', createError);
+        return NextResponse.json(
+          { error: 'Failed to create timeline' },
+          { status: 500 }
+        );
+      }
+
+      timelineId = newData.id;
     }
 
     // Fetch the updated timeline to return

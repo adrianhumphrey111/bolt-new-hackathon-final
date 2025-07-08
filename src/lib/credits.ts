@@ -160,7 +160,7 @@ export async function addCredits(
   paymentIntentId?: string,
   pricePaid?: number
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   
   try {
     const { error } = await supabase
@@ -186,7 +186,7 @@ export async function addCredits(
 
 // Reset monthly credits (for subscription renewal)
 export async function resetMonthlyCredits(userId: string, creditsAmount?: number) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   
   try {
     // If credits amount not provided, determine it from user's subscription tier

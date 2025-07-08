@@ -1,21 +1,28 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 
-export function createServerSupabaseClient() {
+export async function createServerSupabaseClient() {
+  const cookieStore = await cookies()
+  
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
       cookies: {
         getAll() {
-          return []
+          return cookieStore.getAll()
         },
-        setAll() {
-          // No-op for server side without cookies
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          } catch (error) {
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
+          }
         },
       },
     }
@@ -49,34 +56,22 @@ export function createAuthenticatedSupabaseClient(accessToken: string) {
   )
 }
 
-// Helper to get user from Authorization header and return authenticated client
+// Helper to get user from session cookies
 export async function getUserFromRequest(request: NextRequest) {
-  const authorization = request.headers.get('Authorization')
-  
-  if (!authorization?.startsWith('Bearer ')) {
-    console.log('🔍 No authorization header found')
-    return { user: null, error: 'No authorization header', supabase: null }
-  }
-
-  const token = authorization.replace('Bearer ', '')
-  console.log('🔍 Token found, length:', token.length)
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   
   try {
-    const { data: { user }, error } = await supabase.auth.getUser(token)
+    const { data: { user }, error } = await supabase.auth.getUser()
     
     if (error || !user) {
-      console.log('🔍 Auth error:', error?.message || 'No user found')
-      return { user: null, error: error?.message || 'Invalid token', supabase: null }
+      console.log('🔍 No authenticated user found in session:', error?.message || 'No user')
+      return { user: null, error: error?.message || 'No authenticated user', supabase: null }
     }
 
-    console.log('🔍 User authenticated:', user.email)
-    // Create an authenticated client for RLS
-    const authenticatedSupabase = createAuthenticatedSupabaseClient(token)
-
-    return { user, error: null, supabase: authenticatedSupabase }
+    console.log('🔍 User authenticated from session:', user.email)
+    return { user, error: null, supabase }
   } catch (error) {
     console.log('🔍 Exception in getUserFromRequest:', error)
-    return { user: null, error: 'Invalid token', supabase: null }
+    return { user: null, error: 'Session error', supabase: null }
   }
 }

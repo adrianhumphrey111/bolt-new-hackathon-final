@@ -3,6 +3,12 @@
 import { useState, useEffect } from 'react';
 import { FaVideo, FaBolt, FaRocket, FaStar, FaCheck, FaClock, FaLock, FaCreditCard } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
+import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
+import PaymentForm from './PaymentForm';
+import { useAuthContext } from './AuthProvider';
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 interface TrialPaywallProps {
   userEmail?: string;
@@ -10,56 +16,74 @@ interface TrialPaywallProps {
 }
 
 export default function TrialPaywall({ userEmail, onClose }: TrialPaywallProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(7 * 24 * 60 * 60); // 7 days in seconds
+  const [isLoading, setIsLoading] = useState(true);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [billingFrequency, setBillingFrequency] = useState<'monthly' | 'annual'>('monthly');
   const router = useRouter();
+  const { refreshAuth } = useAuthContext();
 
+  // Initialize payment intent when component mounts
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (userEmail) {
+      initializePayment();
+    }
+  }, [userEmail]);
 
-  const formatTime = (seconds: number) => {
-    const days = Math.floor(seconds / (24 * 60 * 60));
-    const hours = Math.floor((seconds % (24 * 60 * 60)) / (60 * 60));
-    const minutes = Math.floor((seconds % (60 * 60)) / 60);
-    return { days, hours, minutes };
-  };
-
-  const { days, hours, minutes } = formatTime(timeLeft);
-
-  const handleStartTrial = async () => {
+  const initializePayment = async () => {
     setIsLoading(true);
     
     try {
-      // Create Stripe Checkout session for trial
-      const response = await fetch('/api/stripe/create-trial-checkout', {
+      const response = await fetch('/api/stripe/create-trial-payment', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           email: userEmail,
-          successUrl: `${window.location.origin}/dashboard?trial_started=true`,
-          cancelUrl: `${window.location.origin}/auth/signup?trial_cancelled=true`
+          billingFrequency: billingFrequency,
         })
       });
 
       const data = await response.json();
 
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+      if (data.clientSecret) {
+        setClientSecret(data.clientSecret);
       } else {
-        throw new Error(data.error || 'Failed to create checkout session');
+        throw new Error(data.error || 'Failed to create payment intent');
       }
     } catch (error) {
-      console.error('Trial signup error:', error);
-      alert('Failed to start trial. Please try again.');
+      console.error('Payment initialization error:', error);
+      alert('Failed to initialize payment. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Update billing frequency (payment intent doesn't need to change)
+  const handleBillingFrequencyChange = (frequency: 'monthly' | 'annual') => {
+    setBillingFrequency(frequency);
+  };
+
+  const handlePaymentSuccess = async (subscriptionData?: any) => {
+    try {
+      console.log('Trial completed successfully! User is already authenticated, redirecting to dashboard...');
+      
+      // Refresh auth context to get latest user data
+      await refreshAuth();
+      
+      // Redirect to dashboard immediately since user is already logged in
+      router.push('/dashboard?trial_started=true');
+      
+    } catch (error) {
+      console.error('Error after trial completion:', error);
+      // Still redirect to dashboard since user is authenticated
+      router.push('/dashboard?trial_started=true');
+    }
+  };
+
+  const handlePaymentError = (error: string) => {
+    console.error('Payment error:', error);
+    alert('Payment failed. Please try again.');
   };
 
   const features = [
@@ -72,15 +96,15 @@ export default function TrialPaywall({ userEmail, onClose }: TrialPaywallProps) 
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="relative max-w-4xl w-full my-8">
+      <div className="relative max-w-4xl w-full my-4 max-h-[95vh] overflow-y-auto">
         {/* Animated background gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-purple-600/20 to-pink-600/20 rounded-3xl blur-3xl animate-pulse"></div>
         
         <div className="relative bg-gray-900/95 backdrop-blur-xl rounded-3xl border border-gray-800 overflow-hidden">
-          <div className="grid lg:grid-cols-2 gap-0">
+          <div className="grid lg:grid-cols-2 gap-0 min-h-0">
             
             {/* Left Column - Features & Info */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-blue-600/5 to-purple-600/5 p-8">
+            <div className="relative overflow-hidden bg-gradient-to-br from-blue-600/5 to-purple-600/5 p-6">
               <div className="text-center mb-6">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mb-4">
                   <FaVideo className="w-8 h-8 text-white" />
@@ -95,30 +119,12 @@ export default function TrialPaywall({ userEmail, onClose }: TrialPaywallProps) 
                 </p>
               </div>
 
-              {/* Countdown timer */}
-              <div className="flex items-center justify-center space-x-2 mb-6">
-                <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
-                  <div className="text-2xl font-bold text-white">{days}</div>
-                  <div className="text-xs text-gray-400 uppercase">Days</div>
-                </div>
-                <div className="text-xl text-gray-600">:</div>
-                <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
-                  <div className="text-2xl font-bold text-white">{hours}</div>
-                  <div className="text-xs text-gray-400 uppercase">Hours</div>
-                </div>
-                <div className="text-xl text-gray-600">:</div>
-                <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700">
-                  <div className="text-2xl font-bold text-white">{minutes}</div>
-                  <div className="text-xs text-gray-400 uppercase">Min</div>
-                </div>
-              </div>
-
               {/* Features list */}
-              <div className="space-y-3 mb-6">
+              <div className="space-y-2 mb-4">
                 {features.map((feature, index) => (
                   <div
                     key={index}
-                    className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 ${
+                    className={`flex items-center space-x-3 p-2 rounded-lg transition-all duration-200 ${
                       feature.highlight 
                         ? 'bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30' 
                         : 'bg-gray-800/30 border border-gray-700/30'
@@ -143,88 +149,68 @@ export default function TrialPaywall({ userEmail, onClose }: TrialPaywallProps) 
               </div>
             </div>
 
-            {/* Right Column - Payment CTA */}
-            <div className="p-8 flex flex-col justify-center">
+            {/* Right Column - Payment Form */}
+            <div className="p-6 flex flex-col justify-center">
               <div className="text-center mb-6">
-                <h3 className="text-2xl font-bold text-white mb-2">Start Your Trial</h3>
-                <p className="text-gray-400">Enter your payment details to begin</p>
+                <h3 className="text-2xl font-bold text-white mb-2">Payment Details</h3>
+                <p className="text-gray-400">Choose your billing frequency</p>
               </div>
 
-              {/* Pricing info */}
-              <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 rounded-2xl p-6 border border-blue-500/20 mb-6">
-                <div className="text-center">
-                  <div className="text-sm text-gray-400 mb-1">Free for 7 days, then:</div>
-                  <div className="flex items-baseline justify-center space-x-2 mb-3">
-                    <span className="text-3xl font-bold text-white">$49</span>
-                    <span className="text-gray-400">/month</span>
-                    <span className="text-sm text-green-400 bg-green-400/10 px-2 py-1 rounded-full">
-                      Save $51
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-400">vs competitors at $100/month</div>
-                </div>
-              </div>
-              
-              {/* Security badges */}
-              <div className="space-y-3 text-sm text-gray-300 mb-6">
-                <div className="flex items-center space-x-3">
-                  <FaCheck className="w-4 h-4 text-green-400" />
-                  <span>Cancel anytime during trial - no charges</span>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <FaCheck className="w-4 h-4 text-green-400" />
-                  <span>Secure payment processing via Stripe</span>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <FaCheck className="w-4 h-4 text-green-400" />
-                  <span>Instant access to all Pro features</span>
-                </div>
-              </div>
-
-              {/* CTA button */}
-              <button
-                onClick={handleStartTrial}
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 px-6 rounded-xl font-semibold text-lg transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3 mb-4"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <FaCreditCard className="w-5 h-5" />
-                    <span>Start Free Trial</span>
-                  </>
-                )}
-              </button>
-              
-              {onClose && (
+              {/* Billing frequency selection */}
+              <div className="flex space-x-3 mb-6">
                 <button
-                  onClick={onClose}
-                  className="w-full text-gray-400 hover:text-white py-2 transition-colors text-sm"
+                  onClick={() => handleBillingFrequencyChange('monthly')}
+                  className={`flex-1 p-4 rounded-xl border transition-all duration-200 ${
+                    billingFrequency === 'monthly'
+                      ? 'bg-blue-600/20 border-blue-500 text-white'
+                      : 'bg-gray-800/30 border-gray-700 text-gray-300 hover:bg-gray-700/50'
+                  }`}
                 >
-                  Maybe later
+                  <div className="text-center">
+                    <div className="font-semibold">Monthly</div>
+                    <div className="text-sm opacity-75">$49/month</div>
+                  </div>
                 </button>
-              )}
-
-              {/* Trust indicators */}
-              <div className="border-t border-gray-800 pt-4 mt-4">
-                <div className="flex items-center justify-center space-x-6 text-xs text-gray-400">
-                  <div className="flex items-center space-x-1">
-                    <FaLock className="w-3 h-3" />
-                    <span>SSL Secure</span>
+                <button
+                  onClick={() => handleBillingFrequencyChange('annual')}
+                  className={`flex-1 p-4 rounded-xl border transition-all duration-200 relative ${
+                    billingFrequency === 'annual'
+                      ? 'bg-blue-600/20 border-blue-500 text-white'
+                      : 'bg-gray-800/30 border-gray-700 text-gray-300 hover:bg-gray-700/50'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="font-semibold">Annual</div>
+                    <div className="text-sm opacity-75">$39/month</div>
+                    <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                      Save 20%
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <span>Powered by</span>
-                    <span className="font-semibold text-white">Stripe</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <span>10,000+ creators</span>
-                  </div>
-                </div>
+                </button>
               </div>
+
+
+              {/* Payment Form */}
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="ml-3 text-gray-400">Loading payment form...</span>
+                </div>
+              ) : clientSecret ? (
+                <Elements stripe={stripePromise} options={{ clientSecret }}>
+                  <PaymentForm
+                    clientSecret={clientSecret}
+                    billingFrequency={billingFrequency}
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                    onCancel={onClose}
+                  />
+                </Elements>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-red-400">Failed to load payment form. Please refresh and try again.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

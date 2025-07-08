@@ -28,8 +28,8 @@ export default function Pricing() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
         },
+        credentials: 'include',
         body: JSON.stringify({
           priceId,
           successUrl: `${window.location.origin}/dashboard?subscription_success=true`,
@@ -70,8 +70,8 @@ export default function Pricing() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
         },
+        credentials: 'include',
         body: JSON.stringify({
           creditsAmount: credits,
           priceId: topupConfig.priceId

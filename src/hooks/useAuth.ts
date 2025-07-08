@@ -108,6 +108,20 @@ export function useAuth() {
         throw error
       }
 
+      console.log('🔐 Signup response:', { user: data.user, session: data.session });
+
+      // With email verification disabled, user should be immediately authenticated
+      if (!data.session) {
+        throw new Error('Expected session after signup but none received');
+      }
+
+      setAuthState({
+        user: data.user,
+        session: data.session,
+        loading: false,
+        error: null,
+      })
+
       // Add user to Mailchimp for email signups (non-blocking)
       if (data.user?.email) {
         // Don't await this - let it run in background
@@ -136,20 +150,13 @@ export function useAuth() {
         });
       }
 
-      setAuthState({
-        user: data.user,
-        session: data.session,
-        loading: false,
-        error: null,
-      })
-
       // Track successful signup
       trackUserSignUp('email')
 
       return { 
         success: true, 
         user: data.user,
-        message: 'Check your email for the confirmation link!'
+        message: 'Account created and logged in successfully!'
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sign up failed'

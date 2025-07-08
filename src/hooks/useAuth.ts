@@ -108,31 +108,32 @@ export function useAuth() {
         throw error
       }
 
-      // Add user to Mailchimp for email signups
+      // Add user to Mailchimp for email signups (non-blocking)
       if (data.user?.email) {
-        try {
-          console.log('🔍 Adding new email signup to Mailchimp:', data.user.email);
-          const response = await fetch('/api/mailchimp/subscribe', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              email: data.user.email,
-              tags: ['New User', 'Email Signup']
-            })
-          });
-
+        // Don't await this - let it run in background
+        fetch('/api/mailchimp/subscribe', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: data.user.email,
+            tags: ['New User', 'Email Signup']
+          })
+        }).then(response => {
           if (response.ok) {
             console.log('✅ Successfully added email signup to Mailchimp');
           } else {
-            const errorData = await response.json();
-            console.error('❌ Failed to add email signup to Mailchimp:', errorData);
+            response.json().then(errorData => {
+              console.warn('⚠️ Failed to add email signup to Mailchimp:', errorData);
+            }).catch(() => {
+              console.warn('⚠️ Failed to add email signup to Mailchimp (response not JSON)');
+            });
           }
-        } catch (mailchimpError) {
-          console.error('❌ Mailchimp integration error during email signup:', mailchimpError);
+        }).catch(mailchimpError => {
+          console.warn('⚠️ Mailchimp integration error during email signup:', mailchimpError);
           // Don't fail the signup process if Mailchimp fails
-        }
+        });
       }
 
       setAuthState({
@@ -192,10 +193,19 @@ export function useAuth() {
 
   const signInWithOAuth = useCallback(async (provider: 'google' | 'github') => {
     try {
-      // Force production URL for OAuth redirect
-      const redirectUrl = process.env.NODE_ENV === 'production' 
-        ? 'https://tailorlabsai.com/auth/callback'
-        : `${window.location.origin}/auth/callback`;
+      // Use the current origin for localhost development, configured URL for production
+      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const redirectUrl = isDevelopment 
+        ? `${window.location.origin}/auth/callback`
+        : (process.env.NEXT_PUBLIC_SITE_URL ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback` : `${window.location.origin}/auth/callback`);
+      
+      console.log('🔄 OAuth redirect URL:', {
+        provider,
+        isDevelopment,
+        hostname: window.location.hostname,
+        origin: window.location.origin,
+        redirectUrl
+      });
         
       const { error } = await supabase.auth.signInWithOAuth({
         provider,

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${requestUrl.origin}/auth/reset-password`)
     }
 
-    // Add user to Mailchimp if this is a new user
+    // Handle new user flow
     if (data?.user?.email) {
       try {
         // Check if this is a new user (created recently)
@@ -55,43 +55,59 @@ export async function GET(request: NextRequest) {
         const timeDiff = now.getTime() - userCreatedAt.getTime();
         const isNewUser = timeDiff < 5 * 60 * 1000; // Created within last 5 minutes
 
+        console.log('🔍 OAuth user info:', {
+          email: data.user.email,
+          userId: data.user.id,
+          createdAt: data.user.created_at,
+          isNewUser,
+          timeDiff: `${timeDiff}ms`
+        });
+
         if (isNewUser) {
           console.log('🔍 Adding new user to Mailchimp:', data.user.email);
-          const mailchimpResult = await addEmailToMailchimp(
+          // Add to Mailchimp (don't block on this)
+          addEmailToMailchimp(
             data.user.email,
             data.user.user_metadata?.full_name?.split(' ')[0] || data.user.user_metadata?.name?.split(' ')[0],
             data.user.user_metadata?.full_name?.split(' ').slice(1).join(' ') || data.user.user_metadata?.name?.split(' ').slice(1).join(' '),
             ['New User', 'OAuth Signup']
-          );
+          ).then(result => {
+            if (result.success) {
+              console.log('✅ Successfully added user to Mailchimp');
+            } else {
+              console.error('❌ Failed to add user to Mailchimp:', result.error);
+            }
+          }).catch(error => {
+            console.error('❌ Mailchimp integration error:', error);
+          });
           
-          if (mailchimpResult.success) {
-            console.log('✅ Successfully added user to Mailchimp');
-          } else {
-            console.error('❌ Failed to add user to Mailchimp:', mailchimpResult.error);
-          }
+          // For new OAuth users, always redirect to trial signup
+          const isDevelopment = process.env.NODE_ENV === 'development' || requestUrl.hostname === 'localhost';
+          const siteUrl = isDevelopment ? requestUrl.origin : (process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin);
+          const trialRedirectUrl = `${siteUrl}/auth/trial-signup?email=${encodeURIComponent(data.user.email)}`;
           
-          // Check if user has a subscription
-          const { data: userData } = await supabase
-            .from('users')
-            .select('subscription_status, has_completed_trial')
-            .eq('id', data.user.id)
-            .single();
-          
-          // If new user without subscription, redirect to trial signup
-          if (!userData?.subscription_status || userData.subscription_status === 'free') {
-            return NextResponse.redirect(`${requestUrl.origin}/auth/trial-signup?email=${encodeURIComponent(data.user.email)}`);
-          }
+          console.log('🚀 Redirecting new OAuth user to trial:', trialRedirectUrl);
+          return NextResponse.redirect(trialRedirectUrl);
         }
-      } catch (mailchimpError) {
-        console.error('❌ Mailchimp integration error during OAuth callback:', mailchimpError);
-        // Don't fail the auth process if Mailchimp fails
+      } catch (error) {
+        console.error('❌ Error processing new user flow:', error);
+        // Continue to normal flow if there's an error
       }
     }
   }
 
-  // Force redirect to the correct domain for dashboard
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
+  // Use the request origin for development, or the configured site URL for production
+  const isDevelopment = process.env.NODE_ENV === 'development' || requestUrl.hostname === 'localhost';
+  const siteUrl = isDevelopment ? requestUrl.origin : (process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin);
   const redirectUrl = `${siteUrl}${next}`;
+  
+  console.log('🔄 Auth callback redirect:', {
+    isDevelopment,
+    hostname: requestUrl.hostname,
+    origin: requestUrl.origin,
+    siteUrl,
+    redirectUrl
+  });
     
   return NextResponse.redirect(redirectUrl)
 }

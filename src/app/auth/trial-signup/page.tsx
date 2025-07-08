@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import TrialPaywall from '@/components/TrialPaywall';
 import { useRouter } from 'next/navigation';
 
-export default function TrialSignup() {
+function TrialSignupContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [userEmail, setUserEmail] = useState('');
@@ -36,5 +36,20 @@ export default function TrialSignup() {
       userEmail={userEmail}
       onClose={() => router.push('/dashboard')}
     />
+  );
+}
+
+export default function TrialSignup() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-gray-400">Loading trial signup...</p>
+        </div>
+      </div>
+    }>
+      <TrialSignupContent />
+    </Suspense>
   );
 }

@@ -47,24 +47,57 @@ export async function POST(request: NextRequest) {
           const customerId = session.customer as string;
           const subscriptionId = session.subscription as string;
           
-          // Get the user ID from customer metadata
-          const customer = await stripe.customers.retrieve(customerId);
-          if ('metadata' in customer && customer.metadata.userId) {
-            const userId = customer.metadata.userId;
+          // Get the subscription details to check if it's a trial
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const isTrialing = subscription.status === 'trialing';
+          
+          // Get the user ID from session metadata or customer metadata
+          const userId = session.metadata?.user_id || session.metadata?.supabase_user_id;
+          
+          if (!userId) {
+            // Fallback to customer metadata
+            const customer = await stripe.customers.retrieve(customerId);
+            if ('metadata' in customer && customer.metadata.supabase_user_id) {
+              const userId = customer.metadata.supabase_user_id;
+            }
+          }
+          
+          if (userId) {
+            // Determine subscription tier based on price
+            const priceId = subscription.items.data[0]?.price.id;
+            let subscriptionTier = 'creator';
+            let monthlyCredits = 1000;
             
-            // Update user profile with Stripe IDs
+            // Check if it's Pro plan based on price ID
+            if (priceId === process.env.STRIPE_PRO_MONTHLY_PRICE_ID || 
+                priceId === process.env.STRIPE_PRO_ANNUAL_PRICE_ID ||
+                priceId === process.env.STRIPE_PRO_MONTHLY_PRICE_ID_TEST ||
+                priceId === process.env.STRIPE_PRO_ANNUAL_PRICE_ID_TEST) {
+              subscriptionTier = 'pro';
+              monthlyCredits = 5000;
+            }
+            
+            // Update user profile with Stripe IDs and trial info
+            const updateData: any = {
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscriptionId,
+              subscription_status: isTrialing ? 'trialing' : 'active',
+              subscription_tier: subscriptionTier
+            };
+            
+            // If it's a trial, set trial dates
+            if (isTrialing && subscription.trial_end) {
+              updateData.trial_started_at = new Date().toISOString();
+              updateData.trial_ends_at = new Date(subscription.trial_end * 1000).toISOString();
+            }
+            
             await supabase
-              .from('profiles')
-              .update({
-                stripe_customer_id: customerId,
-                stripe_subscription_id: subscriptionId,
-                subscription_status: 'active',
-                subscription_tier: 'pro'
-              })
+              .from('users')
+              .update(updateData)
               .eq('id', userId);
 
-            // Initialize credits for new subscription
-            await resetMonthlyCredits(userId);
+            // Initialize credits for new subscription (even if trialing)
+            await resetMonthlyCredits(userId, monthlyCredits);
           }
         }
         
@@ -181,16 +214,33 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
         
-        const customer = await stripe.customers.retrieve(customerId);
-        if ('metadata' in customer && customer.metadata.userId) {
-          const userId = customer.metadata.userId;
+        // Get user ID from subscription metadata
+        const userId = subscription.metadata?.supabase_user_id;
+        
+        if (!userId) {
+          // Fallback to customer metadata
+          const customer = await stripe.customers.retrieve(customerId);
+          if ('metadata' in customer && customer.metadata.supabase_user_id) {
+            const userId = customer.metadata.supabase_user_id;
+          }
+        }
+        
+        if (userId) {
+          const updateData: any = {
+            subscription_status: subscription.status
+          };
+          
+          // Check if trial just ended (status changed from trialing to active)
+          const previousStatus = (event.data.previous_attributes as any)?.status;
+          if (previousStatus === 'trialing' && subscription.status === 'active') {
+            updateData.has_completed_trial = true;
+            console.log(`Trial ended for user ${userId}, subscription now active`);
+          }
           
           // Update subscription status
           await supabase
-            .from('profiles')
-            .update({
-              subscription_status: subscription.status
-            })
+            .from('users')
+            .update(updateData)
             .eq('id', userId);
         }
         break;

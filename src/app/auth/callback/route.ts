@@ -69,6 +69,18 @@ export async function GET(request: NextRequest) {
           } else {
             console.error('❌ Failed to add user to Mailchimp:', mailchimpResult.error);
           }
+          
+          // Check if user has a subscription
+          const { data: userData } = await supabase
+            .from('users')
+            .select('subscription_status, has_completed_trial')
+            .eq('id', data.user.id)
+            .single();
+          
+          // If new user without subscription, redirect to trial signup
+          if (!userData?.subscription_status || userData.subscription_status === 'free') {
+            return NextResponse.redirect(`${requestUrl.origin}/auth/trial-signup?email=${encodeURIComponent(data.user.email)}`);
+          }
         }
       } catch (mailchimpError) {
         console.error('❌ Mailchimp integration error during OAuth callback:', mailchimpError);

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { FaGoogle, FaGithub } from 'react-icons/fa';
 import Link from 'next/link';
+import TrialPaywall from '@/components/TrialPaywall';
 
 export default function Signup() {
   const [email, setEmail] = useState('');
@@ -13,6 +14,8 @@ export default function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showTrialPaywall, setShowTrialPaywall] = useState(false);
+  const [signupEmail, setSignupEmail] = useState('');
   const router = useRouter();
   const { signUp, signInWithOAuth, isAuthenticated, loading } = useAuthContext();
 
@@ -49,7 +52,9 @@ export default function Signup() {
       const result = await signUp(email.trim(), password);
 
       if (result.success) {
-        setMessage(result.message || 'Check your email for the confirmation link!');
+        // Instead of showing message, show trial paywall
+        setSignupEmail(email.trim());
+        setShowTrialPaywall(true);
       } else {
         setError(result.error || 'Signup failed');
       }
@@ -66,6 +71,9 @@ export default function Signup() {
       const result = await signInWithOAuth(provider);
       if (!result.success) {
         setError(result.error || 'OAuth login failed');
+      } else {
+        // For OAuth, we'll need to handle the trial flow in the callback
+        // The callback route should check if user is new and redirect to trial
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
@@ -85,8 +93,19 @@ export default function Signup() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 py-12 flex items-center justify-center">
-      <div className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl">
+    <>
+      {showTrialPaywall && (
+        <TrialPaywall 
+          userEmail={signupEmail}
+          onClose={() => {
+            setShowTrialPaywall(false);
+            router.push('/dashboard');
+          }}
+        />
+      )}
+      
+      <div className="min-h-screen bg-gray-900 py-12 flex items-center justify-center">
+        <div className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-white mb-2">
             Create your account
@@ -189,5 +208,6 @@ export default function Signup() {
         </p>
       </div>
     </div>
+    </>
   );
 }

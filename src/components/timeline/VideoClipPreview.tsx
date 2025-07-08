@@ -53,24 +53,36 @@ export function VideoClipPreview({ clips, onAddToTimeline }: VideoClipPreviewPro
   const playClip = (clip: ContentClip) => {
     setSelectedClip(clip);
     if (videoRef.current && clip.videoUrl) {
-      videoRef.current.currentTime = clip.startTime;
-      videoRef.current.play();
-      setIsPlaying(true);
+      // Wait for the video to load before seeking
+      const video = videoRef.current;
       
-      // Set up a timeout to pause at the end time
-      const duration = clip.endTime - clip.startTime;
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.pause();
-          setIsPlaying(false);
-        }
-      }, duration * 1000);
+      const handleLoadedData = () => {
+        video.currentTime = clip.startTime;
+        video.play();
+        setIsPlaying(true);
+        video.removeEventListener('loadeddata', handleLoadedData);
+      };
+      
+      // If video is already loaded, seek immediately
+      if (video.readyState >= 2) {
+        video.currentTime = clip.startTime;
+        video.play();
+        setIsPlaying(true);
+      } else {
+        // Wait for video to load
+        video.addEventListener('loadeddata', handleLoadedData);
+      }
     }
   };
 
   const handleVideoTimeUpdate = () => {
     if (videoRef.current && selectedClip) {
-      if (videoRef.current.currentTime >= selectedClip.endTime) {
+      const currentTime = videoRef.current.currentTime;
+      
+      // Ensure video stays within clip bounds
+      if (currentTime < selectedClip.startTime) {
+        videoRef.current.currentTime = selectedClip.startTime;
+      } else if (currentTime >= selectedClip.endTime) {
         videoRef.current.pause();
         setIsPlaying(false);
       }
@@ -176,6 +188,12 @@ export function VideoClipPreview({ clips, onAddToTimeline }: VideoClipPreviewPro
             onTimeUpdate={handleVideoTimeUpdate}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
+            onLoadedData={() => {
+              // Ensure video starts at the correct time when loaded
+              if (videoRef.current && selectedClip) {
+                videoRef.current.currentTime = selectedClip.startTime;
+              }
+            }}
             style={{ maxHeight: '200px' }}
           >
             Your browser does not support the video tag.

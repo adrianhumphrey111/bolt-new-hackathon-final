@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClientSupabaseClient } from '../../lib/supabase/client';
+import { OneShotGenerateModal } from './OneShotGenerateModal';
 
 interface SceneAnalysis {
   timeRange: {
@@ -100,6 +101,7 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [reanalysisStatus, setReanalysisStatus] = useState<'idle' | 'processing' | 'polling' | 'completed' | 'error'>('idle');
   const [pollCount, setPollCount] = useState(0);
+  const [showOneShotModal, setShowOneShotModal] = useState(false);
   const supabase = createClientSupabaseClient();
 
   useEffect(() => {
@@ -388,6 +390,19 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
               )}
             </div>
             <div className="flex items-center space-x-3">
+              {/* One Shot Generate Button */}
+              {geminiAnalysisData && activeTab === 'gemini' && (geminiAnalysisData.recommended_cuts_or_trims?.length > 0 || geminiAnalysisData.highlight_moments_worth_emphasizing?.length > 0) && (
+                <button
+                  onClick={() => setShowOneShotModal(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white rounded-lg transition-all duration-200 text-sm font-medium flex items-center space-x-2 shadow-lg hover:shadow-xl"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                  <span>One Shot Generate</span>
+                </button>
+              )}
+              
               {/* Re-analysis Button */}
               {analysisData && !isReanalyzing && activeTab === 'claude' && (
                 <button
@@ -1033,6 +1048,18 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
             </div>
           </div>
         </div>
+      )}
+      
+      {/* One Shot Generate Modal */}
+      {geminiAnalysisData && videoSrc && (
+        <OneShotGenerateModal
+          isOpen={showOneShotModal}
+          onClose={() => setShowOneShotModal(false)}
+          videoId={videoId}
+          videoName={videoName}
+          videoSrc={videoSrc}
+          analysisData={geminiAnalysisData}
+        />
       )}
     </div>
   );

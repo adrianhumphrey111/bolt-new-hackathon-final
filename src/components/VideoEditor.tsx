@@ -334,7 +334,7 @@ function VideoEditorContent() {
     upcomingVideos.forEach(video => {
       if (video.src) {
         console.log('🎬 Preloading upcoming video:', video.name, 'starting at frame', video.startTime);
-        preloadVideo(video.src);
+        videoCacheManager.preloadVideo(video.src);
       }
     });
   }, [state.playheadPosition, allTimelineItems, state.fps]);

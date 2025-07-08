@@ -19,12 +19,12 @@ export default function Signup() {
   const router = useRouter();
   const { signUp, signInWithOAuth, isAuthenticated, loading } = useAuthContext();
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (but not if we're showing trial paywall)
   useEffect(() => {
-    if (!loading && isAuthenticated) {
+    if (!loading && isAuthenticated && !showTrialPaywall) {
       router.push('/dashboard');
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, router, showTrialPaywall]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +99,7 @@ export default function Signup() {
           userEmail={signupEmail}
           onClose={() => {
             setShowTrialPaywall(false);
-            router.push('/dashboard');
+            // Let the useEffect handle the redirect
           }}
         />
       )}

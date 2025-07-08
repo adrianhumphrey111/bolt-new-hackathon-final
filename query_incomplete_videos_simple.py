@@ -43,6 +43,7 @@ class SimpleVideoChecker:
             # Get all videos
             videos_response = self.supabase.table('videos').select('*').execute()
             videos = videos_response.data
+            print(len(videos))
             
             # Get all video_analysis records
             analysis_response = self.supabase.table('video_analysis').select('video_id').execute()

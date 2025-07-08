@@ -198,3 +198,71 @@ export const trackHelpUsage = (helpType: string, helpItem: string) => {
     help_item: helpItem,
   });
 };
+
+// UTM and traffic source tracking
+export const getUTMParameters = () => {
+  if (typeof window === 'undefined') return null;
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  return {
+    utm_source: urlParams.get('utm_source'),
+    utm_medium: urlParams.get('utm_medium'),
+    utm_campaign: urlParams.get('utm_campaign'),
+    utm_term: urlParams.get('utm_term'),
+    utm_content: urlParams.get('utm_content'),
+    ref: urlParams.get('ref'), // Alternative referrer parameter
+  };
+};
+
+export const trackTrafficSource = () => {
+  const utmParams = getUTMParameters();
+  
+  if (!utmParams) return;
+  
+  // Track UTM parameters if they exist
+  if (utmParams.utm_source || utmParams.utm_medium || utmParams.utm_campaign) {
+    trackEvent('traffic_source', {
+      event_category: 'acquisition',
+      utm_source: utmParams.utm_source || 'unknown',
+      utm_medium: utmParams.utm_medium || 'unknown',
+      utm_campaign: utmParams.utm_campaign || 'unknown',
+      utm_term: utmParams.utm_term || '',
+      utm_content: utmParams.utm_content || '',
+      ref: utmParams.ref || '',
+      page_location: window.location.href,
+    });
+    
+    console.log('📊 Traffic source tracked:', utmParams);
+  }
+};
+
+export const trackSignupSource = (method: string) => {
+  const utmParams = getUTMParameters();
+  
+  trackEvent('sign_up_with_source', {
+    event_category: 'authentication',
+    method,
+    utm_source: utmParams?.utm_source || 'direct',
+    utm_medium: utmParams?.utm_medium || 'none',
+    utm_campaign: utmParams?.utm_campaign || 'none',
+    ref: utmParams?.ref || '',
+  });
+  
+  console.log('📊 Signup source tracked:', { method, ...utmParams });
+};
+
+export const trackConversionSource = (conversionType: string, value?: number) => {
+  const utmParams = getUTMParameters();
+  
+  trackEvent('conversion_with_source', {
+    event_category: 'conversion',
+    conversion_type: conversionType,
+    value: value || 0,
+    utm_source: utmParams?.utm_source || 'direct',
+    utm_medium: utmParams?.utm_medium || 'none',
+    utm_campaign: utmParams?.utm_campaign || 'none',
+    ref: utmParams?.ref || '',
+  });
+  
+  console.log('📊 Conversion source tracked:', { conversionType, value, ...utmParams });
+};

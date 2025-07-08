@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../../hooks/useAuth'
-import { FaUsers, FaChartLine, FaSignOutAlt, FaHome, FaCalendarDay, FaCalendarWeek, FaCalendarAlt } from 'react-icons/fa'
+import { FaUsers, FaChartLine, FaSignOutAlt, FaHome, FaCalendarDay, FaCalendarWeek, FaCalendarAlt, FaLink } from 'react-icons/fa'
 import { ReprocessVideosButton } from './ReprocessVideosButton'
+import { UTMTrackingGenerator } from '../UTMTrackingGenerator'
 
 interface UserAnalytics {
   totalUsers: number
@@ -287,6 +288,15 @@ export function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
+            </div>
+            
+            {/* UTM Tracking Generator */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+              <div className="flex items-center mb-6">
+                <FaLink className="w-6 h-6 text-blue-400 mr-3" />
+                <h2 className="text-xl font-bold text-white">UTM Tracking Generator</h2>
+              </div>
+              <UTMTrackingGenerator />
             </div>
           </div>
         )}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { createClientSupabaseClient } from '../lib/supabase/client'
-import { trackUserLogin, trackUserSignUp } from '../lib/analytics/gtag'
+import { trackUserLogin, trackUserSignUp, trackSignupSource } from '../lib/analytics/gtag'
 
 interface AuthState {
   user: User | null
@@ -150,8 +150,9 @@ export function useAuth() {
         });
       }
 
-      // Track successful signup
+      // Track successful signup with source
       trackUserSignUp('email')
+      trackSignupSource('email')
 
       return { 
         success: true, 
@@ -225,8 +226,9 @@ export function useAuth() {
         throw error
       }
 
-      // Track successful OAuth login
+      // Track successful OAuth login with source
       trackUserLogin(provider)
+      trackSignupSource(provider)
 
       return { success: true }
     } catch (error) {

@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import TrialPaywall from '@/components/TrialPaywall';
 import { useRouter } from 'next/navigation';
+import { trackTrafficSource, trackConversionSource } from '@/lib/analytics/gtag';
 
 function TrialSignupContent() {
   const searchParams = useSearchParams();
@@ -14,6 +15,10 @@ function TrialSignupContent() {
     const email = searchParams.get('email');
     if (email) {
       setUserEmail(decodeURIComponent(email));
+      
+      // Track that user reached trial signup page (conversion event)
+      trackTrafficSource();
+      trackConversionSource('trial_signup_reached');
     } else {
       // If no email, redirect to signup
       router.push('/auth/signup');

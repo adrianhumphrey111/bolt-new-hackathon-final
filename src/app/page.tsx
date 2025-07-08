@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { FaPlay, FaUpload, FaEdit, FaRocket, FaCheck, FaStar, FaArrowRight, FaVideo, FaShare, FaMagic, FaBolt, FaPalette, FaRobot, FaChevronDown, FaQuestionCircle, FaUsers, FaLightbulb, FaFire, FaEye, FaVolumeUp, FaCut, FaImage, FaGlobe, FaClosedCaptioning, FaPause, FaDownload, FaChevronRight, FaBrain, FaSearch, FaSortAmountDown, FaWaveSquare, FaMicrochip, FaLayerGroup, FaClock } from 'react-icons/fa';
 import { FaShieldAlt as FaShield } from 'react-icons/fa';
 import { HeroTransitionDemo } from '../components/HeroTransitionDemo';
+import { trackTrafficSource } from '../lib/analytics/gtag';
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -27,6 +28,9 @@ export default function Home() {
     };
 
     checkUser();
+    
+    // Track traffic source when landing page loads
+    trackTrafficSource();
   }, [supabase]);
 
   const features = [

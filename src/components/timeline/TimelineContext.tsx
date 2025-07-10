@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState, useCallback, useRef } from 'react';
-import { TimelineState, TimelineContextType, TimelineConfig, Track, TimelineItem, Transition, MediaType } from '../../../types/timeline';
+import { TimelineState, TimelineContextType, TimelineConfig, Track, TimelineItem, Transition, MediaType, DetectedCut } from '../../../types/timeline';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   timelinePersistence, 
@@ -14,6 +14,8 @@ import {
   initialPersistenceState,
   SaveStatus
 } from '../../lib/timelinePersistence';
+import { createClientSupabaseClient } from '../../lib/supabase/client';
+import { CutApplicationService } from './CutApplicationService';
 
 const defaultConfig: TimelineConfig = {
   pixelsPerFrame: 2,
@@ -30,9 +32,8 @@ const initialHistoryState = createHistoryState([
     name: 'Track 1',
     height: 60,
     items: [],
-    isVisible: true,
-    isLocked: false,
-    isMuted: false,
+    muted: false,
+    locked: false,
   }
 ], []);
 
@@ -43,9 +44,8 @@ const initialState: TimelineState = {
       name: 'Track 1',
       height: 60,
       items: [],
-      isVisible: true,
-      isLocked: false,
-      isMuted: false,
+      muted: false,
+      locked: false,
     }
   ],
   playheadPosition: 0,
@@ -54,6 +54,9 @@ const initialState: TimelineState = {
   fps: 30,
   selectedItems: [],
   isPlaying: false,
+  cuts: [],
+  cutsLoading: false,
+  currentVideoId: null,
   history: {
     past: [],
     present: initialHistoryState,
@@ -93,7 +96,13 @@ type TimelineAction =
   | { type: 'TRIM_ITEM'; itemId: string; start: number; end: number }
   | { type: 'UNDO' }
   | { type: 'REDO' }
-  | { type: 'LOAD_TIMELINE'; timeline: Partial<TimelineState> };
+  | { type: 'LOAD_TIMELINE'; timeline: Partial<TimelineState> }
+  | { type: 'CLEAR_TIMELINE' }
+  | { type: 'BULK_UPDATE_ITEMS'; items: TimelineItem[]; removedItemIds: string[] }
+  | { type: 'SET_CUTS_LOADING'; loading: boolean }
+  | { type: 'SET_CUTS'; cuts: DetectedCut[] }
+  | { type: 'UPDATE_CUT'; cutId: string; isActive: boolean }
+  | { type: 'SET_CURRENT_VIDEO_ID'; videoId: string | null };
 
 // Helper function to ensure at least one empty track exists
 function ensureEmptyTrack(tracks: Track[]): Track[] {
@@ -108,9 +117,8 @@ function ensureEmptyTrack(tracks: Track[]): Track[] {
       items: [],
       transitions: [],
       height: defaultConfig.trackHeight,
-      isVisible: true,
-      isLocked: false,
-      isMuted: false,
+      muted: false,
+      locked: false,
     };
     return [...tracks, newTrack];
   }
@@ -244,6 +252,7 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
           id: uuidv4(),
           name: `Track ${state.tracks.length + 1}`,
           items: [{ ...newItem, trackId: uuidv4() }],
+          transitions: [],
           height: defaultConfig.trackHeight,
         };
         newItem.trackId = newTrack.id;
@@ -559,6 +568,96 @@ function timelineReducerCore(state: TimelineState, action: TimelineAction): Time
       };
     }
 
+    case 'BULK_UPDATE_ITEMS': {
+      // Organize items by track
+      const itemsByTrack = new Map<string, TimelineItem[]>();
+      
+      action.items.forEach(item => {
+        if (!itemsByTrack.has(item.trackId)) {
+          itemsByTrack.set(item.trackId, []);
+        }
+        itemsByTrack.get(item.trackId)!.push(item);
+      });
+      
+      // Update tracks with new items, removing old ones
+      const updatedTracks = state.tracks.map(track => {
+        // Remove items that are in the removedItemIds list
+        const filteredItems = track.items.filter(item => 
+          !action.removedItemIds.includes(item.id)
+        );
+        
+        // Add new items for this track
+        const newItems = itemsByTrack.get(track.id) || [];
+        
+        return {
+          ...track,
+          items: [...filteredItems, ...newItems]
+        };
+      });
+      
+      // Create new tracks for items that don't have existing tracks
+      const existingTrackIds = new Set(state.tracks.map(t => t.id));
+      const newTracks: Track[] = [];
+      
+      itemsByTrack.forEach((items, trackId) => {
+        if (!existingTrackIds.has(trackId)) {
+          newTracks.push({
+            id: trackId,
+            name: `Track ${state.tracks.length + newTracks.length + 1}`,
+            items: items,
+            transitions: [],
+            height: defaultConfig.trackHeight,
+            muted: false,
+            locked: false,
+          });
+        }
+      });
+      
+      const finalTracks = ensureEmptyTrack([...updatedTracks, ...newTracks]);
+      
+      return {
+        ...state,
+        tracks: finalTracks,
+        totalDuration: calculateOptimalDuration(finalTracks, state.zoom, state.fps),
+        selectedItems: state.selectedItems.filter(id => !action.removedItemIds.includes(id)),
+      };
+    }
+
+    case 'SET_CUTS_LOADING': {
+      return {
+        ...state,
+        cutsLoading: action.loading,
+      };
+    }
+
+    case 'SET_CUTS': {
+      return {
+        ...state,
+        cuts: action.cuts,
+        cutsLoading: false,
+      };
+    }
+
+    case 'UPDATE_CUT': {
+      return {
+        ...state,
+        cuts: state.cuts.map(cut => 
+          cut.id === action.cutId 
+            ? { ...cut, is_active: action.isActive }
+            : cut
+        ),
+      };
+    }
+
+    case 'SET_CURRENT_VIDEO_ID': {
+      return {
+        ...state,
+        currentVideoId: action.videoId,
+        // Clear cuts when video changes
+        cuts: action.videoId === state.currentVideoId ? state.cuts : [],
+      };
+    }
+
     default:
       return state;
   }
@@ -632,6 +731,7 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
   const [state, dispatch] = useReducer(timelineReducer, initialState);
   const [persistence, setPersistence] = useState<PersistenceState>(initialPersistenceState);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [isApplyingCuts, setIsApplyingCuts] = useState(false);
   
   // Track last saved state hash to detect changes
   const lastSavedHash = useRef<string>('');
@@ -717,9 +817,8 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
             height: 60,
             items: [],
             transitions: [],
-            isVisible: true,
-            isLocked: false,
-            isMuted: false,
+            muted: false,
+            locked: false,
           }],
           selectedItems: [],
           playheadPosition: 0,
@@ -736,9 +835,8 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
             height: 60,
             items: [],
             transitions: [],
-            isVisible: true,
-            isLocked: false,
-            isMuted: false,
+            muted: false,
+            locked: false,
           }],
           selectedItems: [],
           playheadPosition: 0,
@@ -746,10 +844,13 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
           zoom: 2,
           fps: 30,
           isPlaying: false,
-        } as TimelineState;
+          cuts: [],
+          cutsLoading: false,
+          currentVideoId: null,
+        };
         
         lastSavedHash.current = getTimelineStateHash(emptyState);
-        lastMajorChangesHash.current = getMajorChangesHash(emptyState);
+        // lastMajorChangesHash.current = getMajorChangesHash(emptyState);
         
         setPersistence(prev => ({
           ...prev,
@@ -775,7 +876,7 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
   const debouncedSave = useCallback(
     debounce(() => {
       if (autoSaveEnabled && projectId) {
-        saveTimeline('auto_saved');
+        saveTimeline('manually_saved');
       }
     }, 120000), // 2 minute debounce
     [saveTimeline, autoSaveEnabled, projectId]
@@ -816,6 +917,141 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
       });
     }
   }, [projectId, loadTimeline]);
+
+  // Auto-detect current video ID from timeline items
+  useEffect(() => {
+    const allItems = state.tracks.flatMap(track => track.items);
+    const videoItems = allItems.filter(item => item.type === MediaType.VIDEO);
+    const videoItemsWithId = videoItems.filter(item => item.properties?.videoId);
+    
+    if (videoItemsWithId.length > 0) {
+      const detectedVideoId = videoItemsWithId[0].properties?.videoId;
+      if (detectedVideoId !== state.currentVideoId) {
+        dispatch({ type: 'SET_CURRENT_VIDEO_ID', videoId: detectedVideoId });
+      }
+    }
+  }, [state.tracks, state.currentVideoId]);
+
+  // Auto-fetch cuts when current video changes
+  const fetchCutsForCurrentVideo = useCallback(async (videoId: string) => {
+    dispatch({ type: 'SET_CUTS_LOADING', loading: true });
+    try {
+      const supabase = createClientSupabaseClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      const response = await fetch(`/api/videos/${videoId}/cuts`, { headers });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          dispatch({ type: 'SET_CUTS', cuts: data.cuts || [] });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching cuts:', error);
+      dispatch({ type: 'SET_CUTS_LOADING', loading: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (state.currentVideoId && !state.cutsLoading && state.cuts.length === 0) {
+      fetchCutsForCurrentVideo(state.currentVideoId);
+    }
+  }, [state.currentVideoId, state.cutsLoading, state.cuts.length, fetchCutsForCurrentVideo]);
+
+  // Track the last cut state to prevent unnecessary re-applications
+  const lastCutStateRef = useRef<string>('');
+  
+  // Auto-apply cuts when cuts change
+  useEffect(() => {
+    if (!state.currentVideoId || isApplyingCuts || state.cutsLoading) {
+      console.log('🔧 Auto-apply cuts: Skipping due to conditions', {
+        hasVideoId: !!state.currentVideoId,
+        isApplyingCuts,
+        cutsLoading: state.cutsLoading
+      });
+      return;
+    }
+
+    // Create a hash of the active cuts to detect real changes
+    const activeCuts = state.cuts.filter(cut => cut.is_active);
+    const cutStateHash = JSON.stringify(activeCuts.map(cut => ({ id: cut.id, is_active: cut.is_active })).sort((a, b) => a.id.localeCompare(b.id)));
+    
+    // Skip if cut state hasn't actually changed
+    if (cutStateHash === lastCutStateRef.current) {
+      console.log('🔧 Auto-apply cuts: No change detected, skipping');
+      return;
+    }
+    
+    console.log('🔧 Auto-apply cuts: State changed, applying cuts', {
+      previousHash: lastCutStateRef.current,
+      currentHash: cutStateHash,
+      activeCuts: activeCuts.length
+    });
+    
+    lastCutStateRef.current = cutStateHash;
+
+    const applyCutsToTimeline = async () => {
+      setIsApplyingCuts(true);
+      try {
+        const allItems = state.tracks.flatMap(track => track.items);
+        
+        // If there are no items, don't try to apply cuts (prevents infinite loop)
+        if (allItems.length === 0) {
+          console.log('🎬 No timeline items to apply cuts to');
+          return;
+        }
+        
+        console.log('🎬 Applying cuts to timeline:', {
+          videoId: state.currentVideoId,
+          totalItems: allItems.length,
+          activeCuts: activeCuts.length,
+          videoItems: allItems.filter(item => item.type === 'video'),
+          cuts: activeCuts
+        });
+        
+        const result = await CutApplicationService.applyCutsToTimeline(
+          allItems,
+          state.currentVideoId!,
+          state.fps
+        );
+        
+        console.log('🎬 Cut application result:', {
+          originalItems: allItems.length,
+          modifiedItemsCount: result.modifiedItems.length,
+          removedItems: result.removedItemIds.length,
+          modifiedItems: result.modifiedItems,
+          removedItemIds: result.removedItemIds,
+          videoItemsInResult: result.modifiedItems.filter((item: any) => item.type === 'video')
+        });
+        
+        // Only update if there are actual changes
+        const hasChanges = result.removedItemIds.length > 0 || 
+                          result.modifiedItems.length !== allItems.length ||
+                          // Check if the items are actually different (not just same length)
+                          JSON.stringify(result.modifiedItems.map((item: any) => ({ id: item.id, name: item.name, isCutSegment: item.properties?.isCutSegment })).sort((a: any, b: any) => a.id.localeCompare(b.id))) !== 
+                          JSON.stringify(allItems.map((item: any) => ({ id: item.id, name: item.name, isCutSegment: item.properties?.isCutSegment })).sort((a: any, b: any) => a.id.localeCompare(b.id)));
+        
+        if (hasChanges) {
+          dispatch({ type: 'BULK_UPDATE_ITEMS', items: result.modifiedItems, removedItemIds: result.removedItemIds });
+        } else {
+          console.log('🔧 No changes needed, skipping bulk update');
+        }
+      } catch (error) {
+        console.error('Error applying cuts to timeline:', error);
+      } finally {
+        setIsApplyingCuts(false);
+      }
+    };
+
+    applyCutsToTimeline();
+  }, [state.cuts, state.currentVideoId, state.fps, isApplyingCuts, state.cutsLoading]);
 
   // Keyboard shortcut for manual save (Ctrl/Cmd + S)
   useEffect(() => {
@@ -859,8 +1095,142 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
     trimItem: (itemId: string, start: number, end: number) =>
       dispatch({ type: 'TRIM_ITEM', itemId, start, end }),
     clearTimeline: () => dispatch({ type: 'CLEAR_TIMELINE' }),
+    bulkUpdateItems: (items: TimelineItem[], removedItemIds: string[]) =>
+      dispatch({ type: 'BULK_UPDATE_ITEMS', items, removedItemIds }),
     undo: () => dispatch({ type: 'UNDO' }),
     redo: () => dispatch({ type: 'REDO' }),
+    // Cut management actions
+    fetchCuts: fetchCutsForCurrentVideo,
+    applyCut: async (cutId: string) => {
+      try {
+        const supabase = createClientSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const response = await fetch(`/api/videos/${state.currentVideoId}/cuts`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            cutIds: [cutId],
+            isActive: true
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            dispatch({ type: 'UPDATE_CUT', cutId, isActive: true });
+          }
+        }
+      } catch (error) {
+        console.error('Error applying cut:', error);
+      }
+    },
+    restoreCut: async (cutId: string) => {
+      try {
+        const supabase = createClientSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const response = await fetch(`/api/videos/${state.currentVideoId}/cuts`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            cutIds: [cutId],
+            isActive: false
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            dispatch({ type: 'UPDATE_CUT', cutId, isActive: false });
+          }
+        }
+      } catch (error) {
+        console.error('Error restoring cut:', error);
+      }
+    },
+    applyAllCuts: async () => {
+      if (!state.currentVideoId) return;
+      
+      try {
+        const supabase = createClientSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const response = await fetch(`/api/videos/${state.currentVideoId}/cuts/bulk`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            operationType: 'manual_selection',
+            cutIds: state.cuts.filter(cut => !cut.is_active).map(cut => cut.id)
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            dispatch({ type: 'SET_CUTS', cuts: state.cuts.map(cut => ({ ...cut, is_active: true })) });
+          }
+        }
+      } catch (error) {
+        console.error('Error applying all cuts:', error);
+      }
+    },
+    restoreAllCuts: async () => {
+      if (!state.currentVideoId) return;
+      
+      try {
+        const supabase = createClientSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+
+        const response = await fetch(`/api/videos/${state.currentVideoId}/cuts/bulk`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            operationType: 'restore_all'
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            dispatch({ type: 'SET_CUTS', cuts: state.cuts.map(cut => ({ ...cut, is_active: false })) });
+          }
+        }
+      } catch (error) {
+        console.error('Error restoring all cuts:', error);
+      }
+    },
+    setCurrentVideoId: (videoId: string | null) => {
+      dispatch({ type: 'SET_CURRENT_VIDEO_ID', videoId });
+    },
   };
 
   const persistenceActions = {

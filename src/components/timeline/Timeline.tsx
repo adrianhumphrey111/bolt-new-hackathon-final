@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import { useTimeline } from './TimelineContext';
 import { TimelineRuler } from './TimelineRuler';
 import { Track } from './Track';
@@ -8,15 +8,36 @@ import { Playhead } from './Playhead';
 import { usePlayerControls } from '../VideoEditor';
 import { TimeDisplay, formatTime } from './TimeDisplay';
 import { MediaType } from '../../../types/timeline';
+import { CutStatusBar } from './CutStatusBar';
+import { CutMarkersOverlay } from './CutMarkersOverlay';
+import { CutApplicationService } from './CutApplicationService';
+import { CutReviewPanel  } from './CutReviewPanel';
 
 export function Timeline() {
   const { state, config, actions, persistence } = useTimeline();
-  const { tracks, zoom, totalDuration, isPlaying, playheadPosition, fps } = state;
+  const { tracks, zoom, totalDuration, isPlaying, playheadPosition, fps, cuts, currentVideoId, cutsLoading } = state;
   const { rulerHeight, trackHeight } = config;
   const { handlePlayPause, playerRef } = usePlayerControls();
   
   const timelineRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Cut visualization state
+  const [showOriginalPreview, setShowOriginalPreview] = useState(false);
+  const [showCutReview, setShowCutReview] = useState(false);
+
+  const timelineRange = useMemo(() => {
+    if (!scrollRef.current) return { startTime: 0, endTime: totalDuration };
+    
+    const scrollLeft = scrollRef.current.scrollLeft;
+    const containerWidth = scrollRef.current.clientWidth;
+    const trackHeaderWidth = 128;
+    
+    const startTime = Math.max(0, (scrollLeft - trackHeaderWidth) / zoom);
+    const endTime = Math.min(totalDuration, (scrollLeft + containerWidth - trackHeaderWidth) / zoom);
+    
+    return { startTime, endTime };
+  }, [zoom, totalDuration]);
   
   const pixelsPerFrame = zoom;
   const trackHeaderWidth = 128; // Track header width (w-32)
@@ -129,10 +150,7 @@ export function Timeline() {
 
   // Split/razor tool handler - only splits selected items
   const handleSplitAtPlayhead = useCallback(() => {
-    console.log('✂️ Split selected items at playhead position:', playheadPosition);
-    
     if (state.selectedItems.length === 0) {
-      console.log('✂️ No items selected to split');
       return;
     }
     
@@ -145,11 +163,8 @@ export function Timeline() {
     );
     
     if (selectedItemsToSplit.length === 0) {
-      console.log('✂️ No selected items intersect with current playhead position');
       return;
     }
-    
-    console.log(`✂️ Splitting ${selectedItemsToSplit.length} selected item(s):`, selectedItemsToSplit.map(item => item.name));
     
     // Split each selected item
     selectedItemsToSplit.forEach(item => {
@@ -160,12 +175,10 @@ export function Timeline() {
 
   // Undo/Redo functionality
   const handleUndo = useCallback(() => {
-    console.log('⏪ Undo');
     actions.undo();
   }, [actions]);
 
   const handleRedo = useCallback(() => {
-    console.log('⏩ Redo');
     actions.redo();
   }, [actions]);
 
@@ -458,8 +471,48 @@ export function Timeline() {
           >
             Add Track
           </button>
+
+          {/* View Cuts button - always visible */}
+          <button
+            onClick={() => setShowCutReview(true)}
+            className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white text-sm rounded transition-colors flex items-center space-x-1"
+            title="View and manage cuts"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+            </svg>
+            <span>View Cuts</span>
+          </button>
         </div>
       </div>
+
+      {/* Cut Status Bar */}
+      {currentVideoId && cuts.length > 0 && (
+        <div className="px-3 py-2 border-b border-gray-600">
+          <CutStatusBar
+            videoId={currentVideoId}
+            onShowOriginal={() => setShowOriginalPreview(true)}
+            onReviewCuts={() => setShowCutReview(true)}
+            cuts={cuts}
+            onRestoreAllCuts={actions.restoreAllCuts}
+          />
+        </div>
+      )}
+
+      {/* Cut Review Panel */}
+      {showCutReview && currentVideoId && (
+        <CutReviewPanel
+          isOpen={showCutReview}
+          onClose={() => setShowCutReview(false)}
+          videoId={currentVideoId}
+          videoName="Current Video"
+          cuts={cuts}
+          onApplyCut={actions.applyCut}
+          onRestoreCut={actions.restoreCut}
+          onApplyAllCuts={actions.applyAllCuts}
+          onRestoreAllCuts={actions.restoreAllCuts}
+        />
+      )}
 
       {/* Timeline Content */}
       <div 
@@ -478,8 +531,25 @@ export function Timeline() {
           data-timeline-container
         >
           {/* Ruler */}
-          <div className="sticky top-0 z-20">
+          <div className="sticky top-0 z-20 relative">
             <TimelineRuler />
+            
+            {/* Cut Markers Overlay */}
+            {currentVideoId && tracks.length > 0 && cuts.length > 0 && (
+              <CutMarkersOverlay
+                videoId={currentVideoId}
+                timelineItems={tracks.flatMap(track => track.items)}
+                timelineWidth={totalWidth - trackHeaderWidth}
+                timelineStartTime={timelineRange.startTime}
+                timelineEndTime={timelineRange.endTime}
+                fps={fps}
+                cuts={cuts}
+                onCutRestored={actions.restoreCut}
+                onCutPreview={(cutId) => {
+                  // Handle cut preview functionality
+                }}
+              />
+            )}
           </div>
 
           {/* Gap between ruler and tracks */}

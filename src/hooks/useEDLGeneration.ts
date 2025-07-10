@@ -226,45 +226,45 @@ export function useEDLGeneration(projectId: string | null, session?: any, checkF
     }
   }, [])
 
-  // Subscribe to real-time changes on edl_generation_jobs table
-  useEffect(() => {
-    if (!projectId || !supabase) return
+  // Subscribe to real-time changes on edl_generation_jobs table , we do not need this for now
+  // useEffect(() => {
+  //   if (!projectId || !supabase) return
 
-    console.log('🔔 Setting up real-time subscription for EDL generation changes')
+  //   console.log('🔔 Setting up real-time subscription for EDL generation changes')
 
-    // Clean up existing subscription
-    if (channelRef.current) {
-      channelRef.current.unsubscribe()
-    }
+  //   // Clean up existing subscription
+  //   if (channelRef.current) {
+  //     channelRef.current.unsubscribe()
+  //   }
 
-    const channel = supabase
-      .channel(`edl_generation_changes_${projectId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'edl_generation_jobs',
-        filter: `project_id=eq.${projectId}`
-      }, (payload) => {
-        console.log('🔔 Real-time EDL generation change detected:', payload)
+  //   const channel = supabase
+  //     .channel(`edl_generation_changes_${projectId}`)
+  //     .on('postgres_changes', {
+  //       event: '*',
+  //       schema: 'public',
+  //       table: 'edl_generation_jobs',
+  //       filter: `project_id=eq.${projectId}`
+  //     }, (payload) => {
+  //       console.log('🔔 Real-time EDL generation change detected:', payload)
         
-        // If we have a current job, refresh its status
-        if (currentJob) {
-          setTimeout(() => {
-            checkJobStatus(currentJob.jobId)
-          }, 1000) // Small delay to ensure DB consistency
-        }
-      })
-      .subscribe()
+  //       // If we have a current job, refresh its status
+  //       if (currentJob) {
+  //         setTimeout(() => {
+  //           checkJobStatus(currentJob.jobId)
+  //         }, 1000) // Small delay to ensure DB consistency
+  //       }
+  //     })
+  //     .subscribe()
 
-    channelRef.current = channel
+  //   channelRef.current = channel
 
-    return () => {
-      if (channelRef.current) {
-        channelRef.current.unsubscribe()
-        channelRef.current = null
-      }
-    }
-  }, [projectId, supabase, currentJob, checkJobStatus])
+  //   return () => {
+  //     if (channelRef.current) {
+  //       channelRef.current.unsubscribe()
+  //       channelRef.current = null
+  //     }
+  //   }
+  // }, [projectId, supabase, currentJob, checkJobStatus])
 
   // Check for existing active jobs when projectId changes (only if explicitly requested)
   useEffect(() => {

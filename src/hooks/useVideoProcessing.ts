@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { videoPollingService, VideoStatus } from '../lib/videoPollingService'
 
 interface Video {
   id: string
@@ -38,6 +39,8 @@ export function useVideoProcessing(projectId: string | null) {
   const supabase = createClientComponentClient()
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const channelRef = useRef<any>(null)
+  const isCheckingRef = useRef(false)
+  const lastCheckTimeRef = useRef<number>(0)
 
   // Check for videos without analysis records or with processing status
   const checkProcessingStatus = useCallback(async () => {
@@ -46,6 +49,16 @@ export function useVideoProcessing(projectId: string | null) {
       setProcessingVideos([])
       return
     }
+
+    // Prevent duplicate calls within 2 seconds
+    const now = Date.now()
+    if (isCheckingRef.current || (now - lastCheckTimeRef.current) < 2000) {
+      console.log('🔍 Skipping duplicate check - already checking or too recent')
+      return
+    }
+
+    isCheckingRef.current = true
+    lastCheckTimeRef.current = now
 
     try {
       console.log('🔍 Checking video processing status for project:', projectId)
@@ -119,6 +132,8 @@ export function useVideoProcessing(projectId: string | null) {
     } catch (err) {
       console.error('❌ Error checking processing status:', err)
       setError(err instanceof Error ? err.message : 'Error checking video status')
+    } finally {
+      isCheckingRef.current = false
     }
   }, [projectId, supabase])
 
@@ -145,7 +160,7 @@ export function useVideoProcessing(projectId: string | null) {
         pollIntervalRef.current = null
       }
     }
-  }, [projectId, checkProcessingStatus])
+  }, [projectId])
 
   // Manage polling based on processing state
   useEffect(() => {
@@ -172,7 +187,7 @@ export function useVideoProcessing(projectId: string | null) {
         pollIntervalRef.current = null
       }
     }
-  }, [isProcessing, processingVideos.length, checkProcessingStatus])
+  }, [isProcessing, processingVideos.length])
 
   // Subscribe to real-time changes on video_analysis table
   useEffect(() => {

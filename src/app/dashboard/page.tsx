@@ -1,4 +1,8 @@
 import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+import { Database } from '@/types/supabase'
 import DashboardClient from './DashboardClient'
 
 function DashboardLoadingFallback() {
@@ -12,7 +16,29 @@ function DashboardLoadingFallback() {
   )
 }
 
-export default function Dashboard() {
+export default async function Dashboard() {
+  // Server-side subscription check
+  const supabase = createServerComponentClient<Database>({ cookies })
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) {
+    redirect('/auth/login')
+  }
+  
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('subscription_tier, stripe_subscription_id')
+    .eq('id', user.id)
+    .single()
+  
+  // Check if user needs to complete trial signup
+  const needsTrial = profile && !profile.subscription_tier && !profile.stripe_subscription_id
+  
+  if (needsTrial) {
+    redirect('/auth/trial-signup')
+  }
+  
   return (
     <Suspense fallback={<DashboardLoadingFallback />}>
       <DashboardClient />

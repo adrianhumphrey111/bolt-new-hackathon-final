@@ -24,6 +24,7 @@ import { useEDLGeneration } from '../hooks/useEDLGeneration';
 import { createClientSupabaseClient } from '../lib/supabase/client';
 import UpgradeModal from './UpgradeModal';
 import { SupportModal } from './SupportModal';
+import { exportToDaVinciResolveXML, downloadXMLFile } from '../lib/davinciResolveExport';
 import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
@@ -112,7 +113,7 @@ function VideoEditorContent() {
     { name: 'Adobe Premiere Pro', icon: '🎬', format: 'XML (Final Cut Pro XML)', action: 'export' },
     { name: 'Final Cut Pro', icon: '🎭', format: 'FCPXML', action: 'export' },
     { name: 'CapCut', icon: '✂️', format: 'SRT/XML', action: 'export' },
-    { name: 'DaVinci Resolve', icon: '🎨', format: 'XML/AAF', action: 'export' },
+    { name: 'DaVinci Resolve', icon: '🎨', format: 'ZIP with XML + Media', action: 'export' },
     { name: 'Avid Media Composer', icon: '📽️', format: 'AAF', action: 'export' },
     { name: 'Adobe After Effects', icon: '🌟', format: 'AEP Project', action: 'export' },
   ];
@@ -123,11 +124,105 @@ function VideoEditorContent() {
     
     if (option.action === 'render') {
       setShowRenderModal(true);
+    } else if (option.name === 'DaVinci Resolve') {
+      // Export to DaVinci Resolve as complete ZIP package via server
+      const exportZip = async () => {
+        try {
+          // Show loading state
+          const loadingMessage = 'Creating DaVinci Resolve export package...\n\nThis may take a moment while we download all media files from S3.';
+          
+          // For now, use alert - in production you'd use a proper loading modal
+          const shouldContinue = confirm(loadingMessage + '\n\nClick OK to continue with the export.');
+          
+          if (!shouldContinue) {
+            return;
+          }
+          
+          // Call server-side endpoint to create ZIP with extended timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => {
+            console.log('Request timed out after 5 minutes');
+            controller.abort();
+          }, 300000); // 5 minutes timeout
+          
+          console.log('Starting export request...');
+          const response = await fetch('/api/export/davinci-resolve', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              timelineState: state,
+              projectName: 'Timeline Project'
+            }),
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+          console.log('Export request completed with status:', response.status);
+          
+          if (!response.ok) {
+            let errorMessage = 'Failed to create export package';
+            try {
+              const errorData = await response.json();
+              errorMessage = errorData.details || errorMessage;
+            } catch (e) {
+              // If we can't parse JSON, use the status text
+              errorMessage = `Server error: ${response.status} ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
+          }
+          
+          // Get response data with download URL
+          console.log('Response received, parsing JSON...');
+          const responseData = await response.json();
+          console.log('Response data:', responseData);
+          
+          if (!responseData.success || !responseData.downloadUrl) {
+            throw new Error('Invalid response from server');
+          }
+          
+          // Trigger download from S3 URL
+          console.log('Downloading from S3 URL:', responseData.downloadUrl);
+          const link = document.createElement('a');
+          link.href = responseData.downloadUrl;
+          link.download = responseData.filename || 'Timeline_Project_DaVinci_Export.zip';
+          link.style.display = 'none';
+          
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          console.log('Download initiated successfully');
+          
+          // Show success message with file info
+          const fileSizeMB = (responseData.size / 1024 / 1024).toFixed(2);
+          alert(`DaVinci Resolve export package created successfully!\n\nFile: ${responseData.filename}\nSize: ${fileSizeMB} MB\n\nThe ZIP file contains:\n- timeline.xml (import this file)\n- Media/ folder with all video files\n- README.txt with detailed instructions\n\nTo use: Unzip the file and import timeline.xml in DaVinci Resolve.`);
+        } catch (error) {
+          console.error('Error exporting to DaVinci Resolve:', error);
+          
+          let errorMessage = 'Failed to create DaVinci Resolve export package.';
+          
+          if (error instanceof Error) {
+            if (error.name === 'AbortError') {
+              errorMessage = 'Export timed out. Large video files may take several minutes to process. Please try again or contact support if the issue persists.';
+            } else if (error.message.includes('fetch')) {
+              errorMessage = 'Network error while downloading export package. Please check your internet connection and try again.';
+            } else {
+              errorMessage = `Export failed: ${error.message}`;
+            }
+          }
+          
+          alert(errorMessage + '\n\nTip: For large video files, the export may take several minutes. Please be patient and avoid closing the browser.');
+        }
+      };
+      
+      exportZip();
     } else {
-      // TODO: Implement actual export functionality for editors
+      // TODO: Implement actual export functionality for other editors
       alert(`Export to ${option.name} will be implemented soon!`);
     }
-  }, []);
+  }, [state]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {

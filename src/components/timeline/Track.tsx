@@ -26,7 +26,6 @@ export function Track({ track, index }: TrackProps) {
     // Deselect items when clicking empty track area
     // Don't interfere with ruler clicks for playhead movement
     if (e.target === e.currentTarget) {
-      console.log('🎵 Track clicked - deselecting items');
       actions.selectItems([]);
     }
   };
@@ -35,7 +34,6 @@ export function Track({ track, index }: TrackProps) {
     // Only handle right-click on empty track areas (not on timeline items)
     if (e.target === e.currentTarget) {
       e.preventDefault();
-      console.log('🖱️ Right-clicking empty track area');
       // Could add track-specific context menu here later
     }
   };
@@ -54,7 +52,7 @@ export function Track({ track, index }: TrackProps) {
         const x = e.clientX - rect.left - 128; // Account for track header width
         const frame = Math.max(0, Math.round(x / (state.zoom)));
         
-        actions.addItem({
+        const newItem = {
           type: dropData.item.type,
           name: dropData.item.name,
           startTime: frame,
@@ -62,10 +60,17 @@ export function Track({ track, index }: TrackProps) {
           trackId: track.id,
           src: dropData.item.src,
           content: dropData.item.content,
-        });
+          properties: dropData.item.type === 'video' ? {
+            videoId: dropData.item.id,
+            originalStartTime: 0,
+            originalEndTime: (dropData.item.duration || 90) / state.fps
+          } : undefined,
+        };
+        
+        
+        actions.addItem(newItem);
       } else if (dropData.type === 'transition-item') {
         // Handle transition drop directly on track (show helper message)
-        console.log('Transition dropped on track. Please drop between two clips.');
         // Could show a temporary message here
       }
     } catch (error) {

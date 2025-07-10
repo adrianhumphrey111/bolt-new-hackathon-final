@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { createClientSupabaseClient } from '../../lib/supabase/client'
 import { trackVideoUpload, trackVideoProcessingComplete, trackError } from '../../lib/analytics/gtag'
+import VideoProcessingErrorBoundary from '../VideoProcessingErrorBoundary'
 
 interface UploadingVideo {
   id: string
@@ -35,6 +36,17 @@ interface CompletedVideo {
   duration?: number
 }
 
+interface FailedVideo {
+  id: string
+  name: string
+  original_name: string
+  file_path: string
+  status: 'failed'
+  created_at: string
+  error_message?: string
+  canRetry: boolean
+}
+
 interface VideoProcessingFlowProps {
   projectId: string
   onVideoCompleted: (video: CompletedVideo) => void
@@ -52,6 +64,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
   const [uploadingVideos, setUploadingVideos] = useState<UploadingVideo[]>([])
   const [processingVideos, setProcessingVideos] = useState<ProcessingVideo[]>([])
   const [completedVideos, setCompletedVideos] = useState<CompletedVideo[]>([])
+  const [failedVideos, setFailedVideos] = useState<FailedVideo[]>([])
   const [notifiedVideoIds, setNotifiedVideoIds] = useState<Set<string>>(new Set())
   const supabase = createClientSupabaseClient()
 
@@ -86,6 +99,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
 
       const processing: ProcessingVideo[] = []
       const completed: CompletedVideo[] = []
+      const failed: FailedVideo[] = []
 
       videos?.forEach(video => {
         const analysis = Array.isArray(video.video_analysis) 
@@ -131,19 +145,23 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
           // Don't show completed videos in the processing flow once they're in main list
           // This keeps the UI clean - videos only appear here briefly during transition
         } else if (analysis?.status === 'failed') {
-          // Video failed processing - only show if not already handled
+          // Video failed processing - add to failed storage for retry
+          const failedVideo: FailedVideo = {
+            id: video.id,
+            name: video.original_name,
+            original_name: video.original_name,
+            file_path: video.file_path,
+            status: 'failed',
+            created_at: video.created_at,
+            error_message: analysis.error_message,
+            canRetry: true
+          }
+          
+          failed.push(failedVideo)
+          
+          // Track failed video processing only once
           if (!notifiedVideoIds.has(video.id)) {
-            processing.push({
-              id: video.id,
-              name: video.original_name,
-              original_name: video.original_name,
-              file_path: video.file_path,
-              status: 'failed',
-              created_at: video.created_at,
-              error_message: analysis.error_message
-            })
-            
-            // Track failed video processing
+            setNotifiedVideoIds(prev => new Set([...prev, video.id]))
             trackVideoProcessingComplete(video.id, 0, false)
             trackError('video_processing_failed', analysis.error_message || 'Unknown error', video.id)
           }
@@ -176,6 +194,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
 
       setProcessingVideos(processing)
       setCompletedVideos(completed)
+      setFailedVideos(failed)
 
     } catch (error) {
       console.error('Error polling processing status:', error)
@@ -251,6 +270,59 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
     markUploadFailed
   }), [addUploadingVideo, updateUploadProgress, markUploadComplete, markUploadFailed])
 
+  // Retry analysis for failed video
+  const retryVideoAnalysis = useCallback(async (videoId: string) => {
+    try {
+      console.log(`🔄 Retrying analysis for video: ${videoId}`);
+      
+      // Get auth session for API call
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('No user session for retry');
+        return;
+      }
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      
+      // Remove from failed videos and start analysis again
+      setFailedVideos(prev => prev.filter(v => v.id !== videoId));
+      setNotifiedVideoIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(videoId);
+        return newSet;
+      });
+      
+      // Start analysis request (async - don't wait for response)
+      fetch(`/api/videos/${videoId}/analyze`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          analysisType: 'full',
+          retry: true
+        })
+      }).then(async (response) => {
+        if (response.ok) {
+          console.log(`✅ Analysis retry started for video: ${videoId}`);
+          // Refresh the status to show it as processing
+          pollProcessingStatus();
+        } else {
+          const errorText = await response.text();
+          console.error(`❌ Analysis retry failed for video: ${videoId}`, errorText);
+        }
+      }).catch((error) => {
+        console.error(`❌ Analysis retry request failed for video: ${videoId}`, error);
+      });
+      
+    } catch (error) {
+      console.error('Error retrying video analysis:', error);
+    }
+  }, [supabase, pollProcessingStatus]);
+
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -305,7 +377,8 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
   }
 
   return (
-    <div className="space-y-6">
+    <VideoProcessingErrorBoundary>
+      <div className="space-y-6">
       {/* Uploading Videos */}
       {uploadingVideos.length > 0 && (
         <div className="space-y-3">
@@ -436,8 +509,51 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
         </div>
       )}
 
+      {/* Failed Videos */}
+      {failedVideos.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-gray-300 flex items-center">
+            <svg className="w-4 h-4 mr-2 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            Failed Videos ({failedVideos.length})
+          </h4>
+          
+          <div className="space-y-2">
+            {failedVideos.map(video => (
+              <div key={video.id} className="bg-gray-800 rounded-lg p-3 border border-red-600/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="text-sm text-white truncate">{video.name}</div>
+                    <div className="text-xs text-gray-400">
+                      Failed {new Date(video.created_at).toLocaleTimeString()}
+                    </div>
+                    {video.error_message && (
+                      <div className="text-xs text-red-400 mt-1">{video.error_message}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {video.canRetry && (
+                      <button
+                        onClick={() => retryVideoAnalysis(video.id)}
+                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Show message when no activity */}
-      {uploadingVideos.length === 0 && processingVideos.length === 0 && completedVideos.length === 0 && (
+      {uploadingVideos.length === 0 && processingVideos.length === 0 && completedVideos.length === 0 && failedVideos.length === 0 && (
         <div className="text-center py-8 text-gray-500">
           <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -447,6 +563,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
         </div>
       )}
     </div>
+    </VideoProcessingErrorBoundary>
   )
 })
 

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTimeline } from './TimelineContext';
 import { useAuthContext } from '../AuthProvider';
+import { exportToDaVinciResolveXML, downloadXMLFile } from '../../lib/davinciResolveExport';
 
 interface RenderModalProps {
   isOpen: boolean;
@@ -230,6 +231,18 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
     }
   }, [renderState.outputFile, projectId, renderConfig.format]);
 
+  const exportToDaVinciResolve = useCallback(() => {
+    try {
+      const projectName = `Timeline Export ${new Date().toISOString().split('T')[0]}`;
+      const xmlContent = exportToDaVinciResolveXML(state, projectName);
+      const filename = `timeline-${projectId}-${Date.now()}.fcpxml`;
+      downloadXMLFile(xmlContent, filename);
+    } catch (error) {
+      console.error('Error exporting to DaVinci Resolve:', error);
+      alert('Failed to export timeline. Please try again.');
+    }
+  }, [state, projectId]);
+
   if (!isOpen) return null;
 
   return (
@@ -296,12 +309,24 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
                 Start Cloud Render
               </button>
               
-              <button
-                onClick={onClose}
-                className="w-full bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={exportToDaVinciResolve}
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                  title="Export timeline as FCPXML for DaVinci Resolve"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                  <span>Export to DaVinci</span>
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
 
@@ -343,6 +368,16 @@ export function RenderModal({ isOpen, onClose, projectId }: RenderModalProps) {
                   className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-medium transition-colors"
                 >
                   Download Video
+                </button>
+                <button
+                  onClick={exportToDaVinciResolve}
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
+                  title="Export timeline as FCPXML for DaVinci Resolve"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                  <span>Export to DaVinci Resolve</span>
                 </button>
                 <button
                   onClick={onClose}

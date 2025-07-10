@@ -9,6 +9,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Verify user has a valid subscription
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('subscription_tier, stripe_subscription_id')
+      .eq('id', user.id)
+      .single();
+
+    const needsTrial = profile && !profile.subscription_tier && !profile.stripe_subscription_id;
+    
+    if (needsTrial) {
+      return NextResponse.json({ 
+        error: 'Subscription required',
+        message: 'Please complete your trial signup to use this feature',
+        redirectTo: '/auth/trial-signup'
+      }, { status: 403 });
+    }
+
     const { action, credits } = await request.json();
 
     if (!action || !credits || credits <= 0) {

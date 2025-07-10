@@ -44,13 +44,26 @@ export interface TimelinePersistenceService {
 }
 
 class TimelinePersistenceServiceImpl implements TimelinePersistenceService {
+  // Get auth headers for API calls
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const supabase = createClientSupabaseClient();
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  }
+
   async loadTimeline(projectId: string): Promise<SavedTimeline | null> {
     try {
+      const headers = await this.getAuthHeaders();
       const response = await fetch(`/api/timeline/${projectId}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -70,11 +83,10 @@ class TimelinePersistenceServiceImpl implements TimelinePersistenceService {
 
   async saveTimeline(projectId: string, data: SaveTimelineRequest): Promise<SavedTimeline> {
     try {
+      const headers = await this.getAuthHeaders();
       const response = await fetch(`/api/timeline/${projectId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(data),
       });
 
@@ -92,11 +104,10 @@ class TimelinePersistenceServiceImpl implements TimelinePersistenceService {
 
   async deleteTimeline(projectId: string): Promise<void> {
     try {
+      const headers = await this.getAuthHeaders();
       const response = await fetch(`/api/timeline/${projectId}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
       });
 
       if (!response.ok) {

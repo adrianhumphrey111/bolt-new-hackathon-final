@@ -4,6 +4,7 @@ import React, { useRef, useState, useCallback } from 'react';
 import { TimelineItem, MediaType } from '../../../types/timeline';
 import { useTimeline } from './TimelineContext';
 import { ContextMenu } from './ContextMenu';
+import { CutSplitLines } from './CutSplitLines';
 
 interface TimelineItemProps {
   item: TimelineItem;
@@ -398,6 +399,17 @@ export function TimelineItemComponent({ item, trackHeight }: TimelineItemProps) 
       <div className="absolute bottom-0 right-1 text-xs text-white opacity-75">
         {Math.round(item.duration / state.fps * 10) / 10}s
       </div>
+
+      {/* Cut Split Lines - Only show for video items with videoId */}
+      {item.type === MediaType.VIDEO && item.properties?.videoId && (
+        <CutSplitLines
+          videoId={item.properties.videoId}
+          timelineItem={item}
+          zoom={zoom}
+          fps={state.fps}
+          trackHeight={trackHeight}
+        />
+      )}
 
       {/* Context Menu */}
       <ContextMenu

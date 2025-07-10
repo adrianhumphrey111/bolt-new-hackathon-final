@@ -13,6 +13,14 @@ import { AIVideoSorter } from './AIVideoSorter';
 import { useDrag } from './DragContext';
 import { StoragePaywallModal } from '../StoragePaywallModal';
 import { PaywallModal } from '../PaywallModal';
+import VideoProcessingErrorBoundary from '../VideoProcessingErrorBoundary';
+import { retryAsync, isRetryableError } from '../../lib/retry';
+import { uploadQueue, UploadSession } from '../../lib/uploadQueue';
+import { EnhancedUploadProgress } from '../EnhancedUploadProgress';
+import { UploadProgressModal } from '../UploadProgressModal';
+import { UploadProgressSummary } from '../UploadProgressSummary';
+import { UploadAndAnalysisProgress } from '../UploadAndAnalysisProgress';
+import { useWebSocket } from '../../lib/websocket';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
 import { wipe } from '@remotion/transitions/wipe';
@@ -21,6 +29,9 @@ import { clockWipe } from '@remotion/transitions/clock-wipe';
 import { iris } from '@remotion/transitions/iris';
 import { none } from '@remotion/transitions/none';
 import { VideoProcessingFlow, VideoProcessingFlowMethods } from './VideoProcessingFlow';
+import { CleanUpVideoModal, CleanUpOptions } from './CleanUpVideoModal';
+import { CutDetectionProgress } from './CutDetectionProgress';
+import { CutReviewPanel } from './CutReviewPanel';
 
 interface MediaItem {
   id: string;
@@ -160,6 +171,13 @@ export function MediaLibrary() {
   const fetchingRef = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<{[key: string]: boolean}>({});
+  
+  // New upload queue state
+  const [currentUploadSession, setCurrentUploadSession] = useState<string | null>(null);
+  const [showEnhancedProgress, setShowEnhancedProgress] = useState(false);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const ws = useWebSocket();
+  
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     videoId: string;
@@ -206,6 +224,37 @@ export function MediaLibrary() {
     availableCredits: 0,
     action: '',
   });
+  const [cleanUpModal, setCleanUpModal] = useState<{
+    isOpen: boolean;
+    videoId: string;
+    videoName: string;
+    videoDuration: string;
+  }>({
+    isOpen: false,
+    videoId: '',
+    videoName: '',
+    videoDuration: '',
+  });
+  const [cutDetectionProgress, setCutDetectionProgress] = useState<{
+    isOpen: boolean;
+    videoId: string;
+    videoName: string;
+    cutOptions: CleanUpOptions | null;
+  }>({
+    isOpen: false,
+    videoId: '',
+    videoName: '',
+    cutOptions: null,
+  });
+  const [cutReviewPanel, setCutReviewPanel] = useState<{
+    isOpen: boolean;
+    videoId: string;
+    videoName: string;
+  }>({
+    isOpen: false,
+    videoId: '',
+    videoName: '',
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoProcessingFlowRef = useRef<VideoProcessingFlowMethods>(null);
   const supabase = createClientSupabaseClient();
@@ -218,8 +267,7 @@ export function MediaLibrary() {
     error: processingError,
     formatElapsedTime,
     isVideoProcessing,
-    getVideoProcessingInfo,
-    startMonitoring
+    getVideoProcessingInfo
   } = useVideoProcessing(projectId);
 
   // Get auth headers for API calls
@@ -237,9 +285,11 @@ export function MediaLibrary() {
 
   // Fetch project videos via API
   const fetchProjectVideos = useCallback(async () => {
-    if (!projectId || fetchingRef.current || loadedProjectId === projectId) return;
+    if (!projectId || fetchingRef.current) return;
 
-    fetchingRef.current = true;
+    // Create a unique fetch request ID to prevent race conditions
+    const fetchId = Date.now();
+    fetchingRef.current = fetchId;
     setLoading(true);
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
@@ -263,6 +313,12 @@ export function MediaLibrary() {
       }
 
       const { videos } = await response.json();
+
+      // Check if this is still the current fetch request
+      if (fetchingRef.current !== fetchId) {
+        console.log('Fetch request cancelled - newer request in progress');
+        return;
+      }
 
       const mediaItems: MediaItem[] = videos.map(video => {
         let videoUrl = video.file_path;
@@ -340,10 +396,13 @@ export function MediaLibrary() {
     } catch (error) {
       console.error('Error fetching project videos:', error);
     } finally {
-      setLoading(false);
-      fetchingRef.current = false;
+      // Only clear loading if this is still the current request
+      if (fetchingRef.current === fetchId) {
+        setLoading(false);
+        fetchingRef.current = false;
+      }
     }
-  }, [projectId, supabase, state.fps]); // Using analysis data directly from API instead of useVideoProcessing hook
+  }, [projectId, state.fps]); // Using analysis data directly from API instead of useVideoProcessing hook
 
   // Reset loaded state when projectId changes
   useEffect(() => {
@@ -358,7 +417,7 @@ export function MediaLibrary() {
     if (projectId && loadedProjectId !== projectId) {
       fetchProjectVideos();
     }
-  }, [projectId, loadedProjectId, fetchProjectVideos]);
+  }, [projectId, loadedProjectId]);
 
   // Load script content when project changes
   const fetchScriptContent = useCallback(async () => {
@@ -434,6 +493,45 @@ export function MediaLibrary() {
     setScriptContent(content);
     debouncedSaveScript(content);
   }, [debouncedSaveScript]);
+
+  // Clean up modal handlers
+  const handleCleanUpClick = useCallback((videoId: string, videoName: string, videoDuration: number) => {
+    const durationStr = `${Math.round(videoDuration / 30 * 10) / 10}s`; // Convert frames to seconds
+    setCleanUpModal({
+      isOpen: true,
+      videoId,
+      videoName,
+      videoDuration: durationStr,
+    });
+  }, []);
+
+  const handleCleanUpConfirm = useCallback((options: CleanUpOptions) => {
+    setCleanUpModal(prev => ({ ...prev, isOpen: false }));
+    
+    // Start the cut detection progress
+    setCutDetectionProgress({
+      isOpen: true,
+      videoId: cleanUpModal.videoId,
+      videoName: cleanUpModal.videoName,
+      cutOptions: options,
+    });
+  }, [cleanUpModal]);
+
+  const handleCutDetectionComplete = useCallback((cuts: any[]) => {
+    setCutDetectionProgress(prev => ({ ...prev, isOpen: false }));
+    
+    // Optionally refresh video list or show success message
+    console.log('Cut detection completed with', cuts.length, 'cuts detected');
+    
+    // Open the Cut Review Panel to show the detected cuts
+    if (cuts.length > 0) {
+      setCutReviewPanel({
+        isOpen: true,
+        videoId: cutDetectionProgress.videoId,
+        videoName: cutDetectionProgress.videoName,
+      });
+    }
+  }, [cutDetectionProgress]);
 
   const getMediaIcon = (type: MediaType) => {
     switch (type) {
@@ -529,7 +627,7 @@ export function MediaLibrary() {
       targetTrackId = 'new-track';
     }
 
-    actions.addItem({
+    const newItem = {
       type: mediaItem.type,
       name: mediaItem.name,
       startTime: state.playheadPosition,
@@ -537,7 +635,17 @@ export function MediaLibrary() {
       trackId: targetTrackId,
       src: mediaItem.src,
       content: mediaItem.type === MediaType.TEXT ? 'Sample Text' : undefined,
-    });
+      properties: mediaItem.type === MediaType.VIDEO ? {
+        videoId: mediaItem.id, // Use the media item's ID as the videoId
+        originalStartTime: 0,
+        originalEndTime: (mediaItem.duration || 90) / state.fps
+      } : undefined,
+    };
+    
+    console.log('🔍 DEBUG: Adding item to timeline:', newItem);
+    console.log('🔍 DEBUG: Media item being added:', mediaItem);
+    
+    actions.addItem(newItem);
   };
 
   const handleDragStart = (e: React.DragEvent, mediaItem: MediaItem) => {
@@ -721,25 +829,38 @@ export function MediaLibrary() {
     const videoId = uuidv4(); // Generate a unique ID for the video
 
     try {
-      // Add to uploading videos in processing flow
-      if (videoProcessingFlowRef.current) {
-        console.log('🎬 MediaLibrary: About to call addUploadingVideo with:', {
-          id: videoId,
-          name: file.name,
-          size: file.size,
-          progress: 0,
-          status: 'uploading'
-        });
-        videoProcessingFlowRef.current.addUploadingVideo({
-          id: videoId,
-          name: file.name,
-          size: file.size,
-          progress: 0,
-          status: 'uploading'
-        });
-        console.log('🎬 MediaLibrary: Called addUploadingVideo successfully');
-      } else {
-        console.error('🚨 MediaLibrary: videoProcessingFlowRef.current is null!');
+      // Add to uploading videos in processing flow with retry mechanism
+      const addToProcessingFlow = () => {
+        if (videoProcessingFlowRef.current) {
+          console.log('🎬 MediaLibrary: About to call addUploadingVideo with:', {
+            id: videoId,
+            name: file.name,
+            size: file.size,
+            progress: 0,
+            status: 'uploading'
+          });
+          videoProcessingFlowRef.current.addUploadingVideo({
+            id: videoId,
+            name: file.name,
+            size: file.size,
+            progress: 0,
+            status: 'uploading'
+          });
+          console.log('🎬 MediaLibrary: Called addUploadingVideo successfully');
+          return true;
+        }
+        return false;
+      };
+
+      // Try to add to processing flow, with retry if ref is not ready
+      if (!addToProcessingFlow()) {
+        console.warn('🚨 MediaLibrary: videoProcessingFlowRef.current is null, retrying...');
+        // Wait a bit for the ref to be ready
+        setTimeout(() => {
+          if (!addToProcessingFlow()) {
+            console.error('🚨 MediaLibrary: videoProcessingFlowRef.current is still null after retry!');
+          }
+        }, 100);
       }
 
       // Get current user session
@@ -787,45 +908,85 @@ export function MediaLibrary() {
       console.log('DEBUG: saveVideoToProject - File to upload to S3 size:', file.size, 'bytes');
       console.log('DEBUG: saveVideoToProject - File to upload to S3 type:', file.type);
       
-      // Now upload to S3 with progress tracking
-      await uploadToS3({ 
-        file, 
-        fileName, 
-        bucketName,
-        onProgress: (progress) => {
-          // Update progress in both old and new systems for now
-          setUploadProgress(prev => ({ ...prev, [videoId]: progress }));
-          if (videoProcessingFlowRef.current) {
-            videoProcessingFlowRef.current.updateUploadProgress(videoId, progress);
+      // Now upload to S3 with progress tracking and retry logic
+      await retryAsync(
+        async () => {
+          await uploadToS3({ 
+            file, 
+            fileName, 
+            bucketName,
+            onProgress: (progress) => {
+              // Update progress in both old and new systems for now
+              setUploadProgress(prev => ({ ...prev, [videoId]: progress }));
+              if (videoProcessingFlowRef.current) {
+                videoProcessingFlowRef.current.updateUploadProgress(videoId, progress);
+              }
+            }
+          });
+        },
+        {
+          maxRetries: 3,
+          shouldRetry: (error) => {
+            // Retry for network errors but not for file too large errors
+            if (error.message.includes('file too large') || error.message.includes('413')) {
+              return false;
+            }
+            return isRetryableError(error);
+          },
+          onRetry: (error, attempt) => {
+            console.warn(`Upload attempt ${attempt} failed for ${file.name}:`, error.message);
+            if (videoProcessingFlowRef.current) {
+              videoProcessingFlowRef.current.updateUploadProgress(videoId, 0); // Reset progress for retry
+            }
           }
         }
-      });
+      );
 
       // Mark upload complete
       if (videoProcessingFlowRef.current) {
         videoProcessingFlowRef.current.markUploadComplete(videoId);
       }
       
-      // Start video analysis immediately
+      // Start video analysis immediately with retry logic
       try {
-        const headers = await getAuthHeaders();
-        const analysisResponse = await fetch(`/api/videos/${videoId}/analyze`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            analysisType: analysisType,
-            fileSize: file.size
-          })
-        });
-        
-        if (!analysisResponse.ok) {
-          console.warn('Failed to start video analysis');
-        } else {
-          const result = await analysisResponse.json();
-          console.log('✅ Video analysis started:', result);
-        }
+        await retryAsync(
+          async () => {
+            const headers = await getAuthHeaders();
+            const analysisResponse = await fetch(`/api/videos/${videoId}/analyze`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                analysisType: analysisType,
+                fileSize: file.size
+              })
+            });
+            
+            if (!analysisResponse.ok) {
+              const errorText = await analysisResponse.text();
+              throw new Error(`Analysis failed: ${analysisResponse.status} ${errorText}`);
+            }
+            
+            const result = await analysisResponse.json();
+            console.log('✅ Video analysis started:', result);
+          },
+          {
+            maxRetries: 3,
+            shouldRetry: (error) => {
+              // Retry for 5xx errors but not for 4xx errors
+              if (error.message.includes('400') || error.message.includes('401') || 
+                  error.message.includes('403') || error.message.includes('404')) {
+                return false;
+              }
+              return isRetryableError(error);
+            },
+            onRetry: (error, attempt) => {
+              console.warn(`Analysis trigger attempt ${attempt} failed for ${file.name}:`, error.message);
+            }
+          }
+        );
       } catch (error) {
-        console.warn('Error starting video analysis:', error);
+        console.warn('Error starting video analysis after retries:', error);
+        // Don't throw here - we want the upload to succeed even if analysis fails
       }
       
       // Deduct 10 credits for video upload
@@ -989,6 +1150,51 @@ export function MediaLibrary() {
     }
   };
 
+  const handleEnhancedUpload = useCallback(async (files: File[]) => {
+    if (!projectId) return;
+
+    try {
+      console.log('🚀 ENHANCED UPLOAD: Starting with', files.length, 'files');
+      setUploading(true);
+      
+      // Create upload session
+      const sessionId = await uploadQueue.createSession(projectId, files);
+      setCurrentUploadSession(sessionId);
+      setShowProgressModal(true);
+      
+      // Set up upload queue callbacks
+      uploadQueue.options.onTaskUpdate = (task) => {
+        console.log('Task updated:', task);
+      };
+      
+      uploadQueue.options.onSessionUpdate = (session) => {
+        console.log('Session updated:', session);
+        // Clear upload state when session completes
+        if (session.status === 'completed' && uploading) {
+          console.log('✅ Upload session completed, refreshing videos');
+          setUploading(false);
+          setCurrentUploadSession(null); // Clear the session to hide progress UI
+          
+          // Refresh project videos only once after a delay
+          setTimeout(() => {
+            console.log('🔄 Fetching updated project videos after upload completion');
+            fetchProjectVideos();
+          }, 2000); // Longer delay to ensure database consistency
+        }
+      };
+      
+      uploadQueue.options.onError = (error, task) => {
+        console.error('Upload error:', error, task);
+      };
+      
+    } catch (error) {
+      console.error('Error starting enhanced upload:', error);
+      setUploading(false);
+      setShowEnhancedProgress(false);
+      setCurrentUploadSession(null);
+    }
+  }, [projectId, fetchProjectVideos]);
+
   const handleFileUpload = useCallback(async (files: FileList, analysisType?: 'full' | 'sample') => {
     console.log('🚀 UPLOAD DEBUG: handleFileUpload started with', files.length, 'files');
     
@@ -999,6 +1205,11 @@ export function MediaLibrary() {
     // Check if we have video files
     const videoFiles = filesToProcess.filter(file => file.type.startsWith('video/'));
     console.log('🚀 UPLOAD DEBUG: Found', videoFiles.length, 'video files');
+    
+    // Always use enhanced upload for video files
+    if (videoFiles.length > 0 && projectId) {
+      return handleEnhancedUpload(videoFiles);
+    }
     
     // Default to full analysis type for all videos (no modal needed with Gemini API)
     const defaultAnalysisType = analysisType || 'full';
@@ -1090,8 +1301,7 @@ export function MediaLibrary() {
           // Don't add to projectVideos immediately - let the processing flow handle it
           // The video will appear in "Being Analyzed" section and move to "Ready to Use" when complete
           
-          // Start monitoring for processing status
-          startMonitoring();
+          // Video processing monitoring is handled automatically by the hook
         }
       }
       
@@ -1113,7 +1323,7 @@ export function MediaLibrary() {
       setUploading(false);
       setUploadProgress({}); // Clear upload progress
     }
-  }, [state.fps, projectId, saveVideoToProject, startMonitoring]);
+  }, [state.fps, projectId, saveVideoToProject]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1306,7 +1516,8 @@ export function MediaLibrary() {
   ];
 
   return (
-    <div className={`bg-gray-800 border-r border-gray-600 transition-all duration-300 flex flex-col ${isCollapsed ? 'w-12' : 'w-80'}`}>
+    <>
+      <div className={`bg-gray-800 border-r border-gray-600 transition-all duration-300 flex flex-col ${isCollapsed ? 'w-12' : 'w-80'}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-600">
         {!isCollapsed && (
@@ -1326,9 +1537,10 @@ export function MediaLibrary() {
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - Moved to top */}
       {!isCollapsed && (
-        <div className="flex border-b border-gray-600">
+        <div className="flex-1 flex flex-col">
+          <div className="flex border-b border-gray-600">
           <button
             onClick={() => setActiveTab('media')}
             className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
@@ -1369,88 +1581,94 @@ export function MediaLibrary() {
           >
             Transitions
           </button>
-        </div>
-      )}
-
-      {!isCollapsed && (
-        <div className="h-full flex flex-col">
-          {/* Media Tab Content */}
-          {activeTab === 'media' && (
-            <>
-              <div className="p-3 flex-shrink-0">
-                {/* Upload Section */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-300 mb-3">Upload Media</h4>
-            <input
-              ref={fileInputRef}
-              id="video-upload-input"
-              type="file"
-              multiple
-              accept="video/mp4,video/quicktime,.mov,.mp4,audio/*,image/*"
-              onChange={handleFileInputChange}
-              className="hidden"
-            />
-            <div
-              className={`
-                p-4 border-2 border-dashed rounded transition-colors cursor-pointer
-                ${uploading 
-                  ? 'border-green-500 bg-green-500/10 cursor-wait' 
-                  : isDragOver 
-                    ? 'border-blue-500 bg-blue-500/10' 
-                    : 'border-gray-600 hover:border-gray-500'
-                }
-              `}
-              onDrop={uploading ? undefined : handleDrop}
-              onDragOver={uploading ? undefined : handleDragOver}
-              onDragLeave={uploading ? undefined : handleDragLeave}
-              onClick={uploading ? undefined : handleUploadClick}
-            >
-              <div className="text-center">
-                {uploading ? (
-                  <div className="w-8 h-8 mx-auto mb-2 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <svg className="w-8 h-8 mx-auto mb-2 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-                <div className="text-sm text-gray-300">
-                  {uploading 
-                    ? 'Uploading videos...' 
-                    : isDragOver 
-                      ? 'Drop files here' 
-                      : 'Drop files or click to upload (up to 20)'
-                  }
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {uploading 
-                    ? projectId 
-                      ? 'Processing and saving to project...' 
-                      : 'Processing files...'
-                    : 'Videos: MP4, MOV (≤300MB converts to MP4) • Audio: MP3, WAV, M4A • Images: JPG, PNG, GIF • Max 20 files'
-                  }
-                </div>
-                {/* Show upload progress for large files */}
-                {uploading && Object.keys(uploadProgress).length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {Object.entries(uploadProgress).map(([videoId, progress]) => (
-                      <div key={videoId} className="bg-gray-700 rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="bg-green-500 h-full transition-all duration-300"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
+          </div>
+          
+          {/* Scrollable Content Area */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+          {/* Upload Progress Summary - Compact */}
+          {currentUploadSession && projectId && (
+            <div className="px-3 py-2 border-b border-gray-600 bg-gray-750">
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  onClick={() => setShowProgressModal(true)}
+                  className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+                >
+                  View Details
+                </button>
+              </div>
+              <UploadAndAnalysisProgress 
+                sessionId={currentUploadSession} 
+                projectId={projectId}
+              />
+            </div>
+          )}
+          
+          {/* Connection Status */}
+          {ws && typeof ws.isConnected === 'function' && ws.isConnected() && (
+            <div className="px-3 py-1 border-b border-gray-600">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-xs text-gray-400">Real-time uploads enabled</span>
               </div>
             </div>
-          </div>
-          </div>
+          )}
 
-              {/* Scrollable Content Area */}
-              <div className="flex-1 overflow-y-auto px-3 pb-6 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-            {/* Video Processing Flow */}
-            {projectId && (
+          {/* Tab Content */}
+          {activeTab === 'media' && (
+            <div className="px-3 py-3">
+              {/* Upload Section - Compact */}
+              <div className="mb-4">
+                <h4 className="text-sm font-medium text-gray-300 mb-2">Upload Media</h4>
+                  <input
+                    ref={fileInputRef}
+                    id="video-upload-input"
+                    type="file"
+                    multiple
+                    accept="video/mp4,video/quicktime,.mov,.mp4,audio/*,image/*"
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                  />
+                  <div
+                    className={`
+                      p-3 border-2 border-dashed rounded transition-colors cursor-pointer
+                      ${currentUploadSession 
+                        ? 'border-blue-500 bg-blue-500/10 cursor-wait' 
+                        : isDragOver 
+                          ? 'border-blue-500 bg-blue-500/10' 
+                          : 'border-gray-600 hover:border-gray-500'
+                      }
+                    `}
+                    onDrop={currentUploadSession ? undefined : handleDrop}
+                    onDragOver={currentUploadSession ? undefined : handleDragOver}
+                    onDragLeave={currentUploadSession ? undefined : handleDragLeave}
+                    onClick={currentUploadSession ? undefined : handleUploadClick}
+                  >
+                    <div className="text-center">
+                      {currentUploadSession ? (
+                        <div className="w-6 h-6 mx-auto mb-1 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <svg className="w-6 h-6 mx-auto mb-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                      <div className="text-xs text-gray-300 mb-1">
+                        {currentUploadSession 
+                          ? 'Processing...' 
+                          : isDragOver 
+                            ? 'Drop files here' 
+                            : 'Drop files or click to upload'
+                        }
+                      </div>
+                      {!currentUploadSession && (
+                        <div className="text-xs text-gray-500">
+                          MP4, MOV, Audio, Images • Max 20 files
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+            {/* Video Processing Flow - Hidden when using enhanced upload */}
+            {projectId && !currentUploadSession && (
               <VideoProcessingFlow
                 ref={videoProcessingFlowRef}
                 projectId={projectId}
@@ -1510,6 +1728,13 @@ export function MediaLibrary() {
             )}
 
                 {/* Media Categories */}
+                {projectId && !loading && allMediaItems.length === 0 && (
+                  <div className="text-center py-8">
+                    <div className="text-gray-500 text-sm">No videos yet</div>
+                    <div className="text-gray-600 text-xs mt-1">Upload videos to see them here</div>
+                  </div>
+                )}
+                
                 <div className="space-y-4">
                 {Object.values(MediaType).map(type => {
               const itemsOfType = allMediaItems.filter(item => item.type === type);
@@ -1588,12 +1813,12 @@ export function MediaLibrary() {
                           ) : null}
                         </div>
                         
-                        <div className="flex-shrink-0 flex items-center space-x-1">
+                        <div className="flex-shrink-0 flex items-center space-x-2">
                           
                           {/* Action buttons for project videos */}
                           {projectVideos.some(video => video.id === item.id) && (
                             <>
-                              {/* AI Analysis button for project videos with analysis */}
+                              {/* AI Analysis button - always visible and prominent */}
                               {!item.isAnalyzing && (
                                 <button
                                   onClick={(e) => {
@@ -1605,51 +1830,94 @@ export function MediaLibrary() {
                                       videoSrc: item.src,
                                     });
                                   }}
-                                  className="w-4 h-4 text-purple-400 hover:text-purple-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  title="View AI analysis"
+                                  className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors flex items-center space-x-1"
+                                  title="View AI analysis results"
                                 >
-                                  <svg fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49-.9-.29-1.88-.29-2.78 0-1.21.39-2.13 1.33-2.51 2.49-.29.9-.29 1.88 0 2.78.39 1.21 1.33 2.13 2.51 2.51.9.29 1.88.29 2.78 0 1.21-.39 2.13-1.33 2.51-2.51.29-.9.29-1.88 0-2.78zm-1.78 1.78a1 1 0 11-1.42-1.42 1 1 0 011.42 1.42z" clipRule="evenodd" />
                                   </svg>
+                                  <span>Analysis</span>
                                 </button>
                               )}
                               
-                              {/* Add to timeline button */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddToTimeline(item);
-                                }}
-                                className="w-4 h-4 text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Add to timeline"
-                              >
-                                <svg fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                              
-                              {/* Delete button */}
-                              <button
-                                onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_path || '', item.name)}
-                                disabled={deleting[item.id]}
-                                className={`w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                  deleting[item.id] 
-                                    ? 'text-gray-400 cursor-wait' 
-                                    : 'text-red-400 hover:text-red-300'
-                                }`}
-                                title={deleting[item.id] ? 'Deleting...' : 'Delete video from project'}
-                              >
-                                {deleting[item.id] ? (
-                                  <svg className="animate-spin" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                                  </svg>
-                                ) : (
-                                  <svg fill="currentColor" viewBox="0 0 20 20">
+                              {/* Clean Up Video button - only show for analyzed videos */}
+                              {!item.isAnalyzing && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCleanUpClick(item.id, item.name, item.duration || 0);
+                                  }}
+                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center space-x-1 ml-1"
+                                  title="Clean up video with AI"
+                                >
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                    <path fillRule="evenodd" d="M4 5a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 2a1 1 0 000 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
                                   </svg>
-                                )}
-                              </button>
+                                  <span>Clean Up</span>
+                                </button>
+                              )}
+                              
+                              {/* View Cuts button - show for videos that might have cuts */}
+                              {!item.isAnalyzing && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCutReviewPanel({
+                                      isOpen: true,
+                                      videoId: item.id,
+                                      videoName: item.name,
+                                    });
+                                  }}
+                                  className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors flex items-center space-x-1 ml-1"
+                                  title="View and manage cuts"
+                                >
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                                  </svg>
+                                  <span>View Cuts</span>
+                                </button>
+                              )}
+                              
+                              {/* More actions menu */}
+                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                {/* Add to timeline button */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddToTimeline(item);
+                                  }}
+                                  className="w-5 h-5 text-blue-400 hover:text-blue-300 transition-colors mr-1"
+                                  title="Add to timeline"
+                                >
+                                  <svg fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                                  </svg>
+                                </button>
+                                
+                                {/* Delete button */}
+                                <button
+                                  onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_path || '', item.name)}
+                                  disabled={deleting[item.id]}
+                                  className={`w-5 h-5 transition-colors ${
+                                    deleting[item.id] 
+                                      ? 'text-gray-400 cursor-wait' 
+                                      : 'text-red-400 hover:text-red-300'
+                                  }`}
+                                  title={deleting[item.id] ? 'Deleting...' : 'Delete video from project'}
+                                >
+                                  {deleting[item.id] ? (
+                                    <svg className="animate-spin" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                                    </svg>
+                                  ) : (
+                                    <svg fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
+                                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                    </svg>
+                                  )}
+                                </button>
+                              </div>
                             </>
                           )}
                           
@@ -1682,10 +1950,9 @@ export function MediaLibrary() {
                   </div>
                 </div>
               );
-                })}
-                </div>
-              </div>
-            </>
+            })}
+            </div>
+            </div>
           )}
 
           {/* AI Sort Tab Content */}
@@ -1839,7 +2106,9 @@ Scene 3: Conclusion
             </div>
           )}
         </div>
+        </div>
       )}
+      </div>
       
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
@@ -1894,6 +2163,60 @@ Scene 3: Conclusion
         action={creditsPaywall.action}
       />
 
-    </div>
+      {/* Upload Progress Modal */}
+      <UploadProgressModal
+        isOpen={showProgressModal}
+        onClose={() => setShowProgressModal(false)}
+        sessionId={currentUploadSession}
+        onComplete={(session) => {
+          setShowProgressModal(false);
+          setCurrentUploadSession(null); // Clear immediately when S3 uploads complete
+          setUploading(false);
+          
+          // Refresh project videos only once
+          setTimeout(() => {
+            fetchProjectVideos();
+          }, 1000);
+        }}
+        onError={(error, task) => {
+          console.error('Upload error:', error, task);
+        }}
+      />
+
+      {/* Clean Up Video Modal */}
+      <CleanUpVideoModal
+        isOpen={cleanUpModal.isOpen}
+        onClose={() => setCleanUpModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={handleCleanUpConfirm}
+        videoName={cleanUpModal.videoName}
+        videoDuration={cleanUpModal.videoDuration}
+      />
+
+      {/* Cut Detection Progress Modal */}
+      <CutDetectionProgress
+        isOpen={cutDetectionProgress.isOpen}
+        onClose={() => setCutDetectionProgress(prev => ({ ...prev, isOpen: false }))}
+        onComplete={handleCutDetectionComplete}
+        videoId={cutDetectionProgress.videoId}
+        videoName={cutDetectionProgress.videoName}
+        cutOptions={cutDetectionProgress.cutOptions || { cutTypes: [], confidenceThreshold: 0.7 }}
+      />
+
+      {/* Cut Review Panel - Note: This should be handled by Timeline component */}
+      {cutReviewPanel.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-gray-800 p-4 rounded-lg">
+            <p className="text-white">Cut Review Panel should be opened from Timeline component</p>
+            <button 
+              onClick={() => setCutReviewPanel(prev => ({ ...prev, isOpen: false }))}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+    </>
   );
 }

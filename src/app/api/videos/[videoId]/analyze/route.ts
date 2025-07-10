@@ -78,38 +78,23 @@ export async function POST(
         analysis_type: analysisType
       };
 
-      console.log(`🚀 Triggering Lambda immediately for video ${videoId}`);
+      console.log(`🚀 Triggering Lambda in fire-and-forget mode for video ${videoId}`);
 
-      // Call Lambda function immediately
-      const lambdaResponse = await fetch(LAMBDA_URL, {
+      // Fire-and-forget Lambda invocation - don't wait for response
+      // The Lambda will run for 15+ minutes but API Gateway times out at 30s
+      // We completely ignore the response since we know it will timeout
+      fetch(LAMBDA_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(lambdaPayload),
+      }).catch(() => {
+        // Ignore all errors - even network failures
+        // Lambda either starts or it doesn't, we'll know from the database updates
       });
 
-      if (!lambdaResponse.ok) {
-        const errorText = await lambdaResponse.text();
-        console.error(`Lambda invocation failed for ${videoId}:`, lambdaResponse.status, errorText);
-        
-        // Update status to failed
-        await supabase
-          .from('video_analysis')
-          .update({
-            status: 'failed',
-            error_message: `Lambda invocation failed: ${errorText}`,
-            processing_completed_at: new Date().toISOString()
-          })
-          .eq('id', analysis.id);
-        
-        return NextResponse.json({ 
-          error: 'Failed to start analysis',
-          details: errorText 
-        }, { status: 500 });
-      }
-
-      console.log(`✅ Lambda triggered successfully for ${videoId}`);
+      console.log(`✅ Lambda invocation sent for video ${videoId} - processing will continue in background`);
 
       return NextResponse.json({
         success: true,

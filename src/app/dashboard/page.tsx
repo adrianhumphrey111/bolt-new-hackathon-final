@@ -24,16 +24,38 @@ export default async function Dashboard() {
     redirect('/auth/login')
   }
   
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('subscription_tier, stripe_subscription_id')
+    .select('subscription_tier, stripe_subscription_id, subscription_status')
     .eq('id', user.id)
     .single()
   
-  // Check if user needs to complete trial signup
-  const needsTrial = profile && !profile.subscription_tier && !profile.stripe_subscription_id
+  console.log('Dashboard profile check:', { 
+    userId: user.id, 
+    profile, 
+    profileError,
+    hasProfile: !!profile
+  })
   
-  if (needsTrial) {
+  // Check if user has a valid subscription (including trialing users)
+  const hasValidSubscription = profile && (
+    profile.subscription_tier === 'free' || // Grandfathered users
+    profile.subscription_tier === 'pro' || // Paid subscribers
+    profile.subscription_tier === 'creator' || // Paid subscribers
+    !!profile.stripe_subscription_id || // Has any Stripe subscription (including trialing)
+    profile.subscription_status === 'trialing' // Explicitly check trialing status
+  )
+  
+  console.log('Dashboard subscription check:', { 
+    hasValidSubscription,
+    subscription_tier: profile?.subscription_tier,
+    stripe_subscription_id: profile?.stripe_subscription_id,
+    subscription_status: profile?.subscription_status
+  })
+  
+  // Only redirect to trial signup if user truly has no subscription at all
+  if (!hasValidSubscription) {
+    console.log('Redirecting to trial signup - no valid subscription found')
     redirect(`/auth/trial-signup?email=${encodeURIComponent(user.email || '')}`)
   }
   

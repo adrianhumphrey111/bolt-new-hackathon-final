@@ -1,6 +1,4 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { Database } from '@/types/supabase';
+import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export interface SubscriptionStatus {
   hasValidSubscription: boolean;
@@ -11,7 +9,7 @@ export interface SubscriptionStatus {
 }
 
 export async function verifyUserSubscription(): Promise<SubscriptionStatus | null> {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = await createServerSupabaseClient();
   
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   

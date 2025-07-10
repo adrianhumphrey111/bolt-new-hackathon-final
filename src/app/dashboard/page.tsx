@@ -1,8 +1,6 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { Database } from '@/types/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 import DashboardClient from './DashboardClient'
 
 function DashboardLoadingFallback() {
@@ -18,7 +16,7 @@ function DashboardLoadingFallback() {
 
 export default async function Dashboard() {
   // Server-side subscription check
-  const supabase = createServerComponentClient<Database>({ cookies })
+  const supabase = await createServerSupabaseClient()
   
   const { data: { user } } = await supabase.auth.getUser()
   
@@ -36,7 +34,7 @@ export default async function Dashboard() {
   const needsTrial = profile && !profile.subscription_tier && !profile.stripe_subscription_id
   
   if (needsTrial) {
-    redirect('/auth/trial-signup')
+    redirect(`/auth/trial-signup?email=${encodeURIComponent(user.email || '')}`)
   }
   
   return (

@@ -22,6 +22,7 @@ export default function Signup() {
   // Redirect if already authenticated (but not if we're showing trial paywall)
   useEffect(() => {
     if (!loading && isAuthenticated && !showTrialPaywall) {
+      // If authenticated, check if they need trial signup
       router.push('/dashboard');
     }
   }, [isAuthenticated, loading, router, showTrialPaywall]);

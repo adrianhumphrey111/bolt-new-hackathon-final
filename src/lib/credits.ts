@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, getUserFromRequest } from './supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { STRIPE_CONFIG } from './stripe-config';
+import { verifyUserSubscription } from './subscription-verification';
 
 export type ActionType = 'video_upload' | 'ai_generate' | 'ai_chat';
 
@@ -132,6 +133,14 @@ export async function withCreditsCheck(
       { error: 'Unauthorized' },
       { status: 401 }
     );
+  }
+
+  // Check subscription status - bypass credit check for valid subscriptions
+  const subscriptionStatus = await verifyUserSubscription();
+  
+  if (subscriptionStatus?.hasValidSubscription) {
+    // User has valid subscription (including pro trial) - bypass credit check
+    return handler(user.id, supabase);
   }
 
   // Check if user has enough credits

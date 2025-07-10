@@ -121,8 +121,9 @@ export default function DashboardClient() {
       // - Users with subscription_tier 'free' (grandfathered existing users)
       // - Users with stripe_subscription_id (completed trial flow)
       // - Users with subscription_tier 'pro', 'creator', etc. (paying customers)
+      // - Users with subscription_status 'trialing' (currently on pro trial)
       const shouldShowTrialPaywall = !userProfile || 
-        (!userProfile.stripe_subscription_id && !userProfile.subscription_tier);
+        (!userProfile.stripe_subscription_id && !userProfile.subscription_tier && userProfile.subscription_status !== 'trialing');
       
       if (shouldShowTrialPaywall) {
         console.log('🔄 User needs to complete trial flow', { 

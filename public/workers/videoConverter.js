@@ -44,7 +44,7 @@ async function convertVideo(taskId, file, options = {}) {
     }
 
     // Check file size limit
-    const maxSize = options.maxSize || 300 * 1024 * 1024; // 300MB default
+    const maxSize = options.maxSize || 500 * 1024 * 1024; // 500MB default
     if (file.size > maxSize) {
       throw new Error(`File too large for conversion: ${(file.size / (1024 * 1024)).toFixed(1)}MB > ${(maxSize / (1024 * 1024)).toFixed(1)}MB`);
     }

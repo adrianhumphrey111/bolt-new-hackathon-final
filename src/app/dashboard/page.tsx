@@ -43,7 +43,7 @@ export default async function Dashboard() {
     profile.subscription_tier === 'pro' || // Paid subscribers
     profile.subscription_tier === 'creator' || // Paid subscribers
     !!profile.stripe_subscription_id || // Has any Stripe subscription (including trialing)
-    profile.subscription_status === 'trialing' // Explicitly check trialing status
+    profile.subscription_status === 'trialing' // Users currently on pro trial
   )
   
   console.log('Dashboard subscription check:', { 

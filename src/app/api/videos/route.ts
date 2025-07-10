@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     // Get videos for the project with basic analysis metadata
     const { data: videos, error: videosError } = await supabase
       .from('videos')
-      .select('*, video_analysis(id, status, processing_started_at, processing_completed_at)')
+      .select('*, video_analysis(id, status, processing_started_at, processing_completed_at, created_at, is_converting, error_message)')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false });
 

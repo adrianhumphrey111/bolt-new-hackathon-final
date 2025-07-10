@@ -114,7 +114,8 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
             status,
             is_converting,
             error_message,
-            processing_completed_at
+            processing_completed_at,
+            created_at
           )
         `)
         .eq('project_id', projectId)
@@ -130,11 +131,19 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
       const failed: FailedVideo[] = []
 
       videos?.forEach(video => {
-        const analysis = Array.isArray(video.video_analysis) 
-          ? video.video_analysis[0] 
-          : video.video_analysis
+        // Check if any analysis is completed
+        const hasCompletedAnalysis = Array.isArray(video.video_analysis) 
+          ? video.video_analysis.some(a => a.status === 'completed')
+          : video.video_analysis?.status === 'completed'
+        
+        // Get the most recent analysis record only if needed
+        const analysis = hasCompletedAnalysis 
+          ? (Array.isArray(video.video_analysis) 
+              ? video.video_analysis.find(a => a.status === 'completed')
+              : video.video_analysis)
+          : (Array.isArray(video.video_analysis) ? video.video_analysis[0] : video.video_analysis)
 
-        if (analysis?.status === 'completed') {
+        if (hasCompletedAnalysis) {
           const completedVideo: CompletedVideo = {
             id: video.id,
             name: video.original_name,

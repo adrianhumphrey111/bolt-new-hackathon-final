@@ -66,6 +66,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
   const [completedVideos, setCompletedVideos] = useState<CompletedVideo[]>([])
   const [failedVideos, setFailedVideos] = useState<FailedVideo[]>([])
   const [notifiedVideoIds, setNotifiedVideoIds] = useState<Set<string>>(new Set())
+  const [hasProcessedVideos, setHasProcessedVideos] = useState(false)
   const supabase = createClientSupabaseClient()
 
   // Poll for processing status updates
@@ -86,7 +87,8 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
             status,
             is_converting,
             error_message,
-            processing_completed_at
+            processing_completed_at,
+            created_at
           )
         `)
         .eq('project_id', projectId)
@@ -102,9 +104,17 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
       const failed: FailedVideo[] = []
 
       videos?.forEach(video => {
-        const analysis = Array.isArray(video.video_analysis) 
-          ? video.video_analysis[0] 
-          : video.video_analysis
+        // Check if any analysis is completed
+        const hasCompletedAnalysis = Array.isArray(video.video_analysis) 
+          ? video.video_analysis.some(a => a.status === 'completed')
+          : video.video_analysis?.status === 'completed'
+        
+        // Get the most recent analysis record only if needed
+        const analysis = hasCompletedAnalysis 
+          ? (Array.isArray(video.video_analysis) 
+              ? video.video_analysis.find(a => a.status === 'completed')
+              : video.video_analysis)
+          : (Array.isArray(video.video_analysis) ? video.video_analysis[0] : video.video_analysis)
 
         // Debug logging to understand the issue
         if (video.original_name === 'IMG_1461.mp4') {
@@ -117,7 +127,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
           })
         }
 
-        if (analysis?.status === 'completed') {
+        if (hasCompletedAnalysis) {
           // Video is completed
           const completedVideo: CompletedVideo = {
             id: video.id,
@@ -195,6 +205,11 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
       setProcessingVideos(processing)
       setCompletedVideos(completed)
       setFailedVideos(failed)
+      
+      // Track if any videos have been processed (completed or failed)
+      if (videos && videos.length > 0) {
+        setHasProcessedVideos(true)
+      }
 
     } catch (error) {
       console.error('Error polling processing status:', error)
@@ -552,8 +567,8 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
         </div>
       )}
 
-      {/* Show message when no activity */}
-      {uploadingVideos.length === 0 && processingVideos.length === 0 && completedVideos.length === 0 && failedVideos.length === 0 && (
+      {/* Show message when no activity - but only if there are videos that have been processed before */}
+      {/* {uploadingVideos.length === 0 && processingVideos.length === 0 && completedVideos.length === 0 && failedVideos.length === 0 && hasProcessedVideos && (
         <div className="text-center py-8 text-gray-500">
           <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -561,7 +576,7 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
           <div className="text-sm">No video activity</div>
           <div className="text-xs">Upload videos to see them process here</div>
         </div>
-      )}
+      )} */}
     </div>
     </VideoProcessingErrorBoundary>
   )

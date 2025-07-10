@@ -189,45 +189,7 @@ export function useVideoProcessing(projectId: string | null) {
     }
   }, [isProcessing, processingVideos.length])
 
-  // Subscribe to real-time changes on video_analysis table
-  useEffect(() => {
-    if (!projectId || !supabase) return
-
-    console.log('🔔 Setting up real-time subscription for video analysis changes')
-
-    // Clean up existing subscription
-    if (channelRef.current) {
-      channelRef.current.unsubscribe()
-    }
-
-    const channel = supabase
-      .channel(`video_analysis_changes_${projectId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'video_analysis',
-      }, (payload) => {
-        console.log('🔔 Real-time video analysis change detected:', payload)
-        
-        // Only recheck if we're currently processing or this could start processing
-        if (isProcessing || payload.eventType === 'INSERT' || 
-            (payload.new && ['processing', 'pending', 'queued'].includes((payload.new as any).status))) {
-          setTimeout(() => {
-            checkProcessingStatus()
-          }, 1000) // Small delay to ensure DB consistency
-        }
-      })
-      .subscribe()
-
-    channelRef.current = channel
-
-    return () => {
-      if (channelRef.current) {
-        channelRef.current.unsubscribe()
-        channelRef.current = null
-      }
-    }
-  }, [projectId, supabase, checkProcessingStatus, isProcessing])
+  // Note: Real-time subscriptions removed - using polling only for better reliability
 
   // Update elapsed time for processing videos every second
   useEffect(() => {
@@ -250,9 +212,6 @@ export function useVideoProcessing(projectId: string | null) {
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
-      }
-      if (channelRef.current) {
-        channelRef.current.unsubscribe()
       }
     }
   }, [])

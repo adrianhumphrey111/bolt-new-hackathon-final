@@ -6,6 +6,7 @@ export interface SubscriptionStatus {
   needsTrial: boolean;
   subscriptionTier: string | null;
   stripeSubscriptionId: string | null;
+  subscriptionStatus: string | null;
 }
 
 export async function verifyUserSubscription(): Promise<SubscriptionStatus | null> {
@@ -19,7 +20,7 @@ export async function verifyUserSubscription(): Promise<SubscriptionStatus | nul
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('subscription_tier, stripe_subscription_id')
+    .select('subscription_tier, stripe_subscription_id, subscription_status')
     .eq('id', user.id)
     .single();
 
@@ -30,8 +31,8 @@ export async function verifyUserSubscription(): Promise<SubscriptionStatus | nul
   // Check if user is grandfathered (has subscription_tier but no stripe_subscription_id)
   const isGrandfathered = profile.subscription_tier === 'free' && !profile.stripe_subscription_id;
   
-  // Check if user has a valid subscription (either grandfathered or has stripe subscription)
-  const hasValidSubscription = isGrandfathered || !!profile.stripe_subscription_id;
+  // Check if user has a valid subscription (either grandfathered, has stripe subscription, or is trialing)
+  const hasValidSubscription = isGrandfathered || !!profile.stripe_subscription_id || profile.subscription_status === 'trialing';
   
   // User needs trial if they have neither subscription_tier nor stripe_subscription_id
   const needsTrial = !profile.subscription_tier && !profile.stripe_subscription_id;
@@ -41,7 +42,8 @@ export async function verifyUserSubscription(): Promise<SubscriptionStatus | nul
     isGrandfathered,
     needsTrial,
     subscriptionTier: profile.subscription_tier,
-    stripeSubscriptionId: profile.stripe_subscription_id
+    stripeSubscriptionId: profile.stripe_subscription_id,
+    subscriptionStatus: profile.subscription_status
   };
 }
 

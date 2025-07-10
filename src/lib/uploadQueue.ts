@@ -63,7 +63,6 @@ export class UploadQueue {
   private sessions = new Map<string, UploadSession>();
   private isProcessing = false;
   private processingInterval?: NodeJS.Timeout;
-  private workers: Worker[] = [];
 
   constructor(options: Partial<UploadQueueOptions> = {}) {
     this.options = {
@@ -74,71 +73,10 @@ export class UploadQueue {
       ...options,
     };
 
-    this.initializeWorkers();
     this.startProcessing();
   }
 
-  private initializeWorkers() {
-    // Initialize web workers for video conversion
-    if (typeof Worker === 'undefined') {
-      console.warn('Web Workers not supported in this environment');
-      return;
-    }
 
-    for (let i = 0; i < this.options.maxConcurrentConversions; i++) {
-      try {
-        const worker = new Worker('/workers/videoConverter.js');
-        worker.onmessage = this.handleWorkerMessage.bind(this);
-        worker.onerror = this.handleWorkerError.bind(this);
-        this.workers.push(worker);
-        console.log(`Initialized worker ${i + 1}/${this.options.maxConcurrentConversions}`);
-      } catch (error) {
-        console.warn(`Failed to initialize worker ${i + 1}:`, error);
-        console.warn('Web workers not available, falling back to main thread conversion');
-        break; // Stop trying to create more workers
-      }
-    }
-
-    if (this.workers.length === 0) {
-      console.warn('No workers available, video conversion will use main thread');
-    }
-  }
-
-  private handleWorkerMessage(event: MessageEvent) {
-    const { taskId, type, data, error } = event.data;
-    const task = this.findTaskById(taskId);
-    
-    if (!task) return;
-
-    switch (type) {
-      case 'progress':
-        this.updateTaskProgress(task, data.progress);
-        break;
-      case 'complete':
-        this.completeConversion(task, data.convertedFile);
-        break;
-      case 'error':
-        this.handleTaskError(task, new Error(error));
-        break;
-    }
-  }
-
-  private handleWorkerError(error: ErrorEvent) {
-    console.error('Worker error:', {
-      message: error.message || 'Unknown worker error',
-      filename: error.filename || 'Unknown file',
-      lineno: error.lineno || 0,
-      colno: error.colno || 0,
-      error: error.error || error
-    });
-    
-    // Find and fail any active conversion tasks
-    this.activeConversions.forEach((task) => {
-      if (task.status === 'converting') {
-        this.handleTaskError(task, new Error(error.message || 'Worker error occurred'));
-      }
-    });
-  }
 
   public async createSession(projectId: string, files: File[]): Promise<string> {
     const sessionId = uuidv4();
@@ -320,28 +258,13 @@ export class UploadQueue {
   }
 
   private async processConversions() {
-    // Skip conversion if no workers available - files will be uploaded as-is
-    if (this.workers.length === 0) {
-      // Mark MOV files as ready for upload without conversion
-      const movTasks = this.pendingTasks.filter(task => 
-        this.needsConversion(task.file) && task.status === 'pending'
-      );
-      
-      for (const task of movTasks) {
-        console.warn(`No workers available, uploading ${task.file.name} without conversion`);
-        // Skip conversion and proceed to upload
-        task.status = 'pending'; // Keep as pending for upload processing
-      }
-      return;
-    }
-
-    const availableWorkers = this.workers.length - this.activeConversions.size;
-    if (availableWorkers <= 0) return;
+    const availableSlots = this.options.maxConcurrentConversions - this.activeConversions.size;
+    if (availableSlots <= 0) return;
 
     const conversionTasks = this.pendingTasks
       .filter(task => this.needsConversion(task.file) && task.status === 'pending')
       .sort((a, b) => this.getPriorityValue(b.priority) - this.getPriorityValue(a.priority))
-      .slice(0, availableWorkers);
+      .slice(0, availableSlots);
 
     for (const task of conversionTasks) {
       await this.startConversion(task);
@@ -368,7 +291,9 @@ export class UploadQueue {
   }
 
   private needsConversion(file: File): boolean {
-    return file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov');
+    const isMov = file.type === 'video/quicktime' || file.name.toLowerCase().endsWith('.mov');
+    const isUnderSizeLimit = file.size <= 500 * 1024 * 1024; // 500MB limit
+    return isMov && isUnderSizeLimit;
   }
 
   private async startConversion(task: UploadTask) {
@@ -378,41 +303,31 @@ export class UploadQueue {
     
     this.notifyTaskUpdate(task);
 
-    if (this.workers.length > 0) {
-      // Use web worker for conversion
-      const worker = this.workers.find(w => !Array.from(this.activeConversions.values()).some(t => t.id === task.id));
-      if (worker) {
-        worker.postMessage({
-          taskId: task.id,
-          type: 'convert',
-          file: task.file,
-          options: { maxSize: 500 * 1024 * 1024 } // 500MB max
-        });
-      }
-    } else {
-      // Fallback to main thread
-      try {
-        const mp4Result = await convertMedia({
-          src: task.file,
-          container: 'mp4',
-          onProgress: (progress) => {
-            // Check if progress has a progress property, otherwise use the value directly
-            const progressValue = typeof progress === 'object' && 'progress' in progress 
-              ? (progress as any).progress 
-              : progress;
-            this.updateTaskProgress(task, progressValue * 100);
-          },
-        });
-        
-        const mp4Blob = await mp4Result.save();
-        const convertedFile = new File([mp4Blob], task.file.name.replace(/\.mov$/i, '.mp4'), {
-          type: 'video/mp4',
-        });
-        
-        this.completeConversion(task, convertedFile);
-      } catch (error) {
-        this.handleTaskError(task, error as Error);
-      }
+    try {
+      console.log(`🔄 Converting ${task.file.name} to MP4 using main thread`);
+      
+      const mp4Result = await convertMedia({
+        src: task.file,
+        container: 'mp4',
+        onProgress: (progress) => {
+          // Check if progress has a progress property, otherwise use the value directly
+          const progressValue = typeof progress === 'object' && 'progress' in progress 
+            ? (progress as any).progress 
+            : progress;
+          this.updateTaskProgress(task, progressValue * 100);
+        },
+      });
+      
+      const mp4Blob = await mp4Result.save();
+      const convertedFile = new File([mp4Blob], task.file.name.replace(/\.mov$/i, '.mp4'), {
+        type: 'video/mp4',
+      });
+      
+      console.log(`✅ Conversion completed: ${task.file.name} -> ${convertedFile.name}`);
+      this.completeConversion(task, convertedFile);
+    } catch (error) {
+      console.error(`❌ Conversion failed for ${task.file.name}:`, error);
+      this.handleTaskError(task, error as Error);
     }
   }
 
@@ -717,9 +632,6 @@ export class UploadQueue {
       clearInterval(this.processingInterval);
     }
     
-    // Terminate web workers
-    this.workers.forEach(worker => worker.terminate());
-    this.workers = [];
     
     // Clear all data
     this.activeUploads.clear();

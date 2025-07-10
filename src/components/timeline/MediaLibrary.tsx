@@ -16,10 +16,6 @@ import { PaywallModal } from '../PaywallModal';
 import VideoProcessingErrorBoundary from '../VideoProcessingErrorBoundary';
 import { retryAsync, isRetryableError } from '../../lib/retry';
 import { uploadQueue, UploadSession } from '../../lib/uploadQueue';
-import { EnhancedUploadProgress } from '../EnhancedUploadProgress';
-import { UploadProgressModal } from '../UploadProgressModal';
-import { UploadProgressSummary } from '../UploadProgressSummary';
-import { UploadAndAnalysisProgress } from '../UploadAndAnalysisProgress';
 import { useWebSocket } from '../../lib/websocket';
 import { fade } from '@remotion/transitions/fade';
 import { slide } from '@remotion/transitions/slide';
@@ -32,6 +28,7 @@ import { VideoProcessingFlow, VideoProcessingFlowMethods } from './VideoProcessi
 import { CleanUpVideoModal, CleanUpOptions } from './CleanUpVideoModal';
 import { CutDetectionProgress } from './CutDetectionProgress';
 import { CutReviewPanel } from './CutReviewPanel';
+import { VideoCard } from './VideoCard';
 
 interface MediaItem {
   id: string;
@@ -81,7 +78,7 @@ export function ProjectProvider({ projectId, children }: { projectId: string | n
 // Sample media items removed - now fetching from project videos
 
 // File size constants
-const MAX_TRANSCODE_SIZE = 300 * 1024 * 1024; // 300MB in bytes - MOV files above this skip frontend conversion
+const MAX_TRANSCODE_SIZE = 500 * 1024 * 1024; // 500MB in bytes - MOV files above this skip frontend conversion
 const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB - files above this use multipart upload
 
 interface DeleteConfirmationModalProps {
@@ -172,10 +169,10 @@ export function MediaLibrary() {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<{[key: string]: boolean}>({});
   
-  // New upload queue state
+  // Upload queue state
   const [currentUploadSession, setCurrentUploadSession] = useState<string | null>(null);
-  const [showEnhancedProgress, setShowEnhancedProgress] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
+  const [showEnhancedProgress, setShowEnhancedProgress] = useState(false);
   const ws = useWebSocket();
   
   const [deleteModal, setDeleteModal] = useState<{
@@ -355,11 +352,16 @@ export function MediaLibrary() {
         
         // Determine if video is still analyzing using the data from the API response
         // The API joins with video_analysis table, so video.video_analysis is an array
-        const analysis = video.video_analysis?.[0]; // Get first analysis record
+        // Get the most recent analysis record (sorted by created_at descending)
+        const analysis = video.video_analysis?.sort((a, b) => 
+          new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()
+        )[0];
+        
         const isAnalyzing = !analysis || 
           analysis.status === 'processing' || 
           analysis.status === 'pending' ||
-          analysis.status === 'queued';
+          analysis.status === 'queued' ||
+          analysis.is_converting;
         
         console.log('🔍 Video analysis status:', {
           videoId: video.id,
@@ -418,6 +420,8 @@ export function MediaLibrary() {
       fetchProjectVideos();
     }
   }, [projectId, loadedProjectId]);
+
+  // Using polling instead of subscriptions for video analysis updates
 
   // Load script content when project changes
   const fetchScriptContent = useCallback(async () => {
@@ -1157,35 +1161,38 @@ export function MediaLibrary() {
       console.log('🚀 ENHANCED UPLOAD: Starting with', files.length, 'files');
       setUploading(true);
       
-      // Create upload session
+      // Create upload session using the upload queue
       const sessionId = await uploadQueue.createSession(projectId, files);
       setCurrentUploadSession(sessionId);
       setShowProgressModal(true);
       
-      // Set up upload queue callbacks
-      uploadQueue.options.onTaskUpdate = (task) => {
-        console.log('Task updated:', task);
-      };
+      // The uploadQueue handles everything internally:
+      // 1. MOV to MP4 conversion (if needed)
+      // 2. Upload to S3
+      // 3. Save to database
+      // 4. Start video analysis
       
-      uploadQueue.options.onSessionUpdate = (session) => {
-        console.log('Session updated:', session);
-        // Clear upload state when session completes
-        if (session.status === 'completed' && uploading) {
+      // Poll for completion status
+      const checkInterval = setInterval(async () => {
+        const session = uploadQueue.getSession(sessionId);
+        if (session && session.status === 'completed') {
           console.log('✅ Upload session completed, refreshing videos');
+          clearInterval(checkInterval);
           setUploading(false);
-          setCurrentUploadSession(null); // Clear the session to hide progress UI
+          setCurrentUploadSession(null);
           
-          // Refresh project videos only once after a delay
+          // Refresh project videos after a delay
           setTimeout(() => {
             console.log('🔄 Fetching updated project videos after upload completion');
             fetchProjectVideos();
-          }, 2000); // Longer delay to ensure database consistency
+          }, 2000);
         }
-      };
+      }, 1000); // Check every second
       
-      uploadQueue.options.onError = (error, task) => {
-        console.error('Upload error:', error, task);
-      };
+      // Clear interval after 10 minutes to prevent memory leaks
+      setTimeout(() => {
+        clearInterval(checkInterval);
+      }, 600000);
       
     } catch (error) {
       console.error('Error starting enhanced upload:', error);
@@ -1585,21 +1592,13 @@ export function MediaLibrary() {
           
           {/* Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-          {/* Upload Progress Summary - Compact */}
-          {currentUploadSession && projectId && (
+          {/* Upload Progress - Simplified */}
+          {uploading && (
             <div className="px-3 py-2 border-b border-gray-600 bg-gray-750">
-              <div className="flex items-center justify-between mb-2">
-                <button
-                  onClick={() => setShowProgressModal(true)}
-                  className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
-                >
-                  View Details
-                </button>
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-sm text-gray-300">Uploading videos...</span>
               </div>
-              <UploadAndAnalysisProgress 
-                sessionId={currentUploadSession} 
-                projectId={projectId}
-              />
             </div>
           )}
           
@@ -1631,20 +1630,20 @@ export function MediaLibrary() {
                   <div
                     className={`
                       p-3 border-2 border-dashed rounded transition-colors cursor-pointer
-                      ${currentUploadSession 
+                      ${uploading 
                         ? 'border-blue-500 bg-blue-500/10 cursor-wait' 
                         : isDragOver 
                           ? 'border-blue-500 bg-blue-500/10' 
                           : 'border-gray-600 hover:border-gray-500'
                       }
                     `}
-                    onDrop={currentUploadSession ? undefined : handleDrop}
-                    onDragOver={currentUploadSession ? undefined : handleDragOver}
-                    onDragLeave={currentUploadSession ? undefined : handleDragLeave}
-                    onClick={currentUploadSession ? undefined : handleUploadClick}
+                    onDrop={uploading ? undefined : handleDrop}
+                    onDragOver={uploading ? undefined : handleDragOver}
+                    onDragLeave={uploading ? undefined : handleDragLeave}
+                    onClick={uploading ? undefined : handleUploadClick}
                   >
                     <div className="text-center">
-                      {currentUploadSession ? (
+                      {uploading ? (
                         <div className="w-6 h-6 mx-auto mb-1 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                       ) : (
                         <svg className="w-6 h-6 mx-auto mb-1 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
@@ -1652,14 +1651,14 @@ export function MediaLibrary() {
                         </svg>
                       )}
                       <div className="text-xs text-gray-300 mb-1">
-                        {currentUploadSession 
-                          ? 'Processing...' 
+                        {uploading 
+                          ? 'Uploading...' 
                           : isDragOver 
                             ? 'Drop files here' 
                             : 'Drop files or click to upload'
                         }
                       </div>
-                      {!currentUploadSession && (
+                      {!uploading && (
                         <div className="text-xs text-gray-500">
                           MP4, MOV, Audio, Images • Max 20 files
                         </div>
@@ -1667,8 +1666,8 @@ export function MediaLibrary() {
                     </div>
                   </div>
                 </div>
-            {/* Video Processing Flow - Hidden when using enhanced upload */}
-            {projectId && !currentUploadSession && (
+            {/* Video Processing Flow - Always visible with simplified upload */}
+            {projectId && (
               <VideoProcessingFlow
                 ref={videoProcessingFlowRef}
                 projectId={projectId}
@@ -1748,204 +1747,30 @@ export function MediaLibrary() {
                     <span className="text-xs text-gray-500">({itemsOfType.length})</span>
                   </h4>
                   
-                  <div className="space-y-1">
+                  {/* Grid layout for video thumbnails */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     {itemsOfType.map(item => (
-                      <div
+                      <VideoCard
                         key={item.id}
-                        className={`group flex items-center p-2 rounded transition-colors ${
-                          isConverting[item.id]
-                            ? 'bg-blue-700/50 cursor-wait' 
-                            : 'bg-gray-700 hover:bg-gray-600 cursor-pointer'
-                        }`}
-                        draggable={!isConverting[item.id]}
-                        onDragStart={(e) => !isConverting[item.id] && handleDragStart(e, item)}
-                        onClick={() => !isConverting[item.id] && handleVideoClick(item)}
-                      >
-                        <div className={`flex-shrink-0 mr-3 ${getMediaColor(item.type)}`}>
-                          {isConverting[item.id] ? (
-                            <svg className="w-5 h-5 animate-spin text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                            </svg>
-                          ) : item.isAnalyzing ? (
-                            <svg className="w-5 h-5 animate-spin text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49A1.5 1.5 0 007.5 1.5v.75a.75.75 0 001.5 0V1.5c.83 0 1.5.67 1.5 1.5h.75a.75.75 0 000-1.5H11.49zM10 18.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H10zm-3.5-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H6.5zm7-1.5a.75.75 0 000-1.5h-.75a.75.75 0 000 1.5H13.5z" clipRule="evenodd" />
-                            </svg>
-                          ) : (
-                            getMediaIcon(item.type)
-                          )}
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-white truncate">
-                            {item.name}
-                            {isConverting[item.id] && (
-                              <span className="ml-2 text-blue-400 text-xs">
-                                Converting...
-                              </span>
-                            )}
-                            {item.isAnalyzing && (
-                              <span className="ml-2 text-yellow-400 text-xs">
-                                {item.processingInfo ? 
-                                  `Analyzing... ${formatElapsedTime(item.processingInfo.elapsedSeconds)}` :
-                                  'Analyzing by AI...'
-                                }
-                              </span>
-                            )}
-                          </div>
-                          {isConverting[item.id] && conversionProgress[item.id] !== undefined ? (
-                            <div className="mt-1">
-                              <div className="flex items-center space-x-2">
-                                <div className="flex-1 bg-gray-600 rounded-full h-1.5">
-                                  <div 
-                                    className="bg-blue-400 h-1.5 rounded-full transition-all duration-300"
-                                    style={{ width: `${conversionProgress[item.id]}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs text-blue-400 min-w-12">
-                                  {Math.round(conversionProgress[item.id])}%
-                                </span>
-                              </div>
-                            </div>
-                          ) : item.duration ? (
-                            <div className="text-xs text-gray-400">
-                              {Math.round(item.duration / state.fps * 10) / 10}s
-                            </div>
-                          ) : null}
-                        </div>
-                        
-                        <div className="flex-shrink-0 flex items-center space-x-2">
-                          
-                          {/* Action buttons for project videos */}
-                          {projectVideos.some(video => video.id === item.id) && (
-                            <>
-                              {/* AI Analysis button - always visible and prominent */}
-                              {!item.isAnalyzing && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAnalysisPanel({
-                                      isOpen: true,
-                                      videoId: item.id,
-                                      videoName: item.name,
-                                      videoSrc: item.src,
-                                    });
-                                  }}
-                                  className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors flex items-center space-x-1"
-                                  title="View AI analysis results"
-                                >
-                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-1.3-2.1-2.51-2.49-.9-.29-1.88-.29-2.78 0-1.21.39-2.13 1.33-2.51 2.49-.29.9-.29 1.88 0 2.78.39 1.21 1.33 2.13 2.51 2.51.9.29 1.88.29 2.78 0 1.21-.39 2.13-1.33 2.51-2.51.29-.9.29-1.88 0-2.78zm-1.78 1.78a1 1 0 11-1.42-1.42 1 1 0 011.42 1.42z" clipRule="evenodd" />
-                                  </svg>
-                                  <span>Analysis</span>
-                                </button>
-                              )}
-                              
-                              {/* Clean Up Video button - only show for analyzed videos */}
-                              {!item.isAnalyzing && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleCleanUpClick(item.id, item.name, item.duration || 0);
-                                  }}
-                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center space-x-1 ml-1"
-                                  title="Clean up video with AI"
-                                >
-                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
-                                    <path fillRule="evenodd" d="M4 5a2 2 0 012-2h8a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 2a1 1 0 000 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                                  </svg>
-                                  <span>Clean Up</span>
-                                </button>
-                              )}
-                              
-                              {/* View Cuts button - show for videos that might have cuts */}
-                              {!item.isAnalyzing && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCutReviewPanel({
-                                      isOpen: true,
-                                      videoId: item.id,
-                                      videoName: item.name,
-                                    });
-                                  }}
-                                  className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors flex items-center space-x-1 ml-1"
-                                  title="View and manage cuts"
-                                >
-                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                                  </svg>
-                                  <span>View Cuts</span>
-                                </button>
-                              )}
-                              
-                              {/* More actions menu */}
-                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                {/* Add to timeline button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddToTimeline(item);
-                                  }}
-                                  className="w-5 h-5 text-blue-400 hover:text-blue-300 transition-colors mr-1"
-                                  title="Add to timeline"
-                                >
-                                  <svg fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                  </svg>
-                                </button>
-                                
-                                {/* Delete button */}
-                                <button
-                                  onClick={(e) => handleDeleteProjectVideo(e, item.id, item.file_path || '', item.name)}
-                                  disabled={deleting[item.id]}
-                                  className={`w-5 h-5 transition-colors ${
-                                    deleting[item.id] 
-                                      ? 'text-gray-400 cursor-wait' 
-                                      : 'text-red-400 hover:text-red-300'
-                                  }`}
-                                  title={deleting[item.id] ? 'Deleting...' : 'Delete video from project'}
-                                >
-                                  {deleting[item.id] ? (
-                                    <svg className="animate-spin" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                                    </svg>
-                                  ) : (
-                                    <svg fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clipRule="evenodd" />
-                                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                    </svg>
-                                  )}
-                                </button>
-                              </div>
-                            </>
-                          )}
-                          
-                          {/* Delete button for uploaded items */}
-                          {uploadedItems.some(uploaded => uploaded.id === item.id) && (
-                            <>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeUploadedItem(item.id);
-                                }}
-                                className="w-4 h-4 text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Remove uploaded file"
-                              >
-                                <svg fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                              
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                                </svg>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
+                        video={item}
+                        fps={state.fps}
+                        isConverting={isConverting[item.id]}
+                        conversionProgress={conversionProgress[item.id]}
+                        onDragStart={handleDragStart}
+                        onAddToTimeline={handleAddToTimeline}
+                        onCleanUpClick={handleCleanUpClick}
+                        onAnalysisClick={(videoId, videoName, videoSrc) => {
+                          setAnalysisPanel({
+                            isOpen: true,
+                            videoId,
+                            videoName,
+                            videoSrc,
+                          });
+                        }}
+                        onDeleteClick={handleDeleteProjectVideo}
+                        isDeleting={deleting[item.id]}
+                        isProjectVideo={projectVideos.some(video => video.id === item.id)}
+                      />
                     ))}
                   </div>
                 </div>
@@ -2163,25 +1988,7 @@ Scene 3: Conclusion
         action={creditsPaywall.action}
       />
 
-      {/* Upload Progress Modal */}
-      <UploadProgressModal
-        isOpen={showProgressModal}
-        onClose={() => setShowProgressModal(false)}
-        sessionId={currentUploadSession}
-        onComplete={(session) => {
-          setShowProgressModal(false);
-          setCurrentUploadSession(null); // Clear immediately when S3 uploads complete
-          setUploading(false);
-          
-          // Refresh project videos only once
-          setTimeout(() => {
-            fetchProjectVideos();
-          }, 1000);
-        }}
-        onError={(error, task) => {
-          console.error('Upload error:', error, task);
-        }}
-      />
+      {/* Upload Progress Modal - Removed with simplified upload */}
 
       {/* Clean Up Video Modal */}
       <CleanUpVideoModal

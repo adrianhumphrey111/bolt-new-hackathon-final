@@ -403,8 +403,8 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
                 </button>
               )}
               
-              {/* Re-analysis Button */}
-              {analysisData && !isReanalyzing && activeTab === 'claude' && (
+              {/* Re-analysis Button - Show always when not already re-analyzing */}
+              {!isReanalyzing && (
                 <button
                   onClick={() => setShowReanalysisModal(true)}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center space-x-2"
@@ -412,7 +412,7 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                   </svg>
-                  <span>Re-analyze with AI</span>
+                  <span>{analysisData || geminiAnalysisData ? 'Re-analyze' : 'Analyze'}</span>
                 </button>
               )}
               

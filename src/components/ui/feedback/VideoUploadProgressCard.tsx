@@ -1,8 +1,8 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { CheckCircle, Upload, Cpu, Sparkles, Clock, AlertCircle } from 'lucide-react';
+import { CheckCircle, Upload, Cpu, Sparkles, Clock, AlertCircle, ArrowRightLeft, CloudUpload } from 'lucide-react';
 
-export type VideoUploadStage = 'uploading' | 'uploaded' | 'processing' | 'analyzing' | 'ready' | 'failed';
+export type VideoUploadStage = 'uploading' | 'uploaded' | 'transferring' | 'transfer_complete' | 'waiting_for_analysis' | 'processing' | 'analyzing' | 'ready' | 'failed';
 
 export interface VideoUploadProgressCardProps {
   id: string;
@@ -14,6 +14,8 @@ export interface VideoUploadProgressCardProps {
   timeElapsed?: number;
   estimatedTimeRemaining?: number;
   onRetry?: () => void;
+  progressMessage?: string;
+  overallProgress?: number;
 }
 
 const stageConfig = {
@@ -27,9 +29,30 @@ const stageConfig = {
   uploaded: {
     icon: CheckCircle,
     label: 'Upload Complete',
-    description: 'Preparing for analysis...',
+    description: 'File uploaded successfully',
     color: 'green',
     animated: false
+  },
+  transferring: {
+    icon: ArrowRightLeft,
+    label: 'Transferring',
+    description: 'Moving to cloud storage for processing...',
+    color: 'blue',
+    animated: true
+  },
+  transfer_complete: {
+    icon: CloudUpload,
+    label: 'Transfer Complete',
+    description: 'Ready for AI analysis',
+    color: 'green',
+    animated: false
+  },
+  waiting_for_analysis: {
+    icon: Clock,
+    label: 'Queued',
+    description: 'Waiting for analysis to start...',
+    color: 'amber',
+    animated: true
   },
   processing: {
     icon: Cpu,
@@ -55,7 +78,7 @@ const stageConfig = {
   failed: {
     icon: AlertCircle,
     label: 'Failed',
-    description: 'Something went wrong',
+    description: 'Processing failed',
     color: 'red',
     animated: false
   }
@@ -120,7 +143,9 @@ export function VideoUploadProgressCard({
   error,
   timeElapsed,
   estimatedTimeRemaining,
-  onRetry
+  onRetry,
+  progressMessage,
+  overallProgress
 }: VideoUploadProgressCardProps) {
   const config = stageConfig[stage];
   const colors = colorClasses[config.color];
@@ -180,15 +205,15 @@ export function VideoUploadProgressCard({
 
           {/* Description */}
           <p className="text-xs text-subtitle mb-3">
-            {error || config.description}
+            {error || progressMessage || config.description}
           </p>
 
           {/* Progress bar */}
-          {(stage === 'uploading' || (stage === 'processing' && progress > 0)) && (
+          {(stage === 'uploading' || stage === 'transferring' || (stage === 'processing' && (progress > 0 || overallProgress))) && (
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-subtitle">Progress</span>
-                <span className={colors.text}>{Math.round(progress)}%</span>
+                <span className={colors.text}>{Math.round(overallProgress || progress)}%</span>
               </div>
               <div className="h-2 bg-unfocused-border-color rounded-full overflow-hidden">
                 <div 
@@ -196,16 +221,18 @@ export function VideoUploadProgressCard({
                     'h-full transition-all duration-300 ease-out',
                     colors.progress
                   )}
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${overallProgress || progress}%` }}
                 />
               </div>
             </div>
           )}
 
-          {/* Indeterminate progress for analyzing */}
-          {(stage === 'analyzing' || (stage === 'processing' && progress === 0)) && (
+          {/* Indeterminate progress for analyzing and waiting states */}
+          {(stage === 'analyzing' || stage === 'waiting_for_analysis' || (stage === 'processing' && progress === 0)) && (
             <div className="space-y-1">
-              <div className="text-xs text-subtitle">Processing...</div>
+              <div className="text-xs text-subtitle">
+                {stage === 'waiting_for_analysis' ? 'Waiting in queue...' : 'Processing...'}
+              </div>
               <div className="h-2 bg-unfocused-border-color rounded-full overflow-hidden">
                 <div className={cn(
                   'h-full w-1/3 rounded-full animate-pulse',

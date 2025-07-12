@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { Video, Img, Audio, useCurrentFrame, useVideoConfig } from 'remotion';
 import { MediaType, TimelineItem } from '../../types/timeline';
 import { TextLayer } from '../components/TextLayer';
+import { getCdnUrl } from '../../lib/cdn';
 
 interface VideoCanvasProps {
   item: TimelineItem;
@@ -264,10 +265,13 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           ? Math.round(item.properties.originalEndTime * fps) 
           : undefined;
         
+        // Use CDN URL if available
+        const videoSrc = getCdnUrl(item.src) || item.src;
+        
         return (
           <div style={videoContentStyle}>
             <Video
-              src={item.src}
+              src={videoSrc}
               style={mediaStyle}
               startFrom={startFrom}
               endAt={endAt}
@@ -293,9 +297,12 @@ export const VideoCanvas: React.FC<VideoCanvasProps> = ({
           ? Math.round(item.properties.originalEndTime * fps) 
           : undefined;
         
+        // Use CDN URL if available
+        const audioSrc = getCdnUrl(item.src) || item.src;
+        
         return (
           <Audio
-            src={item.src}
+            src={audioSrc}
             startFrom={audioStart}
             endAt={audioEnd}
             volume={1}

@@ -4,6 +4,7 @@ import React, { useState, useRef, useCallback, useEffect, useContext, createCont
 import { MediaType } from '../../../types/timeline';
 import { useTimeline } from './TimelineContext';
 import { uploadToS3, deleteFromS3 } from '../../../lib/s3Upload';
+import { getCdnUrl } from '../../../lib/cdn';
 import { convertMedia } from '@remotion/webcodecs';
 import { createClientSupabaseClient } from '../../lib/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,6 +30,7 @@ import { CleanUpVideoModal, CleanUpOptions } from './CleanUpVideoModal';
 import { CutDetectionProgress } from './CutDetectionProgress';
 import { CutReviewPanel } from './CutReviewPanel';
 import { VideoCard } from './VideoCard';
+import { ReanalyzeModal } from './ReanalyzeModal';
 
 interface MediaItem {
   id: string;
@@ -232,6 +234,18 @@ export function MediaLibrary() {
     videoName: '',
     videoDuration: '',
   });
+  
+  // Reanalyze modal state
+  const [reanalyzeModal, setReanalyzeModal] = useState<{
+    isOpen: boolean;
+    videoId: string;
+    videoName: string;
+  }>({
+    isOpen: false,
+    videoId: '',
+    videoName: '',
+  });
+  const [isReanalyzing, setIsReanalyzing] = useState<{[key: string]: boolean}>({});
   const [cutDetectionProgress, setCutDetectionProgress] = useState<{
     isOpen: boolean;
     videoId: string;
@@ -339,8 +353,9 @@ export function MediaLibrary() {
           
           console.log('🔧 S3 Bucket Name:', bucketName, '(converted:', video.file_path.includes('_converted.mp4'), ')');
           if (bucketName) {
-            videoUrl = `https://${bucketName}.s3.amazonaws.com/${video.file_path}`;
-            console.log('🔗 Constructed S3 URL:', videoUrl);
+            const s3Url = `https://${bucketName}.s3.amazonaws.com/${video.file_path}`;
+            videoUrl = getCdnUrl(s3Url) || s3Url;
+            console.log('🔗 Constructed URL:', videoUrl, videoUrl !== s3Url ? '(using CDN)' : '(S3 direct)');
           } else {
             console.warn('❌ S3 bucket not available. Cannot construct S3 URL.');
             videoUrl = undefined;
@@ -520,6 +535,52 @@ export function MediaLibrary() {
       cutOptions: options,
     });
   }, [cleanUpModal]);
+  
+  // Reanalyze handlers
+  const handleReanalyzeClick = useCallback((videoId: string, videoName: string) => {
+    setReanalyzeModal({
+      isOpen: true,
+      videoId,
+      videoName,
+    });
+  }, []);
+  
+  const handleReanalyzeConfirm = useCallback(async (additionalContext: string) => {
+    if (!reanalyzeModal.videoId) return;
+    
+    setIsReanalyzing(prev => ({ ...prev, [reanalyzeModal.videoId]: true }));
+    
+    try {
+      const response = await fetch('/api/reanalyze-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoId: reanalyzeModal.videoId,
+          additionalContext,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        console.log('✅ Reanalysis started successfully:', result);
+        setReanalyzeModal({ isOpen: false, videoId: '', videoName: '' });
+        
+        // Show success message
+        alert('Video reanalysis started successfully. This may take a few minutes.');
+      } else {
+        console.error('❌ Reanalysis failed:', result);
+        setIsReanalyzing(prev => ({ ...prev, [reanalyzeModal.videoId]: false }));
+        alert(result.error || 'Failed to start reanalysis');
+      }
+    } catch (error) {
+      console.error('❌ Reanalysis request failed:', error);
+      setIsReanalyzing(prev => ({ ...prev, [reanalyzeModal.videoId]: false }));
+      alert('Failed to start reanalysis');
+    }
+  }, [reanalyzeModal.videoId]);
 
   const handleCutDetectionComplete = useCallback((cuts: any[]) => {
     setCutDetectionProgress(prev => ({ ...prev, isOpen: false }));
@@ -583,6 +644,8 @@ export function MediaLibrary() {
     if (mediaItem.type === MediaType.VIDEO && projectVideos.some(video => video.id === mediaItem.id)) {
       // Check if video is still analyzing
       if (mediaItem.isAnalyzing) {
+        // For MediaLibrary, we'll show a simple message since we don't have the modal infrastructure here
+        // The enhanced modal is available when clicking directly on VideoCard components
         alert('This video is currently being analyzed. Please check back in a few moments to view the AI analysis.');
         return;
       }
@@ -1426,7 +1489,8 @@ export function MediaLibrary() {
         : process.env.NEXT_PUBLIC_AWS_S3_RAW_UPLOAD_BUCKET; // Upload bucket for original videos
       
       if (bucketName) {
-        videoUrl = `https://${bucketName}.s3.amazonaws.com/${completedVideo.file_path}`;
+        const s3Url = `https://${bucketName}.s3.amazonaws.com/${completedVideo.file_path}`;
+        videoUrl = getCdnUrl(s3Url) || s3Url;
       }
     }
     
@@ -1524,7 +1588,7 @@ export function MediaLibrary() {
 
   return (
     <>
-      <div className={`bg-gray-800 border-r border-gray-600 transition-all duration-300 flex flex-col ${isCollapsed ? 'w-12' : 'w-80'}`}>
+      <div className={`bg-gray-800 border-r border-gray-600 transition-all duration-300 flex flex-col h-full ${isCollapsed ? 'w-12' : 'w-96'}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-gray-600">
         {!isCollapsed && (
@@ -1748,7 +1812,7 @@ export function MediaLibrary() {
                   </h4>
                   
                   {/* Grid layout for video thumbnails */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {itemsOfType.map(item => (
                       <VideoCard
                         key={item.id}
@@ -1768,8 +1832,10 @@ export function MediaLibrary() {
                           });
                         }}
                         onDeleteClick={handleDeleteProjectVideo}
+                        onReanalyzeClick={handleReanalyzeClick}
                         isDeleting={deleting[item.id]}
                         isProjectVideo={projectVideos.some(video => video.id === item.id)}
+                        isReanalyzing={isReanalyzing[item.id]}
                       />
                     ))}
                   </div>
@@ -1997,6 +2063,15 @@ Scene 3: Conclusion
         onConfirm={handleCleanUpConfirm}
         videoName={cleanUpModal.videoName}
         videoDuration={cleanUpModal.videoDuration}
+      />
+      
+      {/* Reanalyze Video Modal */}
+      <ReanalyzeModal
+        isOpen={reanalyzeModal.isOpen}
+        onClose={() => setReanalyzeModal({ isOpen: false, videoId: '', videoName: '' })}
+        onConfirm={handleReanalyzeConfirm}
+        videoName={reanalyzeModal.videoName}
+        isProcessing={isReanalyzing[reanalyzeModal.videoId]}
       />
 
       {/* Cut Detection Progress Modal */}

@@ -312,8 +312,8 @@ export const VideoProcessingFlow = forwardRef<VideoProcessingFlowMethods, VideoP
         return newSet;
       });
       
-      // Start analysis request (async - don't wait for response)
-      fetch(`/api/videos/${videoId}/analyze`, {
+      // Start reanalysis request (async - don't wait for response)
+      fetch(`/api/videos/${videoId}/reanalyze`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

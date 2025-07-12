@@ -51,7 +51,7 @@ export default function DashboardClient() {
   // Check for demo parameter and impersonation flag on mount
   useEffect(() => {
     const demoParam = searchParams.get('demo')
-    if (demoParam === 'bolthackathon') {
+    if (demoParam === 'bolthackathon' || demoParam === 'atomsaccel') {
       setIsDemoLogin(true)
     }
     

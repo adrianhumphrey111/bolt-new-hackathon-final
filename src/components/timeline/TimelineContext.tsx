@@ -959,12 +959,6 @@ export function TimelineProvider({ children, projectId }: TimelineProviderProps)
     }
   }, []);
 
-  useEffect(() => {
-    if (state.currentVideoId && !state.cutsLoading && state.cuts.length === 0) {
-      fetchCutsForCurrentVideo(state.currentVideoId);
-    }
-  }, [state.currentVideoId, state.cutsLoading, state.cuts.length, fetchCutsForCurrentVideo]);
-
   // Track the last cut state to prevent unnecessary re-applications
   const lastCutStateRef = useRef<string>('');
   

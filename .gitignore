@@ -44,3 +44,21 @@ build
 
 # local renders
 /public/renders/
+
+#md files
+GCP_SETUP.md
+TEST_INSTRUCTIONS.md
+UPLOAD_FLOW_SUMMARY.md
+distribution-config.json
+install-gcp-auth.js
+
+test-api-route.js
+test-final-flow.js
+test-gcp-api-key.js
+test-gcp-auth.js
+test-gcp-bucket.js
+test-gcp-simple.js
+test-real-file.js
+test-storage-api-key.js
+updated-distribution-config.json
+video-processing-architecture.md

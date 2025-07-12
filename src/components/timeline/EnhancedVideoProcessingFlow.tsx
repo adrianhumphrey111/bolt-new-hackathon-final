@@ -28,6 +28,8 @@ interface ProcessingVideo {
   error_message?: string
   stage: VideoUploadStage
   startTime?: number
+  progress_message?: string
+  overall_progress?: number
 }
 
 interface CompletedVideo {
@@ -74,12 +76,40 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
   const [notifiedVideoIds, setNotifiedVideoIds] = useState<Set<string>>(new Set())
   const supabase = createClientSupabaseClient()
 
-  // Function to determine video processing stage based on status
-  const getVideoStage = (status: string, isConverting?: boolean): VideoUploadStage => {
-    if (status === 'failed') return 'failed'
+  // Function to determine video processing stage based on status and progress message
+  const getVideoStage = (status: string, isConverting?: boolean, progressMessage?: string, errorMessage?: string): VideoUploadStage => {
+    // Check for transfer-specific failures first
+    if (status === 'failed' || errorMessage) {
+      return 'failed'
+    }
+    
     if (status === 'completed') return 'ready'
+    
+    // Check for transfer-related progress messages
+    if (progressMessage) {
+      const lowerMessage = progressMessage.toLowerCase()
+      
+      // Transfer failure indicators
+      if (lowerMessage.includes('transfer') && (lowerMessage.includes('failed') || lowerMessage.includes('error'))) {
+        return 'failed'
+      }
+      
+      // Transfer stages
+      if (lowerMessage.includes('transfer') && !lowerMessage.includes('complete')) {
+        return 'transferring'
+      }
+      if (lowerMessage.includes('transfer') && lowerMessage.includes('complete')) {
+        return 'transfer_complete'
+      }
+      if (lowerMessage.includes('waiting') || lowerMessage.includes('queue')) {
+        return 'waiting_for_analysis'
+      }
+    }
+    
     if (isConverting || status === 'converting') return 'processing'
-    if (status === 'analyzing' || status === 'processing') return 'analyzing'
+    if (status === 'analyzing') return 'analyzing'
+    if (status === 'processing') return 'processing'
+    
     return 'processing'
   }
 
@@ -89,10 +119,20 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
     return Math.floor((Date.now() - startTime) / 1000)
   }
 
-  // Estimate remaining time based on current progress
-  const getEstimatedTimeRemaining = (progress: number, timeElapsed: number): number => {
+  // Estimate remaining time based on current progress and stage
+  const getEstimatedTimeRemaining = (progress: number, timeElapsed: number, stage: VideoUploadStage): number => {
     if (progress <= 0) return 0
-    const totalEstimatedTime = (timeElapsed / progress) * 100
+    
+    // Different stages have different average completion times
+    const stageMultipliers = {
+      'uploading': 1.0,        // Base time for uploads
+      'transferring': 1.5,     // Transfers typically take 50% longer than uploads
+      'processing': 2.0,       // Processing can take twice as long
+      'analyzing': 3.0         // AI analysis can be the longest step
+    }
+    
+    const multiplier = stageMultipliers[stage] || 1.0
+    const totalEstimatedTime = (timeElapsed / progress) * 100 * multiplier
     return Math.max(0, totalEstimatedTime - timeElapsed)
   }
 
@@ -115,7 +155,9 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
             is_converting,
             error_message,
             processing_completed_at,
-            created_at
+            created_at,
+            progress_message,
+            overall_progress
           )
         `)
         .eq('project_id', projectId)
@@ -188,20 +230,44 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
         } else if (!analysis || (analysis.status !== 'completed' && analysis.status !== 'failed')) {
           // Video is still processing
           if (!notifiedVideoIds.has(video.id)) {
-            const stage = getVideoStage(analysis?.status || 'processing', analysis?.is_converting)
+            const stage = getVideoStage(analysis?.status || 'processing', analysis?.is_converting, analysis?.progress_message, analysis?.error_message)
             
-            processing.push({
-              id: video.id,
-              name: video.original_name,
-              original_name: video.original_name,
-              file_path: video.file_path,
-              status: analysis?.status || 'processing',
-              created_at: video.created_at,
-              is_converting: analysis?.is_converting,
-              error_message: analysis?.error_message,
-              stage,
-              startTime: new Date(video.created_at).getTime()
-            })
+            // If stage is failed due to transfer error, add to failed videos instead
+            if (stage === 'failed') {
+              const failedVideo: FailedVideo = {
+                id: video.id,
+                name: video.original_name,
+                original_name: video.original_name,
+                file_path: video.file_path,
+                status: 'failed',
+                created_at: video.created_at,
+                error_message: analysis?.error_message || analysis?.progress_message || 'Transfer failed',
+                canRetry: true
+              }
+              
+              failed.push(failedVideo)
+              
+              if (!notifiedVideoIds.has(video.id)) {
+                setNotifiedVideoIds(prev => new Set([...prev, video.id]))
+                trackVideoProcessingComplete(video.id, 0, false)
+                trackError('video_transfer_failed', analysis?.error_message || 'Transfer failed', video.id)
+              }
+            } else {
+              processing.push({
+                id: video.id,
+                name: video.original_name,
+                original_name: video.original_name,
+                file_path: video.file_path,
+                status: analysis?.status || 'processing',
+                created_at: video.created_at,
+                is_converting: analysis?.is_converting,
+                error_message: analysis?.error_message,
+                stage,
+                startTime: new Date(video.created_at).getTime(),
+                progress_message: analysis?.progress_message,
+                overall_progress: analysis?.overall_progress
+              })
+            }
           }
         }
       })
@@ -311,8 +377,8 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
         return newSet
       })
       
-      // Start analysis request
-      const response = await fetch(`/api/videos/${videoId}/analyze`, {
+      // Start reanalysis request
+      const response = await fetch(`/api/videos/${videoId}/reanalyze`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -339,9 +405,35 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
     setUploadingVideos(prev => prev.filter(video => video.id !== id))
   }, [])
 
+  // Calculate overall batch progress
+  const totalVideos = uploadingVideos.length + processingVideos.length
+  const completedUploads = uploadingVideos.filter(v => v.status === 'uploaded').length
+  const videosWithProgress = processingVideos.filter(v => v.overall_progress && v.overall_progress > 0)
+  const averageProcessingProgress = videosWithProgress.length > 0 
+    ? videosWithProgress.reduce((sum, v) => sum + (v.overall_progress || 0), 0) / videosWithProgress.length 
+    : 0
+
   return (
     <VideoProcessingErrorBoundary>
       <div className="space-y-6">
+        {/* Batch Progress Summary for multiple videos */}
+        {totalVideos > 1 && (
+          <Card variant="ghost">
+            <CardContent className="py-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-subtitle">
+                  Processing {totalVideos} videos • {completedUploads} uploaded • {processingVideos.length} in progress
+                </span>
+                {averageProcessingProgress > 0 && (
+                  <span className="text-foreground font-medium">
+                    ~{Math.round(averageProcessingProgress)}% average progress
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Active Uploads and Processing */}
         {(uploadingVideos.length > 0 || processingVideos.length > 0) && (
           <Card>
@@ -378,6 +470,9 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
                 {/* Processing Videos */}
                 {processingVideos.map(video => {
                   const timeElapsed = getTimeElapsed(video.startTime)
+                  const estimatedTimeRemaining = video.overall_progress && video.overall_progress > 5
+                    ? getEstimatedTimeRemaining(video.overall_progress, timeElapsed, video.stage)
+                    : undefined
                   
                   return (
                     <VideoUploadProgressCard
@@ -387,7 +482,10 @@ export const EnhancedVideoProcessingFlow = forwardRef<EnhancedVideoProcessingFlo
                       size={0} // Size not available for processing videos
                       stage={video.stage}
                       timeElapsed={timeElapsed}
+                      estimatedTimeRemaining={estimatedTimeRemaining}
                       error={video.error_message}
+                      progressMessage={video.progress_message}
+                      overallProgress={video.overall_progress}
                     />
                   )
                 })}

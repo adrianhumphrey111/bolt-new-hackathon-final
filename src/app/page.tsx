@@ -163,18 +163,18 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Navigation */}
-      <nav className="relative z-50 px-4 py-6">
+      <nav className="relative z-50 px-3 py-3 sm:px-4 sm:py-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <FaVideo className="w-4 h-4 text-white" />
+          <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="flex items-center space-x-1 sm:space-x-2">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <FaVideo className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
               </div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
                 Tailored Labs
               </h1>
             </div>
-            <div className="flex items-center space-x-1 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1">
+            <div className="hidden sm:flex items-center space-x-1 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1">
               <img 
                 src="/bolt/white_circle_360x360/white_circle_360x360.svg" 
                 alt="Built with Bolt" 
@@ -254,7 +254,7 @@ export default function Home() {
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 py-20">
+        <div className="relative z-10 max-w-7xl mx-auto px-3 py-12 sm:px-4 sm:py-20">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Left Side - Hero Content */}
             <div className="text-center lg:text-left">
@@ -263,47 +263,47 @@ export default function Home() {
                 <span className="text-sm font-medium">Built on Bolt.new • Real Remotion Demo Below</span>
               </div>
 
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
+              <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold mb-4 sm:mb-6 leading-tight">
                 Transform Raw Footage into
                 <span className="block bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                   Polished Videos in Minutes
                 </span>
               </h1>
               
-              <p className="text-xl md:text-2xl text-gray-300 mb-6 leading-relaxed">
+              <p className="text-base sm:text-lg md:text-2xl text-gray-300 mb-4 sm:mb-6 leading-relaxed">
                 Stop spending hours on timeline editing. Just describe what you want and AI creates professional videos from your raw footage. 
                 <strong className="text-white">No editing skills required.</strong>
               </p>
               
               {/* Target Audience Benefits */}
-              <div className="grid md:grid-cols-2 gap-6 mb-8 text-lg">
-                <div className="bg-blue-900/20 backdrop-blur-sm rounded-lg p-4 border border-blue-500/30">
+              <div className="grid sm:grid-cols-2 gap-3 sm:gap-6 mb-6 sm:mb-8 text-sm sm:text-lg">
+                <div className="bg-blue-900/20 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-blue-500/30">
                   <div className="flex items-center space-x-2 mb-2">
                     <FaUsers className="w-5 h-5 text-blue-400" />
                     <span className="font-semibold text-blue-300">For Content Creators</span>
                   </div>
-                  <p className="text-gray-300 text-base">Turn hours of raw footage into viral clips and polished videos in minutes</p>
+                  <p className="text-gray-300 text-xs sm:text-base">Turn hours of raw footage into viral clips and polished videos in minutes</p>
                 </div>
-                <div className="bg-purple-900/20 backdrop-blur-sm rounded-lg p-4 border border-purple-500/30">
+                <div className="bg-purple-900/20 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-purple-500/30">
                   <div className="flex items-center space-x-2 mb-2">
                     <FaRocket className="w-5 h-5 text-purple-400" />
                     <span className="font-semibold text-purple-300">For Marketing Teams</span>
                   </div>
-                  <p className="text-gray-300 text-base">Scale video production 10x without hiring expensive editors or agencies</p>
+                  <p className="text-gray-300 text-xs sm:text-base">Scale video production 10x without hiring expensive editors or agencies</p>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-8">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start mb-6 sm:mb-8">
                 <Link
                   href={user ? "/dashboard" : "/auth/signup"}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center space-x-2"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 sm:px-8 sm:py-4 rounded-lg text-base sm:text-lg font-semibold transition-all duration-200 transform hover:scale-105 flex items-center justify-center space-x-2"
                 >
                   <span>{user ? "Open Editor" : "Try AI Video Editing Free"}</span>
                   <FaArrowRight className="w-4 h-4" />
                 </Link>
                 <Link
                   href="/features"
-                  className="bg-gray-800 hover:bg-gray-700 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-colors flex items-center justify-center space-x-2 border border-gray-600"
+                  className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 sm:px-8 sm:py-4 rounded-lg text-base sm:text-lg font-semibold transition-colors flex items-center justify-center space-x-2 border border-gray-600"
                 >
                   <FaEye className="w-4 h-4" />
                   <span>See Features</span>
@@ -373,15 +373,15 @@ export default function Home() {
       </section>
 
       {/* Launch Social Proof Section */}
-      <section className="py-16 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border-y border-blue-500/20">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">
+      <section className="py-10 sm:py-16 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border-y border-blue-500/20">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-12">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 sm:mb-6">
               <span className="bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent">
                 🚀 Fresh Out of the Lab
               </span>
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-8">
+            <p className="text-base sm:text-xl text-gray-300 max-w-3xl mx-auto mb-6 sm:mb-8">
               We've just launched from our hackathon victory! Be among the first to experience the future of AI video editing.
             </p>
           </div>
@@ -412,8 +412,8 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="bg-gray-800/30 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
-            <div className="flex items-center justify-center space-x-8 flex-wrap gap-4">
+          <div className="bg-gray-800/30 backdrop-blur-sm rounded-2xl p-4 sm:p-8 border border-gray-700">
+            <div className="flex items-center justify-center space-x-4 sm:space-x-8 flex-wrap gap-3 sm:gap-4">
               <div className="flex items-center space-x-3">
                 <img 
                   src="/bolt/white_circle_360x360/white_circle_360x360.svg" 
@@ -440,13 +440,13 @@ export default function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="py-20 bg-gray-800/50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+      <section className="py-12 sm:py-20 bg-gray-800/50">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-3 sm:mb-6">
               Stop Timeline Wrestling Forever
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-base sm:text-xl text-gray-300 max-w-3xl mx-auto">
               No more hours of manual editing. No more hunting through footage. 
               Just tell AI what you want and get professional results in minutes.
             </p>
@@ -467,27 +467,27 @@ export default function Home() {
       </section>
 
       {/* AI Superpowers */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-full border border-purple-500/30 mb-6">
-              <FaBrain className="w-4 h-4 text-purple-400 mr-2" />
-              <span className="text-sm font-medium">Powered by GPT-4 & Advanced Computer Vision</span>
+      <section className="py-12 sm:py-20">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-16">
+            <div className="inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-full border border-purple-500/30 mb-4 sm:mb-6">
+              <FaBrain className="w-3 h-3 sm:w-4 sm:h-4 text-purple-400 mr-2" />
+              <span className="text-xs sm:text-sm font-medium">Powered by GPT-4 & Advanced Computer Vision</span>
             </div>
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-3 sm:mb-6">
               <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                 Never Edit Manually Again
               </span>
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-base sm:text-xl text-gray-300 max-w-3xl mx-auto">
               Solve the biggest pain points in video production. Save hours, find hidden gems, and create professional content at scale.
             </p>
           </div>
 
           {/* Feature Categories */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8 sm:mb-12">
             {features.map((feature, index) => (
-              <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 hover:border-purple-500/50 transition-all duration-300 group relative overflow-hidden">
+              <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-gray-700 hover:border-purple-500/50 transition-all duration-300 group relative overflow-hidden">
                 {/* Category Badge */}
                 <div className="absolute top-3 right-3">
                   <span className="text-xs px-2 py-1 bg-purple-500/20 text-purple-300 rounded-full">
@@ -498,7 +498,7 @@ export default function Home() {
                 <div className="text-purple-400 mb-4 group-hover:scale-110 transition-transform duration-200">
                   {feature.icon}
                 </div>
-                <h3 className="text-lg font-semibold mb-3 group-hover:text-purple-300 transition-colors">
+                <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3 group-hover:text-purple-300 transition-colors">
                   {feature.title}
                 </h3>
                 <p className="text-gray-400 text-sm leading-relaxed">{feature.description}</p>
@@ -510,7 +510,7 @@ export default function Home() {
           </div>
 
           {/* Pro Features Highlight */}
-          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 rounded-2xl p-8 border border-purple-500/30 relative overflow-hidden">
+          <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 rounded-2xl p-4 sm:p-8 border border-purple-500/30 relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-pink-600/10"></div>
             <div className="relative z-10">
               <div className="flex items-center justify-center mb-6">
@@ -573,19 +573,19 @@ export default function Home() {
       </section>
 
       {/* Technical Innovation Showcase */}
-      <section className="py-20 bg-gray-800/50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-full border border-blue-500/30 mb-6">
-              <FaMicrochip className="w-4 h-4 text-blue-400 mr-2" />
-              <span className="text-sm font-medium">🏆 Supabase Startup Challenge • Built to Scale to Millions</span>
+      <section className="py-12 sm:py-20 bg-gray-800/50">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-16">
+            <div className="inline-flex items-center px-3 py-1.5 sm:px-4 sm:py-2 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-full border border-blue-500/30 mb-4 sm:mb-6 text-xs sm:text-sm">
+              <FaMicrochip className="w-3 h-3 sm:w-4 sm:h-4 text-blue-400 mr-2" />
+              <span className="font-medium">🏆 Supabase Startup Challenge • Built to Scale to Millions</span>
             </div>
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-3 sm:mb-6">
               <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
                 Proven Technology That Works
               </span>
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-base sm:text-xl text-gray-300 max-w-3xl mx-auto">
               Built on battle-tested AI technology that millions trust. Your content is safe, secure, and always improving.
             </p>
           </div>
@@ -694,7 +694,7 @@ export default function Home() {
           </div>
 
           {/* Technical Achievements */}
-          <div className="bg-gray-800/30 rounded-2xl p-8 border border-gray-600">
+          <div className="bg-gray-800/30 rounded-2xl p-4 sm:p-8 border border-gray-600">
             <h3 className="text-2xl font-bold text-center mb-8 text-white">
               🏆 Technical Achievements
             </h3>
@@ -721,18 +721,18 @@ export default function Home() {
       </section>
 
       {/* Comparison Section */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+      <section className="py-12 sm:py-20">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-3 sm:mb-6">
               Why Creators Are Making the Switch
             </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+            <p className="text-base sm:text-xl text-gray-300 max-w-3xl mx-auto">
               Stop struggling with traditional editors that waste your time and don't understand your content
             </p>
           </div>
 
-          <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
+          <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-4 sm:p-8 border border-gray-700">
             <div className="grid md:grid-cols-3 gap-8">
               <div className="text-center">
                 <h3 className="text-lg font-semibold mb-4 text-gray-400">Traditional Editing</h3>
@@ -791,7 +791,7 @@ export default function Home() {
           </div>
 
           {/* Breakthrough Innovation Callout */}
-          <div className="mt-12 bg-gradient-to-br from-yellow-900/30 to-orange-900/30 rounded-2xl p-8 border border-yellow-500/30 text-center">
+          <div className="mt-8 sm:mt-12 bg-gradient-to-br from-yellow-900/30 to-orange-900/30 rounded-2xl p-4 sm:p-8 border border-yellow-500/30 text-center">
             <div className="flex items-center justify-center mb-4">
               <FaLightbulb className="w-8 h-8 text-yellow-400 mr-3" />
               <h3 className="text-2xl font-bold text-yellow-400">🚀 Breakthrough Innovation</h3>
@@ -805,20 +805,20 @@ export default function Home() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+      <section className="py-12 sm:py-20">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-3 sm:mb-6">
               Loved by Creators
             </h2>
-            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+            <p className="text-base sm:text-xl text-gray-300 max-w-2xl mx-auto">
               Join thousands of creators who've transformed their workflow
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {testimonials.map((testimonial, index) => (
-              <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+              <div key={index} className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center mb-4">
                   {[...Array(testimonial.rating)].map((_, i) => (
                     <FaStar key={i} className="w-4 h-4 text-yellow-400" />
@@ -837,10 +837,10 @@ export default function Home() {
       </section>
 
       {/* FAQ */}
-      <section className="py-20 bg-gray-800/50">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+      <section className="py-12 sm:py-20 bg-gray-800/50">
+        <div className="max-w-4xl mx-auto px-3 sm:px-4">
+          <div className="text-center mb-8 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-3 sm:mb-6">
               Frequently Asked Questions
             </h2>
           </div>
@@ -867,12 +867,12 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
+      <section className="py-12 sm:py-20">
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 text-center">
+          <h2 className="text-2xl sm:text-3xl md:text-5xl font-bold mb-3 sm:mb-6">
             Ready to Stop Timeline Wrestling?
           </h2>
-          <p className="text-xl text-gray-300 mb-8">
+          <p className="text-base sm:text-xl text-gray-300 mb-6 sm:mb-8">
             Join the early creators who are 10x-ing their content output while saving hours every week
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
@@ -911,8 +911,8 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-800 border-t border-gray-700 py-12">
-        <div className="max-w-7xl mx-auto px-4">
+      <footer className="bg-gray-800 border-t border-gray-700 py-8 sm:py-12">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4">
           <div className="grid md:grid-cols-2 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">

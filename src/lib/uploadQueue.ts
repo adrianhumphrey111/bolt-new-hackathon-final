@@ -3,6 +3,7 @@ import { retryAsync } from './retry';
 import { uploadToS3 } from '../../lib/s3Upload';
 import { convertMedia } from '@remotion/webcodecs';
 import { createClientSupabaseClient } from './supabase/client';
+// import { Storage } from '@google-cloud/storage'; // Moved to server-side API
 
 export interface UploadTask {
   id: string;
@@ -297,38 +298,14 @@ export class UploadQueue {
   }
 
   private async startConversion(task: UploadTask) {
-    task.status = 'converting';
-    task.startedAt = new Date();
-    this.activeConversions.set(task.id, task);
+    // Skip conversion - Gemini API can handle MOV files directly from GCP
+    console.log(`⏭️ Skipping conversion for ${task.file.name} - Gemini can handle original format`);
     
-    this.notifyTaskUpdate(task);
-
-    try {
-      console.log(`🔄 Converting ${task.file.name} to MP4 using main thread`);
-      
-      const mp4Result = await convertMedia({
-        src: task.file,
-        container: 'mp4',
-        onProgress: (progress) => {
-          // Check if progress has a progress property, otherwise use the value directly
-          const progressValue = typeof progress === 'object' && 'progress' in progress 
-            ? (progress as any).progress 
-            : progress;
-          this.updateTaskProgress(task, progressValue * 100);
-        },
-      });
-      
-      const mp4Blob = await mp4Result.save();
-      const convertedFile = new File([mp4Blob], task.file.name.replace(/\.mov$/i, '.mp4'), {
-        type: 'video/mp4',
-      });
-      
-      console.log(`✅ Conversion completed: ${task.file.name} -> ${convertedFile.name}`);
-      this.completeConversion(task, convertedFile);
-    } catch (error) {
-      console.error(`❌ Conversion failed for ${task.file.name}:`, error);
-      this.handleTaskError(task, error as Error);
-    }
+    // Mark conversion as skipped and remove from active conversions
+    this.activeConversions.delete(task.id);
+    
+    // Start upload immediately with original file
+    await this.startUpload(task);
   }
 
   private async startUpload(task: UploadTask) {
@@ -483,9 +460,8 @@ export class UploadQueue {
         headers['Authorization'] = `Bearer ${userSession.access_token}`;
       }
       
-      // Start video analysis asynchronously - don't wait for response
-      // This prevents Lambda timeout issues (API Gateway 30s limit)
-      console.log(`🚀 Starting async video analysis for ${task.metadata.videoId}`);
+      // Start video analysis immediately after upload
+      console.log(`🚀 Starting video analysis for ${task.metadata.videoId}`);
       
       fetch(`/api/videos/${task.metadata.videoId}/analyze`, {
         method: 'POST',
@@ -511,7 +487,6 @@ export class UploadQueue {
         console.warn(`⚠️ Analysis request failed for ${task.metadata.videoId}:`, error.message);
         // Don't fail the upload - analysis can be retried later
       });
-      
       // Deduct 10 credits for video upload (do this synchronously)
       try {
         const response = await fetch('/api/user/usage/deduct', {
@@ -537,6 +512,7 @@ export class UploadQueue {
       // Don't throw here - we want the upload to succeed even if analysis setup fails
     }
   }
+
 
   private handleTaskError(task: UploadTask, error: Error) {
     task.status = 'failed';

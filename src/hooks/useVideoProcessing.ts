@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { videoPollingService, VideoStatus } from '../lib/videoPollingService'
+import { useVideoProgress } from '../lib/websocket'
 
 interface Video {
   id: string
@@ -28,6 +29,11 @@ interface ProcessingVideoInfo {
   analysis?: VideoAnalysis
   startTime: Date
   elapsedSeconds: number
+  // Enhanced progress data from WebSocket
+  step?: string
+  progress?: number
+  message?: string
+  timestamp?: number
 }
 
 export function useVideoProcessing(projectId: string | null) {
@@ -41,6 +47,28 @@ export function useVideoProcessing(projectId: string | null) {
   const channelRef = useRef<any>(null)
   const isCheckingRef = useRef(false)
   const lastCheckTimeRef = useRef<number>(0)
+
+  // Enhanced polling to include progress data from database
+  const fetchProgressData = useCallback(async (videoId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('video_analysis')
+        .select('processing_step, processing_progress, progress_message')
+        .eq('video_id', videoId)
+        .single()
+      
+      if (error || !data) return null
+      
+      return {
+        step: data.processing_step,
+        progress: data.processing_progress,
+        message: data.progress_message
+      }
+    } catch (error) {
+      console.error('Error fetching progress data:', error)
+      return null
+    }
+  }, [supabase])
 
   // Check for videos without analysis records or with processing status
   const checkProcessingStatus = useCallback(async () => {
@@ -79,10 +107,10 @@ export function useVideoProcessing(projectId: string | null) {
         return
       }
 
-      // Get all video analysis records for these videos
+      // Get all video analysis records for these videos (including progress fields)
       const { data: analyses, error: analysesError } = await supabase
         .from('video_analysis')
-        .select('*')
+        .select('*, processing_step, processing_progress, progress_message')
         .in('video_id', videos.map(v => v.id))
 
       if (analysesError) throw analysesError
@@ -110,7 +138,12 @@ export function useVideoProcessing(projectId: string | null) {
             video,
             analysis,
             startTime: videoCreatedAt,
-            elapsedSeconds
+            elapsedSeconds,
+            // Include progress data from analysis record
+            step: analysis?.processing_step,
+            progress: analysis?.processing_progress,
+            message: analysis?.progress_message,
+            timestamp: analysis?.updated_at ? new Date(analysis.updated_at).getTime() : undefined
           })
         }
       })

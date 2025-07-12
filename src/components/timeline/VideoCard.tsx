@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MediaType } from '../../../types/timeline';
 import { createClientSupabaseClient } from '../../lib/supabase/client';
 
@@ -39,6 +39,11 @@ interface MediaItem {
     analysis?: VideoAnalysis;
     startTime: Date;
     elapsedSeconds: number;
+    // Enhanced progress data
+    step?: string;
+    progress?: number;
+    message?: string;
+    timestamp?: number;
   };
 }
 
@@ -54,6 +59,7 @@ interface VideoCardProps {
   onDeleteClick: (e: React.MouseEvent, videoId: string, s3Key: string, videoName: string) => void;
   isDeleting?: boolean;
   isProjectVideo?: boolean;
+  isReanalyzing?: boolean;
 }
 
 export function VideoCard({
@@ -68,10 +74,12 @@ export function VideoCard({
   onDeleteClick,
   isDeleting = false,
   isProjectVideo = false,
+  isReanalyzing = false,
 }: VideoCardProps) {
   const [video, setVideo] = useState<MediaItem>(initialVideo);
   const supabase = createClientSupabaseClient();
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
 
   // Format elapsed time
   const formatElapsedTime = useCallback((seconds: number): string => {
@@ -81,6 +89,26 @@ export function VideoCard({
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}m ${remainingSeconds}s`;
+  }, []);
+
+  // Convert technical step names to user-friendly names
+  const getStepDisplayName = useCallback((step?: string): string => {
+    const stepNames: Record<string, string> = {
+      'starting': 'Initializing',
+      'data_collection': 'Collecting Data',
+      'script_analysis': 'Analyzing Content',
+      'enhancement': 'Enhancing Analysis',
+      'formatting': 'Finalizing Results',
+      'completed': 'Completed',
+      'transcript_saved': 'Processing Audio',
+      'uploading': 'Uploading',
+      'transferring': 'Transferring',
+      'transfer_complete': 'Transfer Complete',
+      'waiting_for_analysis': 'Preparing Analysis',
+      'processing': 'Processing',
+      'analyzing': 'Analyzing'
+    };
+    return stepNames[step || ''] || 'Processing';
   }, []);
 
   // Fetch video analysis status
@@ -133,35 +161,36 @@ export function VideoCard({
 
         // If analysis is complete, stop polling
         if (!isAnalyzing) {
-          if (pollingInterval) {
-            clearInterval(pollingInterval);
-            setPollingInterval(null);
+          if (pollingInterval.current) {
+            clearInterval(pollingInterval.current);
+            pollingInterval.current = null;
           }
         }
       }
     } catch (error) {
       console.error('Error fetching video analysis status:', error);
     }
-  }, [video.isAnalyzing, video.id, supabase, fps, pollingInterval]);
+  }, [video.isAnalyzing, video.id, supabase, fps]);
 
   // Start polling when video is analyzing
   useEffect(() => {
-    if (video.isAnalyzing && !pollingInterval) {
+    if (video.isAnalyzing && !pollingInterval.current) {
       // Initial fetch
       fetchAnalysisStatus();
       
-      // Set up polling every 3 seconds
+      // Set up polling every 5 seconds
       const interval = setInterval(() => {
         fetchAnalysisStatus();
       }, 5000);
       
-      setPollingInterval(interval);
+      pollingInterval.current = interval;
     }
 
     // Cleanup on unmount or when video stops analyzing
     return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
+      if (pollingInterval.current) {
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
       }
     };
   }, [video.isAnalyzing, fetchAnalysisStatus]);
@@ -172,9 +201,15 @@ export function VideoCard({
   }, [initialVideo]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    // Check if the click came from a button or interactive element
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'BUTTON' || target.closest('button')) {
+      return; // Let the button handle its own click
+    }
+    
     if (video.type === MediaType.VIDEO && isProjectVideo) {
       if (video.isAnalyzing) {
-        alert('This video is currently being analyzed. Please check back in a few moments to view the AI analysis.');
+        setShowAnalysisModal(true);
         return;
       }
       onAnalysisClick(video.id, video.name, video.src);
@@ -185,7 +220,7 @@ export function VideoCard({
 
   return (
     <div
-      className="group bg-gray-800/50 rounded-lg overflow-hidden border border-gray-700/50 hover:border-gray-600/50 transition-all duration-200"
+      className="group bg-gray-800/50 rounded-lg overflow-hidden border border-gray-700/50 hover:border-gray-600/50 transition-all duration-200 w-full"
       draggable={!isConverting && !video.isAnalyzing}
       onDragStart={(e) => (!isConverting && !video.isAnalyzing) && onDragStart(e, video)}
       onClick={handleClick}
@@ -206,18 +241,44 @@ export function VideoCard({
           </div>
         )}
 
-        {/* Status indicator */}
+        {/* Enhanced Status indicator */}
         {(isConverting || video.isAnalyzing) && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <div className="text-center">
-              <svg className="w-8 h-8 animate-spin text-white mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
+          <div className="absolute inset-0 bg-black/75 flex items-center justify-center">
+            <div className="text-center px-4 py-3 max-w-full">
+              <svg className="w-8 h-8 animate-spin text-white mx-auto mb-3" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
               </svg>
-              <div className="text-white text-sm font-medium">
-                {isConverting ? 'Converting' : 'Analyzing'}
+              
+              {/* Step name and progress percentage */}
+              <div className="text-white text-sm font-semibold mb-2">
+                {isConverting ? 'Converting' : getStepDisplayName(video.processingInfo?.step)}
+                {video.processingInfo?.progress !== undefined && (
+                  <span className="ml-2 text-blue-300">
+                    {Math.round(video.processingInfo.progress)}%
+                  </span>
+                )}
               </div>
+              
+              {/* Progress bar */}
+              {video.processingInfo?.progress !== undefined && !isConverting && (
+                <div className="w-32 h-1.5 bg-gray-600 rounded-full mb-2 mx-auto">
+                  <div 
+                    className="h-full bg-blue-400 rounded-full transition-all duration-500"
+                    style={{ width: `${video.processingInfo.progress}%` }}
+                  />
+                </div>
+              )}
+              
+              {/* Step message */}
+              {video.processingInfo?.message && !isConverting && (
+                <div className="text-gray-300 text-xs mb-2 max-w-40 truncate">
+                  {video.processingInfo.message}
+                </div>
+              )}
+              
+              {/* Elapsed time */}
               {video.isAnalyzing && video.processingInfo && (
-                <div className="text-gray-300 text-xs">
+                <div className="text-gray-400 text-xs">
                   {formatElapsedTime(video.processingInfo.elapsedSeconds)}
                 </div>
               )}
@@ -277,9 +338,9 @@ export function VideoCard({
       </div>
       
       {/* Video info and actions */}
-      <div className="p-3">
+      <div className="p-4">
         {/* Video name */}
-        <h3 className="text-white font-medium text-sm truncate mb-2.5" title={video.name}>
+        <h3 className="text-white font-medium text-base truncate mb-3" title={video.name}>
           {video.name.replace(/\.[^/.]+$/, "")}
         </h3>
         
@@ -290,7 +351,7 @@ export function VideoCard({
               e.stopPropagation();
               onCleanUpClick(video.id, video.name, video.duration || 0);
             }}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-3 rounded-md transition-colors flex items-center justify-center gap-1.5"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M11.49 3.17c-.38-1.16-2.27-1.16-2.65 0a1.51 1.51 0 01-2.61-.33 2.5 2.5 0 00-3.4 3.4c.04.1.09.2.16.3a1.51 1.51 0 01-.33 2.61c-1.16.38-1.16 2.27 0 2.65.1.04.2.09.33.16a1.51 1.51 0 01.33 2.61 2.5 2.5 0 003.4 3.4c.1-.04.2-.09.3-.16a1.51 1.51 0 012.61.33c.38 1.16 2.27 1.16 2.65 0a1.51 1.51 0 012.61.33 2.5 2.5 0 003.4-3.4 1.51 1.51 0 01.16-.3 1.51 1.51 0 01.33-2.61c1.16-.38 1.16-2.27 0-2.65a1.51 1.51 0 01-.33-2.61 2.5 2.5 0 00-3.4-3.4 1.51 1.51 0 01-.3-.16 1.51 1.51 0 01-2.61-.33z" clipRule="evenodd" />
@@ -300,19 +361,96 @@ export function VideoCard({
           </button>
         )}
 
-        {/* Secondary actions - show on clean state */}
+        {/* Secondary action - View Analysis */}
         {isProjectVideo && !isConverting && !video.isAnalyzing && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               onAnalysisClick(video.id, video.name, video.src);
             }}
-            className="w-full mt-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs py-1.5 px-3 rounded-md transition-colors"
+            className="w-full mt-3 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium py-2.5 px-4 rounded-lg transition-colors"
           >
-            Analysis
+            View Analysis
           </button>
         )}
       </div>
+
+      {/* Enhanced Analysis Progress Modal */}
+      {showAnalysisModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowAnalysisModal(false)}>
+          <div className="bg-gray-800 rounded-lg p-6 m-4 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              {/* Header */}
+              <div className="mb-4">
+                <svg className="w-12 h-12 animate-spin text-blue-400 mx-auto mb-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                </svg>
+                <h3 className="text-lg font-semibold text-white mb-2">Video Analysis in Progress</h3>
+                <p className="text-gray-400 text-sm">{video.name}</p>
+              </div>
+
+              {/* Progress Information */}
+              <div className="mb-6">
+                {/* Current Step */}
+                <div className="text-white text-base font-medium mb-3">
+                  {getStepDisplayName(video.processingInfo?.step)}
+                  {video.processingInfo?.progress !== undefined && (
+                    <span className="ml-2 text-blue-300 text-sm">
+                      {Math.round(video.processingInfo.progress)}%
+                    </span>
+                  )}
+                </div>
+
+                {/* Progress Bar */}
+                {video.processingInfo?.progress !== undefined && (
+                  <div className="w-full h-2 bg-gray-600 rounded-full mb-3">
+                    <div 
+                      className="h-full bg-blue-400 rounded-full transition-all duration-500"
+                      style={{ width: `${video.processingInfo.progress}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* Step Message */}
+                {video.processingInfo?.message && (
+                  <p className="text-gray-300 text-sm mb-3">
+                    {video.processingInfo.message}
+                  </p>
+                )}
+
+                {/* Elapsed Time */}
+                {video.processingInfo && (
+                  <div className="text-gray-400 text-sm">
+                    Elapsed time: {formatElapsedTime(video.processingInfo.elapsedSeconds)}
+                  </div>
+                )}
+
+                {/* Estimated completion */}
+                {video.processingInfo?.progress !== undefined && video.processingInfo.progress > 0 && (
+                  <div className="text-gray-400 text-xs mt-2">
+                    {video.processingInfo.progress >= 90 ? 'Almost done!' : 
+                     video.processingInfo.progress >= 70 ? 'Nearly finished...' :
+                     video.processingInfo.progress >= 40 ? 'More than halfway there!' :
+                     'Processing your video...'}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button */}
+              <button
+                onClick={() => setShowAnalysisModal(false)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
+              >
+                OK
+              </button>
+
+              <p className="text-gray-500 text-xs mt-3">
+                Please check back in a few moments. The analysis will appear automatically when complete.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

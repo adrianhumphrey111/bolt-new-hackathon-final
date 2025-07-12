@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from 'react';
+import { getCdnUrl } from '../../../lib/cdn';
 
 interface ContentClip {
   id: string;
@@ -182,7 +183,7 @@ export function VideoClipPreview({ clips, onAddToTimeline }: VideoClipPreviewPro
           </div>
           <video
             ref={videoRef}
-            src={selectedClip.videoUrl}
+            src={getCdnUrl(selectedClip.videoUrl) || selectedClip.videoUrl}
             controls
             className="w-full rounded"
             onTimeUpdate={handleVideoTimeUpdate}

@@ -34,7 +34,7 @@ export async function GET(
     // Get analysis data - get the most recent completed analysis
     const { data: analysis, error: analysisError } = await supabase
       .from('video_analysis')
-      .select('llm_response, video_analysis, status, processing_started_at, processing_completed_at')
+      .select('llm_response, video_analysis, transcription, status, processing_started_at, processing_completed_at')
       .eq('video_id', videoId)
       .eq('status', 'completed')
       .order('processing_completed_at', { ascending: false })
@@ -47,7 +47,13 @@ export async function GET(
           video_id: videoId,
           video_name: video.original_name,
           has_analysis: false,
-          analysis_data: null
+          analysis_data: null,
+          transcript: {
+            data: null,
+            status: 'not_available',
+            created_at: null,
+            has_transcript: false
+          }
         });
       }
       throw analysisError;
@@ -61,7 +67,13 @@ export async function GET(
       processing_started_at: analysis.processing_started_at,
       processing_completed_at: analysis.processing_completed_at,
       analysis_data: analysis.llm_response,
-      video_analysis: analysis.video_analysis
+      video_analysis: analysis.video_analysis,
+      transcript: {
+        data: analysis.transcription || null,
+        status: analysis.transcription ? 'completed' : 'not_available',
+        created_at: analysis.processing_completed_at,
+        has_transcript: !!analysis.transcription
+      }
     });
 
   } catch (error) {

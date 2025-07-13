@@ -46,7 +46,85 @@ interface AIAnalysisData {
   overallMetrics: OverallMetrics;
 }
 
-// New Gemini video analysis interfaces
+// New V2 Gemini video analysis interfaces
+interface V2Chunk {
+  start_time: number;
+  end_time: number;
+  visual_description: string;
+  scene_type: string;
+  content_type: string;
+  engagement_score: number;
+  hook_potential: number;
+  platform_optimization: {
+    tiktok_score: number;
+    youtube_score: number;
+    instagram_score: number;
+    best_platform: string;
+  };
+  visual_quality: number;
+  audio_quality: number;
+  cut_points: {
+    natural_cuts: Array<{
+      frame: number;
+      ms: number;
+      confidence: number;
+      reason: string;
+    }>;
+    power_moments: Array<{
+      frame: number;
+      ms: number;
+      engagement_score: number;
+      description: string;
+    }>;
+    avoid_zones: Array<{
+      start_frame: number;
+      end_frame: number;
+      reason: string;
+      severity: string;
+    }>;
+  };
+}
+
+interface V2ContentIntelligence {
+  best_moments: Array<{
+    start_ms: number;
+    end_ms: number;
+    hook_score: number;
+    description: string;
+  }>;
+  platform_optimization: {
+    tiktok: {
+      hook_strength: number;
+      energy_level: string;
+    };
+    youtube: {
+      retention_curve: number;
+      educational_value: number;
+    };
+  };
+}
+
+interface V2AnalysisData {
+  chunks: V2Chunk[];
+  duration: number;
+  content_intelligence: V2ContentIntelligence;
+  overall_pacing_assessment?: string;
+  recommended_cuts_or_trims?: Array<{
+    start_time: number;
+    end_time: number;
+    reason: string;
+    priority: string;
+  }>;
+  highlight_moments_worth_emphasizing?: Array<{
+    start_time: number;
+    end_time: number;
+    description: string;
+    emphasis_type: string;
+    suggested_enhancement: string;
+  }>;
+}
+
+// Legacy Gemini analysis for backward compatibility
 interface GeminiChunk {
   start_time: number;
   end_time: number;
@@ -79,6 +157,13 @@ interface GeminiAnalysisData {
   highlight_moments_worth_emphasizing: GeminiHighlight[];
 }
 
+interface TranscriptData {
+  data: any;
+  status: string;
+  created_at: string | null;
+  has_transcript: boolean;
+}
+
 interface AIAnalysisPanelProps {
   videoId: string;
   videoName: string;
@@ -90,7 +175,9 @@ interface AIAnalysisPanelProps {
 export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose }: AIAnalysisPanelProps) {
   const [analysisData, setAnalysisData] = useState<AIAnalysisData | null>(null);
   const [geminiAnalysisData, setGeminiAnalysisData] = useState<GeminiAnalysisData | null>(null);
-  const [activeTab, setActiveTab] = useState<'claude' | 'gemini'>('gemini'); // Default to Gemini tab
+  const [v2AnalysisData, setV2AnalysisData] = useState<V2AnalysisData | null>(null);
+  const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null);
+  const [activeTab, setActiveTab] = useState<'v2' | 'claude' | 'gemini' | 'transcript'>('v2'); // Default to V2 tab
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedScene, setSelectedScene] = useState<number | null>(null);
@@ -130,32 +217,54 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
 
       const data = await response.json();
 
-      if (data.has_analysis && data.analysis_data) {
-        // Check if we have Claude analysis (old format)
-        if (data.analysis_data.sceneAnalysis) {
+      // Handle transcript data
+      if (data.transcript) {
+        console.log('Transcript data received:', data.transcript);
+        setTranscriptData(data.transcript);
+      }
+
+      if (data.has_analysis) {
+        // Check for V2 analysis data (new enhanced structure)
+        if (data.video_analysis && data.video_analysis.chunks && data.video_analysis.chunks.length > 0) {
+          const firstChunk = data.video_analysis.chunks[0];
+          if (firstChunk.platform_optimization || firstChunk.engagement_score !== undefined) {
+            // This is V2 format
+            setV2AnalysisData(data.video_analysis);
+            setActiveTab('v2');
+          } else {
+            // This is legacy Gemini format
+            setGeminiAnalysisData(data.video_analysis);
+            setActiveTab('gemini');
+          }
+          if (data.video_analysis.chunks.length > 0) {
+            setSelectedGeminiChunk(0);
+          }
+        }
+        // Check for Claude analysis data (legacy format)
+        else if (data.analysis_data && data.analysis_data.sceneAnalysis) {
           setAnalysisData(data.analysis_data);
           if (data.analysis_data.sceneAnalysis.length > 0) {
             setSelectedScene(0);
           }
-        }
-        
-        // Check if we have Gemini analysis (new format) from video_analysis column
-        if (data.analysis_data.chunks || data.video_analysis) {
-          const geminiData = data.analysis_data.chunks ? data.analysis_data : data.video_analysis;
-          setGeminiAnalysisData(geminiData);
-          if (geminiData.chunks && geminiData.chunks.length > 0) {
-            setSelectedGeminiChunk(0);
-          }
-        }
-        
-        // Set default tab based on available data
-        if (data.analysis_data.chunks || data.video_analysis) {
-          setActiveTab('gemini');
-        } else if (data.analysis_data.sceneAnalysis) {
           setActiveTab('claude');
         }
+        // Check for legacy Gemini in analysis_data
+        else if (data.analysis_data && data.analysis_data.chunks) {
+          setGeminiAnalysisData(data.analysis_data);
+          if (data.analysis_data.chunks.length > 0) {
+            setSelectedGeminiChunk(0);
+          }
+          setActiveTab('gemini');
+        } else {
+          setError('No analysis data available for this video');
+        }
       } else {
-        setError('No analysis data available for this video');
+        // No analysis but might have transcript
+        if (data.transcript && data.transcript.has_transcript) {
+          setActiveTab('transcript');
+        } else {
+          setError('No analysis data available for this video');
+        }
       }
     } catch (err) {
       console.error('Error fetching analysis data:', err);
@@ -432,6 +541,18 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
           
           {/* Tabs */}
           <div className="flex border-b border-gray-600">
+            {v2AnalysisData && (
+              <button
+                onClick={() => setActiveTab('v2')}
+                className={`px-6 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'v2'
+                    ? 'text-green-400 border-b-2 border-green-400 bg-gray-700/50'
+                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+                }`}
+              >
+                🚀 V2 Analysis
+              </button>
+            )}
             {geminiAnalysisData && (
               <button
                 onClick={() => setActiveTab('gemini')}
@@ -454,6 +575,18 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
                 }`}
               >
                 📝 Script Analysis
+              </button>
+            )}
+            {(transcriptData?.has_transcript || transcriptData?.data) && (
+              <button
+                onClick={() => setActiveTab('transcript')}
+                className={`px-6 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'transcript'
+                    ? 'text-yellow-400 border-b-2 border-yellow-400 bg-gray-700/50'
+                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/30'
+                }`}
+              >
+                📄 Transcript
               </button>
             )}
           </div>
@@ -481,8 +614,480 @@ export function AIAnalysisPanel({ videoId, videoName, videoSrc, isOpen, onClose 
                 </button>
               </div>
             </div>
-          ) : (analysisData || geminiAnalysisData) ? (
-            activeTab === 'gemini' && geminiAnalysisData ? (
+          ) : (analysisData || geminiAnalysisData || v2AnalysisData || transcriptData?.has_transcript) ? (
+            activeTab === 'v2' && v2AnalysisData ? (
+              <div className="h-full overflow-y-auto">
+                {/* V2 Enhanced Analysis Layout */}
+                <div className="max-w-7xl mx-auto p-8 space-y-8">
+                  {/* Header Stats Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-gradient-to-br from-green-500/20 to-blue-500/20 rounded-xl p-6 border border-green-500/30">
+                      <h3 className="text-lg font-semibold text-green-400 mb-2">Duration</h3>
+                      <div className="text-2xl font-bold text-white">
+                        {Math.floor(v2AnalysisData.duration / 60)}:{(v2AnalysisData.duration % 60).toString().padStart(2, '0')}
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl p-6 border border-purple-500/30">
+                      <h3 className="text-lg font-semibold text-purple-400 mb-2">Total Chunks</h3>
+                      <div className="text-2xl font-bold text-white">
+                        {v2AnalysisData.chunks.length}
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl p-6 border border-blue-500/30">
+                      <h3 className="text-lg font-semibold text-blue-400 mb-2">Best Platform</h3>
+                      <div className="text-2xl font-bold text-white capitalize">
+                        {v2AnalysisData.chunks[0]?.platform_optimization?.best_platform || 'Unknown'}
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-xl p-6 border border-yellow-500/30">
+                      <h3 className="text-lg font-semibold text-yellow-400 mb-2">Avg Engagement</h3>
+                      <div className="text-2xl font-bold text-white">
+                        {Math.round((v2AnalysisData.chunks.reduce((sum, chunk) => sum + (chunk.engagement_score || 0), 0) / v2AnalysisData.chunks.length) * 100)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Video Player */}
+                  {videoSrc && (
+                    <div className="bg-gray-800/50 rounded-xl p-6">
+                      <h3 className="text-xl font-semibold text-white mb-4">Video Player</h3>
+                      <div className="flex flex-col lg:flex-row gap-6">
+                        <video
+                          ref={setVideoElement}
+                          src={videoSrc}
+                          controls
+                          className="flex-1 rounded-lg shadow-lg max-h-96"
+                        />
+                        {selectedGeminiChunk !== null && v2AnalysisData.chunks[selectedGeminiChunk] && (
+                          <div className="lg:w-80 space-y-4">
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <h4 className="font-semibold text-white mb-2">Selected Chunk</h4>
+                              <div className="text-sm text-gray-300 space-y-1">
+                                <p><span className="text-gray-400">Time:</span> {v2AnalysisData.chunks[selectedGeminiChunk].start_time}s - {v2AnalysisData.chunks[selectedGeminiChunk].end_time}s</p>
+                                <p><span className="text-gray-400">Type:</span> {v2AnalysisData.chunks[selectedGeminiChunk].scene_type}</p>
+                                <p><span className="text-gray-400">Engagement:</span> {Math.round((v2AnalysisData.chunks[selectedGeminiChunk].engagement_score || 0) * 100)}%</p>
+                                <p><span className="text-gray-400">Hook Potential:</span> {Math.round((v2AnalysisData.chunks[selectedGeminiChunk].hook_potential || 0) * 100)}%</p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (videoElement) {
+                                    videoElement.currentTime = v2AnalysisData.chunks[selectedGeminiChunk].start_time;
+                                    videoElement.play();
+                                  }
+                                }}
+                                className="w-full mt-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+                              >
+                                ▶ Play Chunk
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Platform Intelligence */}
+                  {v2AnalysisData.content_intelligence && (
+                    <div className="bg-gray-800/50 rounded-xl p-6">
+                      <h3 className="text-xl font-semibold text-white mb-6">Platform Intelligence</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {v2AnalysisData.content_intelligence.platform_optimization.tiktok && (
+                          <div className="bg-gradient-to-br from-pink-500/20 to-red-500/20 rounded-lg p-4 border border-pink-500/30">
+                            <h4 className="text-lg font-semibold text-pink-400 mb-3">TikTok Optimization</h4>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-300">Hook Strength:</span>
+                                <span className="text-white font-medium">{Math.round((v2AnalysisData.content_intelligence.platform_optimization.tiktok.hook_strength || 0) * 100)}%</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-300">Energy Level:</span>
+                                <span className="text-white font-medium capitalize">{v2AnalysisData.content_intelligence.platform_optimization.tiktok.energy_level}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {v2AnalysisData.content_intelligence.platform_optimization.youtube && (
+                          <div className="bg-gradient-to-br from-red-500/20 to-orange-500/20 rounded-lg p-4 border border-red-500/30">
+                            <h4 className="text-lg font-semibold text-red-400 mb-3">YouTube Optimization</h4>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-300">Retention Curve:</span>
+                                <span className="text-white font-medium">{Math.round((v2AnalysisData.content_intelligence.platform_optimization.youtube.retention_curve || 0) * 100)}%</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-300">Educational Value:</span>
+                                <span className="text-white font-medium">{Math.round((v2AnalysisData.content_intelligence.platform_optimization.youtube.educational_value || 0) * 100)}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Best Moments */}
+                  {v2AnalysisData.content_intelligence?.best_moments && v2AnalysisData.content_intelligence.best_moments.length > 0 && (
+                    <div className="bg-gray-800/50 rounded-xl p-6">
+                      <h3 className="text-xl font-semibold text-white mb-6">🔥 Best Moments</h3>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {v2AnalysisData.content_intelligence.best_moments.map((moment, index) => (
+                          <div key={index} className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-lg p-4 border border-yellow-500/30 hover:border-yellow-400/50 transition-colors cursor-pointer"
+                               onClick={() => {
+                                 if (videoElement) {
+                                   videoElement.currentTime = moment.start_ms / 1000;
+                                   videoElement.play();
+                                 }
+                               }}>
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="text-lg font-semibold text-yellow-400">
+                                {Math.floor(moment.start_ms / 1000 / 60)}:{((moment.start_ms / 1000) % 60).toFixed(0).padStart(2, '0')} - {Math.floor(moment.end_ms / 1000 / 60)}:{((moment.end_ms / 1000) % 60).toFixed(0).padStart(2, '0')}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-sm text-yellow-300 font-medium">Hook Score</div>
+                                <div className="text-lg font-bold text-white">{Math.round(moment.hook_score * 100)}%</div>
+                              </div>
+                            </div>
+                            <p className="text-gray-300 text-sm leading-relaxed">
+                              {moment.description}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Chunks Grid */}
+                  <div className="bg-gray-800/50 rounded-xl p-6">
+                    <h3 className="text-xl font-semibold text-white mb-6">Video Chunks ({v2AnalysisData.chunks.length})</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {v2AnalysisData.chunks.map((chunk, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setSelectedGeminiChunk(index)}
+                          className={`text-left p-4 rounded-lg transition-all hover:scale-[1.02] ${
+                            selectedGeminiChunk === index 
+                              ? 'bg-green-600 text-white shadow-lg shadow-green-600/25' 
+                              : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="text-sm font-semibold">
+                              {chunk.start_time}s - {chunk.end_time}s
+                            </div>
+                            <div className="text-xs bg-gray-600 px-2 py-1 rounded">
+                              {Math.round((chunk.engagement_score || 0) * 100)}%
+                            </div>
+                          </div>
+                          <div className="text-xs opacity-75 capitalize mb-2">
+                            {chunk.scene_type} • {chunk.content_type}
+                          </div>
+                          <div className="text-xs opacity-60 line-clamp-2 mb-2">
+                            {chunk.visual_description}
+                          </div>
+                          {chunk.platform_optimization && (
+                            <div className="flex justify-between text-xs">
+                              <span className="text-pink-300">TT: {Math.round(chunk.platform_optimization.tiktok_score * 100)}%</span>
+                              <span className="text-red-300">YT: {Math.round(chunk.platform_optimization.youtube_score * 100)}%</span>
+                              <span className="text-purple-300">IG: {Math.round(chunk.platform_optimization.instagram_score * 100)}%</span>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Selected Chunk Details */}
+                  {selectedGeminiChunk !== null && v2AnalysisData.chunks[selectedGeminiChunk] && (
+                    <div className="bg-gray-800/50 rounded-xl p-6">
+                      <h3 className="text-xl font-semibold text-white mb-6">
+                        Chunk {selectedGeminiChunk + 1} - Detailed Analysis
+                      </h3>
+                      {(() => {
+                        const chunk = v2AnalysisData.chunks[selectedGeminiChunk];
+                        return (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="space-y-6">
+                              <div>
+                                <h4 className="text-lg font-semibold text-white mb-3">Content Analysis</h4>
+                                <div className="bg-gray-700/50 rounded-lg p-4 space-y-3">
+                                  <div>
+                                    <span className="text-gray-400 text-sm">Visual Description:</span>
+                                    <p className="text-gray-300 mt-1">{chunk.visual_description}</p>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <span className="text-gray-400">Scene Type:</span>
+                                      <div className="text-white font-medium capitalize">{chunk.scene_type}</div>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-400">Content Type:</span>
+                                      <div className="text-white font-medium capitalize">{chunk.content_type}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <h4 className="text-lg font-semibold text-white mb-3">Quality Metrics</h4>
+                                <div className="bg-gray-700/50 rounded-lg p-4 grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-gray-400">Visual Quality:</span>
+                                    <div className="text-white font-medium">{Math.round((chunk.visual_quality || 0) * 100)}%</div>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400">Audio Quality:</span>
+                                    <div className="text-white font-medium">{Math.round((chunk.audio_quality || 0) * 100)}%</div>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400">Engagement Score:</span>
+                                    <div className="text-white font-medium">{Math.round((chunk.engagement_score || 0) * 100)}%</div>
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400">Hook Potential:</span>
+                                    <div className="text-white font-medium">{Math.round((chunk.hook_potential || 0) * 100)}%</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-6">
+                              <div>
+                                <h4 className="text-lg font-semibold text-white mb-3">Platform Scores</h4>
+                                <div className="bg-gray-700/50 rounded-lg p-4 space-y-3">
+                                  {chunk.platform_optimization && (
+                                    <>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-pink-300">TikTok</span>
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-20 bg-gray-600 rounded-full h-2">
+                                            <div className="bg-pink-500 h-2 rounded-full" style={{ width: `${chunk.platform_optimization.tiktok_score * 100}%` }}></div>
+                                          </div>
+                                          <span className="text-white text-sm font-medium">{Math.round(chunk.platform_optimization.tiktok_score * 100)}%</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-red-300">YouTube</span>
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-20 bg-gray-600 rounded-full h-2">
+                                            <div className="bg-red-500 h-2 rounded-full" style={{ width: `${chunk.platform_optimization.youtube_score * 100}%` }}></div>
+                                          </div>
+                                          <span className="text-white text-sm font-medium">{Math.round(chunk.platform_optimization.youtube_score * 100)}%</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-purple-300">Instagram</span>
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-20 bg-gray-600 rounded-full h-2">
+                                            <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${chunk.platform_optimization.instagram_score * 100}%` }}></div>
+                                          </div>
+                                          <span className="text-white text-sm font-medium">{Math.round(chunk.platform_optimization.instagram_score * 100)}%</span>
+                                        </div>
+                                      </div>
+                                      <div className="pt-2 border-t border-gray-600">
+                                        <span className="text-gray-400 text-sm">Best Platform:</span>
+                                        <div className="text-white font-semibold capitalize">{chunk.platform_optimization.best_platform}</div>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {chunk.cut_points && (
+                                <div>
+                                  <h4 className="text-lg font-semibold text-white mb-3">Cut Points Analysis</h4>
+                                  <div className="bg-gray-700/50 rounded-lg p-4 space-y-3">
+                                    {chunk.cut_points.natural_cuts && chunk.cut_points.natural_cuts.length > 0 && (
+                                      <div>
+                                        <span className="text-green-400 text-sm font-medium">Natural Cuts: {chunk.cut_points.natural_cuts.length}</span>
+                                      </div>
+                                    )}
+                                    {chunk.cut_points.power_moments && chunk.cut_points.power_moments.length > 0 && (
+                                      <div>
+                                        <span className="text-yellow-400 text-sm font-medium">Power Moments: {chunk.cut_points.power_moments.length}</span>
+                                      </div>
+                                    )}
+                                    {chunk.cut_points.avoid_zones && chunk.cut_points.avoid_zones.length > 0 && (
+                                      <div>
+                                        <span className="text-red-400 text-sm font-medium">Avoid Zones: {chunk.cut_points.avoid_zones.length}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : activeTab === 'transcript' && (transcriptData?.has_transcript || transcriptData?.data) ? (
+              <div className="h-full overflow-y-auto">
+                {/* Enhanced Transcript Display */}
+                <div className="max-w-5xl mx-auto p-8">
+                  {transcriptData.data ? (
+                    <div className="space-y-6">
+                      {/* Header with stats */}
+                      <div className="bg-gray-800/50 rounded-xl p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-xl font-semibold text-white flex items-center gap-2">
+                            <span className="text-2xl">📄</span> Video Transcript
+                          </h3>
+                          {typeof transcriptData.data === 'string' && (
+                            <div className="flex items-center gap-4 text-sm text-gray-400">
+                              <span>Words: {transcriptData.data.split(/\s+/).length}</span>
+                              <span>•</span>
+                              <span>Est. reading time: {Math.ceil(transcriptData.data.split(/\s+/).length / 200)} min</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Quick actions */}
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => {
+                              if (typeof transcriptData.data === 'string') {
+                                navigator.clipboard.writeText(transcriptData.data);
+                                // Could add a toast notification here
+                              }
+                            }}
+                            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"/>
+                              <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"/>
+                            </svg>
+                            Copy Transcript
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Transcript content */}
+                      <div className="bg-gray-800/50 rounded-xl p-8">
+                        {typeof transcriptData.data === 'string' ? (
+                          <div className="space-y-4">
+                            {(() => {
+                              // Split transcript into paragraphs for better readability
+                              const paragraphs = transcriptData.data
+                                .split(/\n\n+/)
+                                .filter(p => p.trim())
+                                .map(p => p.trim());
+                              
+                              if (paragraphs.length === 1) {
+                                // If no natural paragraphs, split by sentences
+                                const sentences = transcriptData.data
+                                  .split(/(?<=[.!?])\s+/)
+                                  .filter(s => s.trim());
+                                
+                                // Group sentences into paragraphs of 3-5 sentences
+                                const groupedParagraphs = [];
+                                for (let i = 0; i < sentences.length; i += 4) {
+                                  groupedParagraphs.push(
+                                    sentences.slice(i, i + 4).join(' ')
+                                  );
+                                }
+                                
+                                return groupedParagraphs.map((paragraph, index) => (
+                                  <div
+                                    key={index}
+                                    className="group relative pl-8 border-l-2 border-gray-700 hover:border-gray-600 transition-colors"
+                                  >
+                                    <div className="absolute left-0 top-0 w-8 h-8 -ml-4 bg-gray-700 group-hover:bg-gray-600 rounded-full flex items-center justify-center text-xs text-gray-400 group-hover:text-white transition-colors">
+                                      {index + 1}
+                                    </div>
+                                    <p className="text-gray-300 leading-relaxed text-base">
+                                      {paragraph}
+                                    </p>
+                                  </div>
+                                ));
+                              } else {
+                                // Natural paragraphs exist
+                                return paragraphs.map((paragraph, index) => (
+                                  <div
+                                    key={index}
+                                    className="group relative pl-8 border-l-2 border-gray-700 hover:border-gray-600 transition-colors"
+                                  >
+                                    <div className="absolute left-0 top-0 w-8 h-8 -ml-4 bg-gray-700 group-hover:bg-gray-600 rounded-full flex items-center justify-center text-xs text-gray-400 group-hover:text-white transition-colors">
+                                      {index + 1}
+                                    </div>
+                                    <p className="text-gray-300 leading-relaxed text-base">
+                                      {paragraph}
+                                    </p>
+                                  </div>
+                                ));
+                              }
+                            })()}
+                          </div>
+                        ) : (
+                          // Structured transcript data
+                          <div className="space-y-4">
+                            {Array.isArray(transcriptData.data) ? (
+                              // If it's an array of segments
+                              transcriptData.data.map((segment: any, index: number) => (
+                                <div
+                                  key={index}
+                                  className="bg-gray-700/50 rounded-lg p-4 hover:bg-gray-700/70 transition-colors"
+                                >
+                                  {segment.timestamp && (
+                                    <div className="text-sm text-gray-400 mb-2">
+                                      {segment.timestamp}
+                                    </div>
+                                  )}
+                                  <p className="text-gray-300 leading-relaxed">
+                                    {segment.text || JSON.stringify(segment)}
+                                  </p>
+                                </div>
+                              ))
+                            ) : (
+                              // Fallback for other structures
+                              <div className="bg-gray-700/50 rounded-lg p-6">
+                                <pre className="whitespace-pre-wrap text-gray-300 text-sm overflow-x-auto">
+                                  {JSON.stringify(transcriptData.data, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Transcript tips */}
+                      <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl p-6 border border-blue-500/20">
+                        <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                          <span className="text-xl">💡</span> Pro Tips
+                        </h4>
+                        <ul className="space-y-2 text-sm text-gray-300">
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-400 mt-0.5">•</span>
+                            <span>Use this transcript to create captions, subtitles, or blog posts from your video content</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-400 mt-0.5">•</span>
+                            <span>Search for key phrases to find specific moments in your video</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-blue-400 mt-0.5">•</span>
+                            <span>Copy sections for social media quotes or marketing materials</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-800/50 rounded-xl p-12">
+                      <div className="text-center">
+                        <div className="text-gray-400 mb-4">
+                          <svg className="w-16 h-16 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 2v10h8V6H6z" clipRule="evenodd" />
+                          </svg>
+                          <p className="text-lg font-medium">No transcript available</p>
+                          <p className="text-sm mt-2">Transcripts will appear here once your video is processed</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : activeTab === 'gemini' && geminiAnalysisData ? (
               <div className="h-full overflow-y-auto">
                 {/* Full Screen Gemini Analysis Layout */}
                 <div className="max-w-7xl mx-auto p-8 space-y-8">

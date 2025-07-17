@@ -5,7 +5,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const posts = getAllPosts()
   
   const blogPosts = posts.map((post) => ({
-    url: `https://tailoredlabs.com/blog/${post.slug}`,
+    url: `https://tailoredlabsai.com/blog/${post.slug}`,
     lastModified: new Date(post.date),
     changeFrequency: 'weekly' as const,
     priority: 0.8,
@@ -13,25 +13,25 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     {
-      url: 'https://tailoredlabs.com',
+      url: 'https://tailoredlabsai.com',
       lastModified: new Date(),
       changeFrequency: 'yearly',
       priority: 1,
     },
     {
-      url: 'https://tailoredlabs.com/blog',
+      url: 'https://tailoredlabsai.com/blog',
       lastModified: new Date(),
       changeFrequency: 'weekly',
       priority: 0.9,
     },
     {
-      url: 'https://tailoredlabs.com/features',
+      url: 'https://tailoredlabsai.com/features',
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.8,
     },
     {
-      url: 'https://tailoredlabs.com/pricing',
+      url: 'https://tailoredlabsai.com/pricing',
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.8,

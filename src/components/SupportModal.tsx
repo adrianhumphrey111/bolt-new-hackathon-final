@@ -87,7 +87,7 @@ export function SupportModal({ isOpen, onClose }: SupportModalProps) {
             <h4 className="text-sm font-medium text-gray-400">Other Resources</h4>
             <div className="flex justify-center">
               <a
-                href="mailto:adrian@tailoredlabsai.com"
+                href="mailto:adrian@tailoredlabsaiai.com"
                 className="flex items-center space-x-2 p-3 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-colors text-sm text-gray-300"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -114,7 +114,7 @@ export function SupportModal({ isOpen, onClose }: SupportModalProps) {
         {/* Footer */}
         <div className="p-6 border-t border-gray-700 bg-gray-900/50 rounded-b-xl">
           <p className="text-xs text-gray-500 text-center">
-            Our team is most active Monday-Friday, 9am-6pm PST. For urgent issues, email adrian@tailoredlabsai.com
+            Our team is most active Monday-Friday, 9am-6pm PST. For urgent issues, email adrian@tailoredlabsaiai.com
           </p>
         </div>
       </div>

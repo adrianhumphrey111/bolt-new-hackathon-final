@@ -23,6 +23,17 @@ export async function POST(
       }, { status: 400 });
     }
 
+    const { data: newJob, error: jobError } = await supabase
+      .from('edl_generation_jobs')
+      .insert({
+        project_id: projectId,
+        user_id: user.id,
+        user_prompt: user_prompt,
+        platform: platform
+      })
+      .select('id')
+      .single()
+
     // Validate project access
     const { data: project, error: projectError } = await supabase
       .from('projects')
@@ -31,7 +42,7 @@ export async function POST(
       .eq('user_id', user.id)
       .single();
 
-    if (projectError || !project) {
+    if (projectError || !project || !newJob) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
@@ -45,39 +56,41 @@ export async function POST(
         project_id: projectId,
         user_id: user.id,
         user_prompt: user_prompt,
-        platform: platform
+        platform: platform,
+        job_id: newJob.id,
       }),
     });
 
-    if (!lambdaResponse.ok) {
-      const errorText = await lambdaResponse.text();
-      console.error('Lambda function error:', errorText);
-      return NextResponse.json({ 
-        error: 'Failed to start generation' 
-      }, { status: 500 });
-    }
+    // We do not care about the lambda response
+    // if (!lambdaResponse.ok) {
+    //   const errorText = await lambdaResponse.text();
+    //   console.error('Lambda function error:', errorText);
+    //   return NextResponse.json({ 
+    //     error: 'Failed to start generation' 
+    //   }, { status: 500 });
+    // }
 
-    const lambdaResult = await lambdaResponse.json();
+    // const lambdaResult = await lambdaResponse.json();
     
-    // Parse the response (handle both wrapped and direct formats)
-    const responseData = lambdaResult.body 
-      ? JSON.parse(lambdaResult.body) 
-      : lambdaResult;
+    // // Parse the response (handle both wrapped and direct formats)
+    // const responseData = lambdaResult.body 
+    //   ? JSON.parse(lambdaResult.body) 
+    //   : lambdaResult;
 
-    if (!responseData.success || !responseData.data?.job_id) {
-      console.error('Invalid lambda response:', responseData);
-      return NextResponse.json({ 
-        error: 'Invalid response from generation service' 
-      }, { status: 500 });
-    }
+    // if (!responseData.success || !responseData.data?.job_id) {
+    //   console.error('Invalid lambda response:', responseData);
+    //   return NextResponse.json({ 
+    //     error: 'Invalid response from generation service' 
+    //   }, { status: 500 });
+    // }
 
     // Return the job ID and status
     return NextResponse.json({
       success: true,
-      job_id: responseData.data.job_id,
-      status: responseData.data.status || 'processing',
-      message: responseData.data.message || 'Generation started',
-      architecture: responseData.data.architecture || 'v2_autonomous'
+      job_id: newJob.id,
+      status: 'processing',
+      message: 'Generation started',
+      architecture: 'v2_autonomous'
     });
 
   } catch (error) {

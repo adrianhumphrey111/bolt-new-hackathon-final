@@ -136,7 +136,7 @@ End with a compelling call-to-action that ties back to your main message.
 3. Compare results to manual editing
 4. Calculate your time savings
 
-*Ready to save 4+ hours per video? [Start your free trial today](https://tailoredlabs.com/auth/signup) and see how AI video editing can transform your workflow.*
+*Ready to save 4+ hours per video? [Start your free trial today](https://tailoredlabsai.com/auth/signup) and see how AI video editing can transform your workflow.*
 
 ---
 

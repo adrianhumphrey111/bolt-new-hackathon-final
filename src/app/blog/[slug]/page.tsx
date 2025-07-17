@@ -46,17 +46,17 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       publishedTime: post.date,
       authors: [post.author],
       tags: post.tags,
-      url: `https://tailoredlabs.com/blog/${slug}`,
+      url: `https://tailoredlabsai.com/blog/${slug}`,
       siteName: 'Tailored Labs',
     },
     twitter: {
       card: 'summary_large_image',
       title: post.title,
       description: post.excerpt,
-      creator: '@tailoredlabs',
+      creator: '@tailoredlabsai',
     },
     alternates: {
-      canonical: `https://tailoredlabs.com/blog/${slug}`,
+      canonical: `https://tailoredlabsai.com/blog/${slug}`,
     },
   };
 }

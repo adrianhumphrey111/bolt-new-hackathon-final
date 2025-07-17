@@ -64,3 +64,8 @@ updated-distribution-config.json
 video-processing-architecture.md
 
 scripts/
+
+.vscode/
+blog-posts/templates/blog-post-template.md
+landing-page-redesign.html
+personalized-emails-2025-07-02.csv

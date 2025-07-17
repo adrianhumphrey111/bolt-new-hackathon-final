@@ -98,6 +98,11 @@ export default function Home() {
               <Link href="/blog" className="text-gray-400 hover:text-white transition-colors">
                 Blog
               </Link>
+              {!user && (
+                <Link href="/auth/login" className="text-gray-400 hover:text-white transition-colors">
+                  Sign In
+                </Link>
+              )}
               <Link
                 href={user ? "/dashboard" : "/auth/signup"}
                 className="bg-white text-black px-6 py-2 rounded-full font-medium hover:bg-gray-200 transition-all"
@@ -119,18 +124,6 @@ export default function Home() {
               <span className="text-sm font-medium">127 creators joined this week</span>
             </div>
 
-            {/* Social Proof Logos */}
-            <div className="flex items-center justify-center space-x-6 mb-8">
-              <span className="text-sm text-gray-500">Trusted by:</span>
-              {creatorLogos.map((logo, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center text-xs font-bold">
-                    {logo.initials}
-                  </div>
-                  <span className="text-xs text-gray-600">{logo.name}</span>
-                </div>
-              ))}
-            </div>
 
             <div className="space-y-6">
               <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-tight">

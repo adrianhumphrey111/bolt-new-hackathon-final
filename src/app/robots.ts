@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/api/', '/admin/', '/_next/', '/static/'],
     },
-    sitemap: 'https://tailoredlabs.com/sitemap.xml',
+    sitemap: 'https://tailoredlabsai.com/sitemap.xml',
   }
 }

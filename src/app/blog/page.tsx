@@ -20,17 +20,17 @@ export const metadata: Metadata = {
     title: 'AI Video Editing Blog - Tips, Trends & Tutorials',
     description: 'Learn about AI video editing, save time on video production, and master automated editing techniques.',
     type: 'website',
-    url: 'https://tailoredlabs.com/blog',
+    url: 'https://tailoredlabsai.com/blog',
     siteName: 'Tailored Labs',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'AI Video Editing Blog - Tips, Trends & Tutorials',
     description: 'Learn about AI video editing, save time on video production, and master automated editing techniques.',
-    creator: '@tailoredlabs',
+    creator: '@tailoredlabsai',
   },
   alternates: {
-    canonical: 'https://tailoredlabs.com/blog',
+    canonical: 'https://tailoredlabsai.com/blog',
   },
 };
 

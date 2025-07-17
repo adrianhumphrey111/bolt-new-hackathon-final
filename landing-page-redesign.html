@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TailoredLabs - From Raw Footage to Rough Draft in 4 Minutes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #ffffff;
+            background: #0a0a0f;
+        }
+
+        /* Navigation */
+        nav {
+            background: rgba(10, 10, 15, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            padding: 16px 0;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: white;
+            font-weight: 600;
+            font-size: 20px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .built-on-bolt {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-left: 16px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: white;
+        }
+
+        .cta-button {
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.3);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 140px 20px 80px;
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(124, 58, 237, 0.2);
+            border: 1px solid rgba(124, 58, 237, 0.3);
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            color: #c084fc;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 64px;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #ffffff 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subheadline {
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 16px;
+            font-weight: 400;
+        }
+
+        .value-prop {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 40px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-section {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .primary-cta {
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+            color: white;
+            padding: 16px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 18px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-block;
+        }
+
+        .primary-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 40px rgba(124, 58, 237, 0.4);
+        }
+
+        .secondary-cta {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .trust-badges {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .trust-badges span {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Demo Section */
+        .demo-container {
+            max-width: 1000px;
+            margin: 80px auto;
+            padding: 0 20px;
+        }
+
+        .demo-frame {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 8px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .demo-header {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px 16px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .window-control {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .window-control.close { background: #ff5f57; }
+        .window-control.minimize { background: #ffbd2e; }
+        .window-control.maximize { background: #28ca42; }
+
+        .demo-content {
+            background: #1a1a1f;
+            border-radius: 0 0 8px 8px;
+            padding: 40px;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .demo-steps {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .demo-step {
+            text-align: center;
+            flex: 1;
+        }
+
+        .step-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(124, 58, 237, 0.2);
+            border: 2px solid rgba(124, 58, 237, 0.3);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 32px;
+        }
+
+        .step-arrow {
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 24px;
+        }
+
+        /* How It Works */
+        .how-it-works {
+            max-width: 1200px;
+            margin: 120px auto;
+            padding: 0 20px;
+            text-align: center;
+        }
+
+        .section-title {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 60px;
+        }
+
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+
+        .step-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 40px 30px;
+            text-align: center;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .step-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(124, 58, 237, 0.3);
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .step-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .step-description {
+            color: rgba(255, 255, 255, 0.6);
+            line-height: 1.6;
+        }
+
+        /* Testimonials */
+        .testimonials {
+            background: rgba(124, 58, 237, 0.05);
+            padding: 80px 20px;
+            margin: 120px 0;
+        }
+
+        .testimonials-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+        }
+
+        .testimonial-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 30px;
+            text-align: left;
+        }
+
+        .testimonial-text {
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .author-avatar {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+            border-radius: 50%;
+        }
+
+        .author-info {
+            text-align: left;
+        }
+
+        .author-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .author-role {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+        }
+
+        /* Pricing */
+        .pricing {
+            max-width: 1000px;
+            margin: 120px auto;
+            padding: 0 20px;
+            text-align: center;
+        }
+
+        .pricing-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+        }
+
+        .pricing-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 40px 30px;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .pricing-card.featured {
+            border-color: rgba(124, 58, 237, 0.5);
+            transform: scale(1.05);
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(124, 58, 237, 0.3);
+        }
+
+        .plan-name {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .plan-price {
+            font-size: 48px;
+            font-weight: 700;
+            margin: 16px 0;
+        }
+
+        .plan-price span {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .plan-features {
+            list-style: none;
+            margin: 30px 0;
+            text-align: left;
+        }
+
+        .plan-features li {
+            padding: 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .check-icon {
+            color: #10b981;
+            font-size: 20px;
+        }
+
+        /* Footer */
+        footer {
+            background: rgba(255, 255, 255, 0.05);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 40px 20px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 40px;
+            }
+
+            .subheadline {
+                font-size: 18px;
+            }
+
+            .steps-grid,
+            .pricing-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .demo-steps {
+                flex-direction: column;
+            }
+
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-container">
+            <div style="display: flex; align-items: center;">
+                <a href="#" class="logo">
+                    <div class="logo-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L2 7V17C2 17.5304 2.21071 18.0391 2.58579 18.4142C2.96086 18.7893 3.46957 19 4 19H20C20.5304 19 21.0391 18.7893 21.4142 18.4142C21.7893 18.0391 22 17.5304 22 17V7L12 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    Tailored Labs
+                </a>
+                <span class="built-on-bolt">⚡ Built on Bolt</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#" class="cta-button">Editor</a>
+                <a href="#">Dashboard</a>
+                <a href="#">Sign Out</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="badge">🎬 AI-Powered Video Editing</div>
+        
+        <h1>
+            From Raw Footage to<br/>
+            <span class="gradient-text">Rough Draft in 4 Minutes</span>
+        </h1>
+        
+        <p class="subheadline">
+            Stop spending hours on the first 80% of editing
+        </p>
+        
+        <p class="value-prop">
+            Upload your raw footage, and our AI removes silence, cuts dead space, 
+            and creates a watchable rough draft. Perfect for creators who want to 
+            focus on creativity, not tedious timeline work.
+        </p>
+        
+        <div class="cta-section">
+            <a href="#" class="primary-cta">Start Free Demo</a>
+            <a href="#" class="secondary-cta">
+                Watch 2-min demo 
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+                </svg>
+            </a>
+        </div>
+        
+        <div class="trust-badges">
+            <span>✓ No credit card required</span>
+            <span>✓ 5 creators already saving 3+ hours per video</span>
+            <span>✓ Export in any format</span>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section class="demo-container">
+        <div class="demo-frame">
+            <div class="demo-header">
+                <div class="window-controls">
+                    <div class="window-control close"></div>
+                    <div class="window-control minimize"></div>
+                    <div class="window-control maximize"></div>
+                </div>
+                <span style="margin-left: auto; color: rgba(255, 255, 255, 0.6); font-size: 14px;">
+                    Live Demo - Real Remotion Processing
+                </span>
+            </div>
+            <div class="demo-content">
+                <div class="demo-steps">
+                    <div class="demo-step">
+                        <div class="step-icon">📁</div>
+                        <h3>Upload Raw Video</h3>
+                        <p style="color: rgba(255, 255, 255, 0.6); font-size: 14px;">
+                            45 min podcast recording
+                        </p>
+                    </div>
+                    <span class="step-arrow">→</span>
+                    <div class="demo-step">
+                        <div class="step-icon">🤖</div>
+                        <h3>AI Processing</h3>
+                        <p style="color: rgba(255, 255, 255, 0.6); font-size: 14px;">
+                            Removing silence & dead space
+                        </p>
+                    </div>
+                    <span class="step-arrow">→</span>
+                    <div class="demo-step">
+                        <div class="step-icon">✨</div>
+                        <h3>Rough Draft Ready</h3>
+                        <p style="color: rgba(255, 255, 255, 0.6); font-size: 14px;">
+                            28 min edited video
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works">
+        <h2 class="section-title">Get Your Rough Draft in 3 Steps</h2>
+        
+        <div class="steps-grid">
+            <div class="step-card">
+                <div class="step-number">1</div>
+                <h3 class="step-title">Upload Your Raw Footage</h3>
+                <p class="step-description">
+                    Drop your video file - podcasts, talking heads, tutorials, 
+                    or any content with speaking. We handle files up to 2 hours.
+                </p>
+            </div>
+            
+            <div class="step-card">
+                <div class="step-number">2</div>
+                <h3 class="step-title">AI Creates Your Rough Draft</h3>
+                <p class="step-description">
+                    Our AI analyzes audio, removes silence, cuts "ums" and "ahs", 
+                    and creates smooth transitions. Average processing: 4 minutes.
+                </p>
+            </div>
+            
+            <div class="step-card">
+                <div class="step-number">3</div>
+                <h3 class="step-title">Download or Fine-Tune</h3>
+                <p class="step-description">
+                    Export your rough draft immediately, or use our chat interface 
+                    to make quick adjustments. No timeline editing needed.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="testimonials">
+        <div class="testimonials-container">
+            <h2 class="section-title">Creators Love the Time Savings</h2>
+            
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <p class="testimonial-text">
+                        "I used to spend 3 hours just removing silence from my podcast. 
+                        Now I get a rough draft in minutes and can focus on the creative touches."
+                    </p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar"></div>
+                        <div class="author-info">
+                            <div class="author-name">Sarah Chen</div>
+                            <div class="author-role">Podcast Host • 50K subscribers</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="testimonial-card">
+                    <p class="testimonial-text">
+                        "The 0-80% concept is genius. I don't need perfection, 
+                        I need a watchable draft fast. This delivers exactly that."
+                    </p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar"></div>
+                        <div class="author-info">
+                            <div class="author-name">Marcus Johnson</div>
+                            <div class="author-role">YouTube Educator • 120K subscribers</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="testimonial-card">
+                    <p class="testimonial-text">
+                        "Finally, an AI editor that understands rough drafts are valuable. 
+                        Saves me 4+ hours per video, every single time."
+                    </p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar"></div>
+                        <div class="author-info">
+                            <div class="author-name">Alex Rivera</div>
+                            <div class="author-role">Course Creator • $2M revenue</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing -->
+    <section class="pricing" id="pricing">
+        <h2 class="section-title">Simple, Transparent Pricing</h2>
+        
+        <div class="pricing-cards">
+            <div class="pricing-card">
+                <h3 class="plan-name">Free Trial</h3>
+                <div class="plan-price">$0</div>
+                <p style="color: rgba(255, 255, 255, 0.6); margin-bottom: 30px;">
+                    Test with one video
+                </p>
+                <ul class="plan-features">
+                    <li><span class="check-icon">✓</span> One 10-minute video</li>
+                    <li><span class="check-icon">✓</span> Full rough draft features</li>
+                    <li><span class="check-icon">✓</span> Export in any format</li>
+                    <li><span class="check-icon">✓</span> No credit card required</li>
+                </ul>
+                <a href="#" class="primary-cta" style="width: 100%; text-align: center;">
+                    Start Free Trial
+                </a>
+            </div>
+            
+            <div class="pricing-card featured">
+                <h3 class="plan-name">Pro Creator</h3>
+                <div class="plan-price">$50<span>/month</span></div>
+                <p style="color: rgba(255, 255, 255, 0.6); margin-bottom: 30px;">
+                    For serious content creators
+                </p>
+                <ul class="plan-features">
+                    <li><span class="check-icon">✓</span> Unlimited videos</li>
+                    <li><span class="check-icon">✓</span> Priority processing (2 min avg)</li>
+                    <li><span class="check-icon">✓</span> Batch upload (5 videos)</li>
+                    <li><span class="check-icon">✓</span> Custom export presets</li>
+                    <li><span class="check-icon">✓</span> Chat refinements</li>
+                    <li><span class="check-icon">✓</span> 24/7 support</li>
+                </ul>
+                <a href="#" class="primary-cta" style="width: 100%; text-align: center;">
+                    Get Started
+                </a>
+            </div>
+            
+            <div class="pricing-card">
+                <h3 class="plan-name">Team</h3>
+                <div class="plan-price">$200<span>/month</span></div>
+                <p style="color: rgba(255, 255, 255, 0.6); margin-bottom: 30px;">
+                    For agencies & teams
+                </p>
+                <ul class="plan-features">
+                    <li><span class="check-icon">✓</span> Everything in Pro</li>
+                    <li><span class="check-icon">✓</span> 5 team seats</li>
+                    <li><span class="check-icon">✓</span> Shared workspace</li>
+                    <li><span class="check-icon">✓</span> API access</li>
+                    <li><span class="check-icon">✓</span> Custom AI training</li>
+                </ul>
+                <a href="#" class="primary-cta" style="width: 100%; text-align: center;">
+                    Contact Sales
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2024 Tailored Labs. All rights reserved. | Privacy Policy | Terms of Service</p>
+    </footer>
+</body>
+</html>

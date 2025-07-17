@@ -169,30 +169,6 @@ export default function Pricing() {
       popular: false,
       color: "purple"
     },
-    {
-      name: "Enterprise",
-      icon: <FaCrown className="w-6 h-6" />,
-      price: { monthly: "Custom", annual: "Custom" },
-      description: "Enterprise-grade video production at scale",
-      aiActions: "Unlimited AI actions",
-      videoMinutes: "Unlimited AI video",
-      features: [
-        "Unlimited AI prompt actions",
-        "Unlimited AI-generated video",
-        "Unlimited team seats",
-        "SLA & dedicated support",
-        "White-labeling options",
-        "On-premise deployment",
-        "Custom integrations & API",
-        "Advanced security & SSO",
-        "Training & onboarding",
-        "Custom usage analytics"
-      ],
-      limitations: [],
-      cta: "Contact Sales",
-      popular: false,
-      color: "gold"
-    }
   ];
 
   const addOnPacks = [
@@ -211,30 +187,30 @@ export default function Pricing() {
     {
       category: "AI Editing",
       features: [
-        { name: "Natural language prompts", free: true, creator: true, pro: true, enterprise: true },
-        { name: "Auto-remove silences", free: "Limited", creator: true, pro: true, enterprise: true },
-        { name: "Auto-generate highlights", free: false, creator: true, pro: true, enterprise: true },
-        { name: "AI-generated B-roll", free: false, creator: "Basic", pro: true, enterprise: true },
-        { name: "Dynamic motion graphics", free: false, creator: false, pro: true, enterprise: true },
-        { name: "Brand style transfer", free: false, creator: false, pro: true, enterprise: true }
+        { name: "Natural language prompts", free: true, creator: true, pro: true },
+        { name: "Auto-remove silences", free: "Limited", creator: true, pro: true },
+        { name: "Auto-generate highlights", free: false, creator: true, pro: true },
+        { name: "AI-generated B-roll", free: false, creator: "Basic", pro: true },
+        { name: "Dynamic motion graphics", free: false, creator: false, pro: true },
+        { name: "Brand style transfer", free: false, creator: false, pro: true }
       ]
     },
     {
       category: "Export & Quality",
       features: [
-        { name: "Export quality", free: "720p", creator: "1080p", pro: "4K", enterprise: "4K+" },
-        { name: "Watermark", free: "Yes", creator: "No", pro: "No", enterprise: "No" },
-        { name: "Export formats", free: "MP4 only", creator: "MP4, MOV", pro: "All formats", enterprise: "All formats" },
-        { name: "Max video length", free: "10 min", creator: "60 min", pro: "Unlimited", enterprise: "Unlimited" }
+        { name: "Export quality", free: "720p", creator: "1080p", pro: "4K" },
+        { name: "Watermark", free: "Yes", creator: "No", pro: "No" },
+        { name: "Export formats", free: "MP4 only", creator: "MP4, MOV", pro: "All formats" },
+        { name: "Max video length", free: "10 min", creator: "60 min", pro: "Unlimited" }
       ]
     },
     {
       category: "Collaboration",
       features: [
-        { name: "Team seats", free: "1", creator: "1", pro: "3", enterprise: "Unlimited" },
-        { name: "Project sharing", free: false, creator: false, pro: true, enterprise: true },
-        { name: "Comment system", free: false, creator: false, pro: true, enterprise: true },
-        { name: "Role permissions", free: false, creator: false, pro: "Basic", enterprise: "Advanced" }
+        { name: "Team seats", free: "1", creator: "1", pro: "3" },
+        { name: "Project sharing", free: false, creator: false, pro: true },
+        { name: "Comment system", free: false, creator: false, pro: true },
+        { name: "Role permissions", free: false, creator: false, pro: "Basic" }
       ]
     }
   ];
@@ -278,6 +254,9 @@ export default function Pricing() {
     }
   ];
 
+
+
+
   const getColorClasses = (color: string, variant: 'bg' | 'text' | 'border' | 'hover') => {
     const colors = {
       gray: {
@@ -319,70 +298,51 @@ export default function Pricing() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       {/* Navigation */}
-      <nav className="relative z-50 px-4 py-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <FaVideo className="w-4 h-4 text-white" />
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-sm border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Link href="/" className="text-2xl font-bold hover:text-gray-300 transition-colors">
+                Tailored Labs
+              </Link>
+              <div className="flex items-center space-x-2 bg-gray-800 rounded-full px-3 py-1">
+                <img 
+                  src="/bolt/white_circle_360x360/white_circle_360x360.svg" 
+                  alt="Built with Bolt" 
+                  className="w-4 h-4"
+                />
+                <span className="text-xs font-medium text-gray-400">Built on Bolt</span>
+              </div>
             </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Tailored Labs
-            </h1>
-          </Link>
-          
-          {/* Main Navigation Links */}
-          <div className="hidden md:flex items-center space-x-8">
-            <Link
-              href="/"
-              className="text-gray-300 hover:text-white transition-colors font-medium"
-            >
-              Home
-            </Link>
-            <Link
-              href="/features"
-              className="text-gray-300 hover:text-white transition-colors font-medium"
-            >
-              Features
-            </Link>
-            <Link
-              href="/auth/signup"
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg font-medium transition-all duration-200 transform hover:scale-105"
-            >
-              Try Editor
-            </Link>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <Link
-              href="/auth/login"
-              className="text-gray-300 hover:text-white transition-colors"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/auth/signup"
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 transform hover:scale-105"
-            >
-              Start Free Trial
-            </Link>
+            <div className="flex items-center space-x-8">
+              <Link href="/features" className="text-gray-400 hover:text-white transition-colors">
+                Features
+              </Link>
+              <Link href="/pricing" className="text-white font-medium">
+                Pricing
+              </Link>
+              <Link href="/blog" className="text-gray-400 hover:text-white transition-colors">
+                Blog
+              </Link>
+              <Link
+                href="/auth/signup"
+                className="bg-white text-black px-6 py-2 rounded-full font-medium hover:bg-gray-200 transition-all"
+              >
+                Start 7-Day Free Trial
+              </Link>
+            </div>
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden py-20">
-        <div className="absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-pink-900/20"></div>
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"></div>
-        </div>
-
-        <div className="relative z-10 max-w-7xl mx-auto px-4 text-center">
+      <section className="pt-28 pb-12 px-6">
+        <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-5xl md:text-6xl font-bold mb-6">
             Stop Paying for
-            <span className="block bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            <span className="block text-white">
               Expensive Editors
             </span>
           </h1>
@@ -443,9 +403,9 @@ export default function Pricing() {
       </section>
 
       {/* Pricing Plans */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-8">
+      <section className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-3 md:grid-cols-2 gap-8">
             {plans.map((plan, index) => (
               <div
                 key={index}
@@ -516,73 +476,13 @@ export default function Pricing() {
                   ))}
                 </ul>
 
-{plan.name === 'Enterprise' ? (
-                  <Link
-                    href="/contact"
-                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white`}
-                  >
-                    <span>{plan.cta}</span>
-                    <FaArrowRight className="w-4 h-4" />
-                  </Link>
-                ) : plan.name === 'Creator' ? (
-                  <button
-                    onClick={() => handleSubscribe(
-                      plan.name,
-                      isAnnual ? STRIPE_CONFIG.products.creator.prices.annual : STRIPE_CONFIG.products.creator.prices.monthly
-                    )}
-                    disabled={loading === plan.name}
-                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
-                      plan.popular
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-50'
-                        : `${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white disabled:opacity-50`
-                    }`}
-                  >
-                    {loading === plan.name ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Processing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>{plan.cta}</span>
-                        <FaArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                ) : plan.name === 'Pro' ? (
-                  <button
-                    onClick={() => handleSubscribe(
-                      plan.name,
-                      isAnnual ? STRIPE_CONFIG.products.pro.prices.annual : STRIPE_CONFIG.products.pro.prices.monthly
-                    )}
-                    disabled={loading === plan.name}
-                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${
-                      plan.popular
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-50'
-                        : `${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white disabled:opacity-50`
-                    }`}
-                  >
-                    {loading === plan.name ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Processing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>{plan.cta}</span>
-                        <FaArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <Link
-                    href="/auth/signup"
-                    className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white`}
-                  >
-                    <span>{plan.cta}</span>
-                    <FaArrowRight className="w-4 h-4" />
-                  </Link>
-                )}
+                <Link
+                  href="/auth/signup"
+                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center space-x-2 ${getColorClasses(plan.color, 'bg')} ${getColorClasses(plan.color, 'hover')} text-white`}
+                >
+                  <span>{plan.cta}</span>
+                  <FaArrowRight className="w-4 h-4" />
+                </Link>
               </div>
             ))}
           </div>
@@ -590,8 +490,8 @@ export default function Pricing() {
       </section>
 
       {/* Add-On Packs */}
-      <section className="py-20 bg-gray-800/50">
-        <div className="max-w-7xl mx-auto px-4">
+      <section className="py-20 px-6 bg-gray-800/50">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-6">Scale Up When You Need More</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
@@ -643,8 +543,8 @@ export default function Pricing() {
       </section>
 
       {/* Feature Comparison */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4">
+      <section className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-6">What You Get at Each Level</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
@@ -660,12 +560,11 @@ export default function Pricing() {
                 </div>
                 <div className="divide-y divide-gray-700">
                   {category.features.map((feature, featureIndex) => (
-                    <div key={featureIndex} className="grid grid-cols-5 gap-4 px-6 py-4 hover:bg-gray-700/20 transition-colors">
+                    <div key={featureIndex} className="grid grid-cols-4 gap-4 px-6 py-4 hover:bg-gray-700/20 transition-colors">
                       <div className="text-sm font-medium text-gray-300">{feature.name}</div>
                       <div className="text-center">{renderFeatureValue(feature.free)}</div>
                       <div className="text-center">{renderFeatureValue(feature.creator)}</div>
                       <div className="text-center">{renderFeatureValue(feature.pro)}</div>
-                      <div className="text-center">{renderFeatureValue(feature.enterprise)}</div>
                     </div>
                   ))}
                 </div>
@@ -673,20 +572,19 @@ export default function Pricing() {
             ))}
             
             {/* Header row */}
-            <div className="grid grid-cols-5 gap-4 px-6 py-4 bg-gray-700/30 border-t border-gray-700">
+            <div className="grid grid-cols-4 gap-4 px-6 py-4 bg-gray-700/30 border-t border-gray-700">
               <div></div>
               <div className="text-center font-semibold text-gray-400">Free</div>
               <div className="text-center font-semibold text-blue-400">Creator</div>
               <div className="text-center font-semibold text-purple-400">Pro</div>
-              <div className="text-center font-semibold text-yellow-400">Enterprise</div>
             </div>
           </div>
         </div>
       </section>
 
       {/* Usage Dashboard Preview */}
-      <section className="py-20 bg-gray-800/50">
-        <div className="max-w-7xl mx-auto px-4">
+      <section className="py-20 px-6 bg-gray-800/50">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-6">Never Get Surprised by Limits</h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
@@ -725,7 +623,6 @@ export default function Pricing() {
             <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 border border-gray-700">
               <h4 className="text-lg font-semibold mb-6">Live Usage Dashboard</h4>
               
-              {/* Credits Usage */}
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-gray-300">Credits Used</span>
@@ -760,8 +657,8 @@ export default function Pricing() {
       </section>
 
       {/* FAQ */}
-      <section className="py-20">
-        <div className="max-w-4xl mx-auto px-4">
+      <section className="py-20 px-6">
+        <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-6">Frequently Asked Questions</h2>
           </div>
@@ -794,9 +691,13 @@ export default function Pricing() {
         </div>
       </section>
 
+
+
+
+
       {/* CTA Section */}
-      <section className="py-20 bg-gray-800/50">
-        <div className="max-w-4xl mx-auto px-4 text-center">
+      <section className="py-20 px-6 bg-gray-800/50">
+        <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-4xl font-bold mb-6">
             Ready to Stop Overpaying for Video?
           </h2>
@@ -827,52 +728,43 @@ export default function Pricing() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-800 border-t border-gray-700 py-12">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8">
+      <footer className="border-t border-gray-800 py-12 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                  <FaVideo className="w-4 h-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold">Tailored Labs</h3>
+                <div className="text-2xl font-bold">Tailored Labs</div>
               </div>
-              <p className="text-gray-400 text-sm">
-                The future of video editing is here. Create professional videos with simple prompts.
+              <p className="text-gray-500 text-sm mb-4">
+                Agentic AI powered by latest LLMs. Create professional videos with intelligent automation.
               </p>
+              <div className="flex items-center space-x-2">
+                <img 
+                  src="/bolt/logotext_poweredby_360w/logotext_poweredby_360w.svg" 
+                  alt="Powered by Bolt" 
+                  className="h-8"
+                />
+              </div>
             </div>
             
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link href="/editor" className="hover:text-white transition-colors">Editor</Link></li>
+              <ul className="space-y-2 text-sm text-gray-500">
                 <li><Link href="/features" className="hover:text-white transition-colors">Features</Link></li>
                 <li><Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link href="/contact" className="hover:text-white transition-colors">Contact</Link></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link></li>
+                <li><Link href="/blog" className="hover:text-white transition-colors">Blog</Link></li>
+                <li><Link href="/componentsv2" className="hover:text-white transition-colors">Components</Link></li>
               </ul>
             </div>
           </div>
           
-          <div className="border-t border-gray-700 mt-8 pt-8 flex flex-col md:flex-row items-center justify-between">
-            <p className="text-gray-400 text-sm">
+          <div className="border-t border-gray-800 mt-8 pt-8 flex flex-col md:flex-row items-center justify-between">
+            <p className="text-gray-500 text-sm">
               © 2024 Tailored Labs. Made with ❤️ for creators everywhere.
             </p>
             <Link
               href="/auth/signup"
-              className="mt-4 md:mt-0 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg transition-all duration-200 transform hover:scale-105"
+              className="mt-4 md:mt-0 bg-white text-black px-6 py-2 rounded-full hover:bg-gray-200 transition-all"
             >
               Start Free Trial
             </Link>

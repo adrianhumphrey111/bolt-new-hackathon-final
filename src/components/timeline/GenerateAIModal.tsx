@@ -39,7 +39,7 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onGenerationJobSuc
       const { data, error } = await supabase
         .from('edl_generation_jobs')
         .select('*')
-        .eq('job_id', jobId)
+        .eq('id', jobId)
         .single();
 
       if (error) {

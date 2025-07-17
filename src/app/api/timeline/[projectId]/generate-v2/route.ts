@@ -13,7 +13,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { projectId } = params;
+    const { projectId } = await params;
     const { user_prompt, platform } = await request.json();
 
     // Validate inputs
@@ -28,8 +28,7 @@ export async function POST(
       .insert({
         project_id: projectId,
         user_id: user.id,
-        user_prompt: user_prompt,
-        platform: platform
+        user_intent: user_prompt
       })
       .select('id')
       .single()

@@ -68,7 +68,7 @@ function VideoEditorContent() {
     currentJob,
     isGenerating,
     isComplete
-  } = useEDLGeneration(projectId, session, showGenerateModal);
+  } = { currentJob: null, isGenerating: false, isComplete: false} //useEDLGeneration(projectId, session, showGenerateModal);
   const [currentAspectRatio, setCurrentAspectRatio] = useState<AspectRatio>(aspectRatios[1]); // Default to 16:9
   const [playerDimensions, setPlayerDimensions] = useState({ width: 800, height: 450 });
   const [selectedItemId, setSelectedItemId] = useState<string | undefined>();

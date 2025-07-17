@@ -4,13 +4,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTimeline } from './TimelineContext';
 import { useAuthContext } from '../AuthProvider';
 import { createClientSupabaseClient } from '../../lib/supabase/client';
-import { useTimelinePersistence } from '../../hooks/useTimelinePersistence';
 
 interface GenerateAIModalProps {
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
-  onComplete?: (shotList: any[]) => void;
+  onGenerationJobSuccessfully?: (timelineData: any) => void;
 }
 
 const PLATFORMS = [
@@ -21,7 +20,7 @@ const PLATFORMS = [
   { value: 'linkedin', label: 'LinkedIn', description: 'Horizontal 16:9, professional' },
 ];
 
-export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: GenerateAIModalProps) {
+export function GenerateAIModal({ projectId, isOpen, onClose, onGenerationJobSuccessfully }: GenerateAIModalProps) {
   const [userPrompt, setUserPrompt] = useState('');
   const [platform, setPlatform] = useState('tiktok');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -30,7 +29,6 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
   const [error, setError] = useState<string | null>(null);
   const { actions } = useTimeline();
   const { isAuthenticated, loading: authLoading, session } = useAuthContext();
-  const { persistenceActions } = useTimelinePersistence();
   const supabase = createClientSupabaseClient();
 
   // Poll for job status
@@ -52,10 +50,10 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
       if (data) {
         setJobStatus(data.status_message || data.status);
         
-        // If job is complete, refresh timeline
+        // If job is complete, fetch new timeline and call callback
         if (data.status === 'completed') {
           setIsGenerating(false);
-          // Refresh timeline by calling the same endpoint as initial load
+          // Fetch the new timeline data
           try {
             const response = await fetch(`/api/timeline/${projectId}`, {
               method: 'GET',
@@ -66,22 +64,16 @@ export function GenerateAIModal({ projectId, isOpen, onClose, onComplete }: Gene
 
             if (response.ok) {
               const timelineData = await response.json();
-              if (timelineData) {
-                // Update timeline state using the same method as initial load
-                actions.loadTimeline(timelineData);
+              if (timelineData && onGenerationJobSuccessfully) {
+                // Call the callback with the timeline data
+                onGenerationJobSuccessfully(timelineData);
               }
             }
-            onClose(); // Close modal after successful refresh
+            onClose(); // Close modal after successful completion
           } catch (err) {
-            console.error('Failed to refresh timeline:', err);
-            // Fallback to using persistence action
-            try {
-              await persistenceActions.loadTimeline(projectId);
-              onClose();
-            } catch (fallbackErr) {
-              console.error('Fallback timeline refresh failed:', fallbackErr);
-              window.location.reload();
-            }
+            console.error('Failed to fetch new timeline:', err);
+            // Still close modal but don't update timeline
+            onClose();
           }
         } else if (data.status === 'failed') {
           setIsGenerating(false);

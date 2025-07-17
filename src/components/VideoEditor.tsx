@@ -48,7 +48,7 @@ export function usePlayerControls() {
 }
 
 function VideoEditorContent() {
-  const { state, actions } = useTimeline();
+  const { state, actions, persistenceActions } = useTimeline();
   const { projectId } = useProject();
   const { isAuthenticated, loading: authLoading, session } = useAuthContext();
   const router = useRouter();
@@ -938,8 +938,10 @@ function VideoEditorContent() {
           projectId={projectId}
           isOpen={showGenerateModal}
           onClose={() => setShowGenerateModal(false)}
-          onComplete={(shotList) => {
-            console.log('AI Timeline generated with', shotList.length, 'clips');
+          onGenerationJobSuccessfully={(timelineData) => {
+            console.log('AI Timeline generated successfully:', timelineData);
+            // Reload timeline data from database
+            persistenceActions.loadTimeline(projectId);
           }}
         />
       )}

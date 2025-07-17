@@ -20,6 +20,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     return {
       title: 'Blog Post Not Found',
       description: 'The requested blog post could not be found.',
+      robots: {
+        index: false,
+        follow: false,
+      },
     };
   }
 
@@ -27,6 +31,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: `${post.title} | Tailored Labs Blog`,
     description: post.metaDescription || post.excerpt,
     keywords: post.seoKeywords || post.tags.join(', '),
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+      },
+    },
     openGraph: {
       title: post.title,
       description: post.excerpt,
@@ -35,6 +47,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       authors: [post.author],
       tags: post.tags,
       url: `https://tailoredlabs.com/blog/${slug}`,
+      siteName: 'Tailored Labs',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.title,
+      description: post.excerpt,
+      creator: '@tailoredlabs',
     },
     alternates: {
       canonical: `https://tailoredlabs.com/blog/${slug}`,

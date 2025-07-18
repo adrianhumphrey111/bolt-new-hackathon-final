@@ -245,7 +245,9 @@ export function MediaLibrary() {
     videoId: '',
     videoName: '',
   });
+  
   const [isReanalyzing, setIsReanalyzing] = useState<{[key: string]: boolean}>({});
+  
   const [cutDetectionProgress, setCutDetectionProgress] = useState<{
     isOpen: boolean;
     videoId: string;
@@ -1610,8 +1612,8 @@ export function MediaLibrary() {
 
       {/* Tabs - Moved to top */}
       {!isCollapsed && (
-        <div className="flex-1 flex flex-col">
-          <div className="flex border-b border-gray-600">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex border-b border-gray-600 flex-shrink-0">
           <button
             onClick={() => setActiveTab('media')}
             className={`flex-1 px-2 py-2 text-xs font-medium transition-colors ${
@@ -1655,7 +1657,7 @@ export function MediaLibrary() {
           </div>
           
           {/* Scrollable Content Area */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+          <div className="flex-1 overflow-y-auto min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: '#4B5563 #1F2937' }}>
           {/* Upload Progress - Simplified */}
           {uploading && (
             <div className="px-3 py-2 border-b border-gray-600 bg-gray-750">
@@ -1848,7 +1850,7 @@ export function MediaLibrary() {
 
           {/* AI Sort Tab Content */}
           {activeTab === 'ai-sort' && (
-            <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+            <div className="flex-1 overflow-y-auto p-3 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: '#4B5563 #1F2937' }}>
               <AIVideoSorter
                 projectId={projectId || ''}
                 onVideoSelect={(videoId) => {
@@ -1881,7 +1883,7 @@ export function MediaLibrary() {
 
           {/* Transitions Tab Content */}
           {activeTab === 'transitions' && (
-            <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+            <div className="flex-1 overflow-y-auto p-3 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: '#4B5563 #1F2937' }}>
               <div className="mb-4">
                 <h4 className="text-sm font-medium text-gray-300 mb-3">Available Transitions</h4>
                 <p className="text-xs text-gray-500 mb-4">Drag transitions to the timeline to add them between scenes</p>
